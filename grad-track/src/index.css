@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+@theme {
+  --color-maroon-900: #800000;
+  --color-maroon-800: #a52a2a;
+  --color-maroon-50: #fff5f5;
+}
+
+/* Now this will work! */
+body {
+  @apply bg-maroon-50;
+}
+
+/* Custom scrollbar for modals */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}

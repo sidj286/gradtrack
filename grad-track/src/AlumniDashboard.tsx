@@ -1,0 +1,1409 @@
+// AlumniDashboard.tsx
+import React, { useState, useEffect, useRef } from 'react';
+import { supabase } from './lib/supabase';
+import type { Session } from '@supabase/supabase-js';
+
+// ==================== TYPES ====================
+interface Profile {
+  id: string;
+  user_id: string;
+  full_name: string | null;
+  course: string | null;
+  batch_year: number | null;
+  company: string | null;
+  job_title: string | null;
+  industry: string | null;
+  location: string | null;
+  employment_status: string | null;
+  linkedin_url: string | null;
+  auto_sync_enabled: boolean;
+  last_synced_at: string | null;
+  career_alignment_status: string | null;
+  ai_confidence_score: number | null;
+  profile_completion: number;
+  avatar_url: string | null;
+}
+
+interface Announcement {
+  id: string;
+  title: string;
+  content: string;
+  category: string;
+  created_at: string;
+  viewed: boolean;
+}
+
+interface Activity {
+  id: string;
+  activity_type: string;
+  description: string;
+  created_at: string;
+}
+
+// ==================== REUSABLE COMPONENTS ====================
+const Card: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void }> = ({ 
+  children, 
+  className = '', 
+  onClick 
+}) => (
+  <div 
+    onClick={onClick}
+    className={`
+      bg-white rounded-xl sm:rounded-2xl shadow-lg border border-gray-100 
+      hover:shadow-xl transition-all duration-300 
+      ${onClick ? 'cursor-pointer hover:border-[#800000]/30 active:scale-[0.99]' : ''}
+      ${className}
+    `}
+  >
+    {children}
+  </div>
+);
+
+const Button: React.FC<{
+  children: React.ReactNode;
+  variant?: 'primary' | 'secondary' | 'danger' | 'success';
+  size?: 'sm' | 'md' | 'lg';
+  onClick?: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  loadingText?: string;
+  className?: string;
+}> = ({ children, variant = 'primary', size = 'md', onClick, disabled, loading, loadingText, className = '' }) => {
+  const variants = {
+    primary: 'bg-gradient-to-r from-[#800000] to-[#a10000] hover:from-[#6a0000] hover:to-[#8a0000] text-white shadow-md hover:shadow-lg',
+    secondary: 'bg-white border-2 border-gray-200 hover:border-[#800000]/50 text-gray-700 hover:bg-gray-50',
+    danger: 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md',
+    success: 'bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white shadow-md',
+  };
+  
+  const sizes = {
+    sm: 'px-3 py-1.5 text-xs sm:px-4 sm:py-2 sm:text-sm',
+    md: 'px-4 py-2 text-sm sm:px-6 sm:py-2.5',
+    lg: 'px-6 py-2.5 text-base sm:px-8 sm:py-3.5',
+  };
+  
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled || loading}
+      className={`
+        ${variants[variant]} ${sizes[size]} font-bold rounded-xl 
+        transition-all duration-300 active:scale-[0.98] 
+        disabled:opacity-50 disabled:cursor-not-allowed
+        ${className}
+      `}
+    >
+      {loading ? (
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          <span>{loadingText || 'Loading...'}</span>
+        </div>
+      ) : children}
+    </button>
+  );
+};
+
+const Input: React.FC<{
+  label?: string;
+  type?: string;
+  value: string | number;
+  onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
+  placeholder?: string;
+  required?: boolean;
+  disabled?: boolean;
+  readOnly?: boolean;
+  icon?: React.ReactNode;
+  hint?: string;
+  className?: string;
+}> = ({ label, type = 'text', value, onChange, placeholder, required, disabled, readOnly, icon, hint, className = '' }) => (
+  <div className={`space-y-2 ${className}`}>
+    {label && (
+      <label className="block text-xs sm:text-sm font-semibold text-gray-700">
+        {label}
+        {required && <span className="text-red-500 ml-1">*</span>}
+      </label>
+    )}
+    <div className="relative">
+      {icon && (
+        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+          {icon}
+        </div>
+      )}
+      <input
+        type={type}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        disabled={disabled}
+        readOnly={readOnly}
+        className={`
+          w-full px-3 py-2 sm:px-4 sm:py-2.5 bg-white border rounded-xl text-gray-900
+          focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20
+          outline-none transition-all duration-200 text-sm sm:text-base
+          ${icon ? 'pl-8 sm:pl-10' : ''}
+          ${disabled || readOnly ? 'bg-gray-50 text-gray-500 cursor-not-allowed border-gray-200' : 'border-gray-200 hover:border-gray-300'}
+        `}
+      />
+    </div>
+    {hint && <p className="text-xs text-amber-600 flex items-center gap-1">🔒 {hint}</p>}
+  </div>
+);
+
+const Badge: React.FC<{ children: React.ReactNode; variant?: 'success' | 'warning' | 'info' | 'danger' | 'default' }> = ({ 
+  children, 
+  variant = 'default' 
+}) => {
+  const variants = {
+    success: 'bg-emerald-100 text-emerald-700',
+    warning: 'bg-amber-100 text-amber-700',
+    info: 'bg-blue-100 text-blue-700',
+    danger: 'bg-red-100 text-red-700',
+    default: 'bg-gray-100 text-gray-700',
+  };
+  
+  return (
+    <span className={`px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-lg ${variants[variant]}`}>
+      {children}
+    </span>
+  );
+};
+
+const ProgressBar: React.FC<{ value: number; label?: string; showPercentage?: boolean }> = ({ 
+  value, 
+  label, 
+  showPercentage = true 
+}) => (
+  <div className="space-y-2">
+    {(label || showPercentage) && (
+      <div className="flex justify-between text-xs sm:text-sm">
+        {label && <span className="font-medium text-gray-700">{label}</span>}
+        {showPercentage && <span className="font-semibold text-[#800000]">{Math.min(100, value)}%</span>}
+      </div>
+    )}
+    <div className="h-1.5 sm:h-2 bg-gray-100 rounded-full overflow-hidden">
+      <div 
+        className="h-full bg-gradient-to-r from-[#800000] to-[#a10000] rounded-full transition-all duration-500"
+        style={{ width: `${Math.min(100, value)}%` }}
+      />
+    </div>
+  </div>
+);
+
+const Modal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+  size?: 'sm' | 'md' | 'lg';
+}> = ({ isOpen, onClose, title, children, size = 'md' }) => {
+  if (!isOpen) return null;
+  
+  const sizes = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-2xl' };
+  
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className={`${sizes[size]} w-full bg-white rounded-xl sm:rounded-2xl shadow-2xl mx-4 sm:mx-0`}>
+        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-100">
+          <h3 className="text-lg sm:text-xl font-bold text-gray-900">{title}</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 transition-colors text-2xl leading-none"
+          >
+            ×
+          </button>
+        </div>
+        <div className="p-4 sm:p-6">{children}</div>
+      </div>
+    </div>
+  );
+};
+
+// ==================== PROFILE PICTURE UPLOAD COMPONENT ====================
+const ProfilePictureUpload: React.FC<{
+  avatarUrl: string | null;
+  onUpload: (url: string) => void;
+  userId: string;
+  fullName: string | null;
+}> = ({ avatarUrl, onUpload, userId, fullName }) => {
+  const [uploading, setUploading] = useState(false);
+  const [hovering, setHovering] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const uploadAvatar = async (file: File) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('Please upload an image file');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File size must be less than 5MB');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${userId}/avatar.${fileExt}`;
+      const filePath = fileName;
+
+      const { error: uploadError } = await supabase.storage
+        .from('profile-pictures')
+        .upload(filePath, file, { upsert: true });
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from('profile-pictures')
+        .getPublicUrl(filePath);
+      const publicUrl = publicUrlData.publicUrl;
+      
+      const { error: updateError } = await supabase
+        .from('alumni_profiles')
+        .update({ avatar_url: filePath })
+        .eq('user_id', userId);
+      if (updateError) throw updateError;
+
+      onUpload(publicUrl);
+      alert('Profile picture updated successfully!');
+    } catch (error) {
+      console.error('Error uploading avatar:', error);
+      alert('Error uploading profile picture');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeAvatar = async () => {
+    if (!avatarUrl) return;
+    setUploading(true);
+    try {
+      const filePath = avatarUrl.includes('profile-pictures') 
+        ? avatarUrl.split('/profile-pictures/')[1] 
+        : avatarUrl;
+      const { error: deleteError } = await supabase.storage
+        .from('profile-pictures')
+        .remove([filePath]);
+      if (deleteError) throw deleteError;
+
+      const { error: updateError } = await supabase
+        .from('alumni_profiles')
+        .update({ avatar_url: null })
+        .eq('user_id', userId);
+      if (updateError) throw updateError;
+
+      onUpload('');
+      alert('Profile picture removed');
+    } catch (error) {
+      console.error('Error removing avatar:', error);
+      alert('Error removing profile picture');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) uploadAvatar(file);
+  };
+
+  return (
+    <div 
+      className="relative"
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
+    >
+      <div className="relative group">
+        {avatarUrl ? (
+          <img
+            src={avatarUrl}
+            alt="Profile"
+            className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover shadow-lg ring-4 ring-white"
+          />
+        ) : (
+          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-[#800000] to-[#a10000] rounded-full flex items-center justify-center text-2xl sm:text-3xl font-bold text-white shadow-lg ring-4 ring-white">
+            {fullName?.charAt(0)?.toUpperCase() || 'A'}
+          </div>
+        )}
+        
+        {hovering && (
+          <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center gap-2 transition-all duration-200">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="p-1 sm:p-1.5 bg-white rounded-full text-gray-700 hover:bg-gray-100 transition-colors text-xs sm:text-base"
+              title="Change photo"
+            >
+              📷
+            </button>
+            {avatarUrl && (
+              <button
+                onClick={removeAvatar}
+                disabled={uploading}
+                className="p-1 sm:p-1.5 bg-white rounded-full text-red-500 hover:bg-gray-100 transition-colors text-xs sm:text-base"
+                title="Remove photo"
+              >
+                🗑️
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFileChange}
+        className="hidden"
+      />
+      {uploading && (
+        <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center">
+          <div className="w-4 h-4 sm:w-6 sm:h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ==================== NOTIFICATION BELL COMPONENT ====================
+const NotificationBell: React.FC<{ 
+  unreadCount: number; 
+  onClick: () => void;
+  isOpen: boolean;
+}> = ({ unreadCount, onClick, isOpen }) => {
+  return (
+    <div className="relative">
+      <button
+        onClick={onClick}
+        className={`
+          relative p-1.5 sm:p-2 rounded-xl transition-all duration-300
+          ${isOpen ? 'bg-[#800000]/10 text-[#800000]' : 'text-gray-600 hover:bg-gray-100'}
+        `}
+      >
+        <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+        </svg>
+        {unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-red-500 text-white text-[10px] sm:text-xs rounded-full flex items-center justify-center animate-pulse ring-2 ring-white">
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        )}
+      </button>
+    </div>
+  );
+};
+
+// ==================== NOTIFICATION DROPDOWN ====================
+const NotificationDropdown: React.FC<{
+  announcements: Announcement[];
+  loading: boolean;
+  onMarkAsRead: (id: string) => void;
+  onViewAll: () => void;
+  onClose: () => void;
+}> = ({ announcements, loading, onMarkAsRead, onViewAll, onClose }) => {
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const unreadAnnouncements = announcements.filter(a => !a.viewed);
+  const recentAnnouncements = announcements.slice(0, 5);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [onClose]);
+
+  const getCategoryIcon = (category: string) => {
+    const icons: Record<string, string> = {
+      alumni_events: '🎉',
+      job_fairs: '💼',
+      seminars: '📚',
+      career_opportunities: '🎯',
+    };
+    return icons[category] || '📢';
+  };
+
+  if (loading) {
+    return (
+      <div 
+        ref={dropdownRef} 
+        className="fixed md:absolute md:right-0 md:mt-2 left-1/2 -translate-x-1/2 md:left-auto md:translate-x-0 top-14 sm:top-16 md:top-auto w-[calc(100%-2rem)] sm:w-96 md:w-96 bg-white rounded-xl sm:rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50"
+      >
+        <div className="p-6 sm:p-8 text-center">
+          <div className="w-6 h-6 sm:w-8 sm:h-8 border-2 border-[#800000]/20 border-t-[#800000] rounded-full animate-spin mx-auto mb-2" />
+          <p className="text-xs sm:text-sm text-gray-500">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      ref={dropdownRef}
+      className="fixed md:absolute md:right-0 md:mt-2 left-1/2 -translate-x-1/2 md:left-auto md:translate-x-0 top-14 sm:top-16 md:top-auto w-[calc(100%-2rem)] sm:w-96 md:w-96 bg-white rounded-xl sm:rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50"
+    >
+      <div className="p-3 sm:p-4 border-b border-gray-100 bg-gradient-to-r from-[#800000]/5 to-transparent">
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-sm sm:text-base text-gray-900">Notifications</h3>
+          {unreadAnnouncements.length > 0 && (
+            <button
+              onClick={() => unreadAnnouncements.forEach(a => onMarkAsRead(a.id))}
+              className="text-[10px] sm:text-xs text-[#800000] font-semibold hover:underline"
+            >
+              Mark all as read
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="max-h-80 sm:max-h-96 overflow-y-auto">
+        {recentAnnouncements.length === 0 ? (
+          <div className="p-6 sm:p-8 text-center">
+            <div className="text-3xl sm:text-4xl mb-2">🔔</div>
+            <p className="text-gray-500 font-medium text-sm sm:text-base">No notifications</p>
+            <p className="text-xs text-gray-400 mt-1">You're all caught up!</p>
+          </div>
+        ) : (
+          recentAnnouncements.map(ann => (
+            <div
+              key={ann.id}
+              className={`
+                p-3 sm:p-4 border-b border-gray-50 hover:bg-gray-50 transition-all cursor-pointer
+                ${!ann.viewed ? 'bg-gradient-to-r from-blue-50/50 to-transparent' : ''}
+              `}
+              onClick={() => {
+                if (!ann.viewed) onMarkAsRead(ann.id);
+              }}
+            >
+              <div className="flex items-start gap-2 sm:gap-3">
+                <div className="text-xl sm:text-2xl">{getCategoryIcon(ann.category)}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="text-xs sm:text-sm font-semibold text-gray-900 truncate">{ann.title}</p>
+                    {!ann.viewed && (
+                      <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-blue-500 rounded-full animate-pulse flex-shrink-0" />
+                    )}
+                  </div>
+                  <p className="text-[11px] sm:text-xs text-gray-500 line-clamp-2">{ann.content}</p>
+                  <p className="text-[10px] sm:text-xs text-gray-400 mt-1">
+                    {new Date(ann.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="p-2 sm:p-3 border-t border-gray-100 bg-gray-50">
+        <button
+          onClick={onViewAll}
+          className="w-full text-center text-xs sm:text-sm text-[#800000] font-semibold hover:underline py-1"
+        >
+          View all announcements →
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ==================== INFO BOX COMPONENT ====================
+const InfoBox: React.FC<{ title: string; value: string | number | null | undefined; icon: string; hint?: string }> = ({ 
+  title, 
+  value, 
+  icon, 
+  hint 
+}) => (
+  <div className="bg-gradient-to-r from-gray-50 to-white rounded-lg sm:rounded-xl p-3 sm:p-4 border border-gray-100">
+    <div className="flex items-start gap-2 sm:gap-3">
+      <div className="text-xl sm:text-2xl">{icon}</div>
+      <div className="flex-1">
+        <p className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider">{title}</p>
+        <p className="text-base sm:text-lg font-bold text-gray-900 mt-1">{value || 'Not set'}</p>
+        {hint && <p className="text-[10px] sm:text-xs text-amber-600 mt-2 flex items-center gap-1">🔒 {hint}</p>}
+      </div>
+    </div>
+  </div>
+);
+
+// ==================== ACTIVITY TIMELINE COMPONENT ====================
+const ActivityTimeline: React.FC<{ activities: Activity[]; loading: boolean }> = ({ activities, loading }) => {
+  const getActivityIcon = (type: string) => {
+    const icons: Record<string, string> = {
+      profile_update: '✏️',
+      employment_update: '💼',
+      verification: '✅',
+      profile_completed: '🏆',
+      announcement_view: '📢',
+      login: '🔐',
+      avatar_upload: '📷',
+    };
+    return icons[type] || '📌';
+  };
+
+  const getActivityColor = (type: string) => {
+    const colors: Record<string, string> = {
+      profile_update: 'bg-blue-100 text-blue-700',
+      employment_update: 'bg-emerald-100 text-emerald-700',
+      verification: 'bg-green-100 text-green-700',
+      profile_completed: 'bg-amber-100 text-amber-700',
+      announcement_view: 'bg-purple-100 text-purple-700',
+      login: 'bg-indigo-100 text-indigo-700',
+      avatar_upload: 'bg-pink-100 text-pink-700',
+    };
+    return colors[type] || 'bg-gray-100 text-gray-700';
+  };
+
+  const formatTimeAgo = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    
+    if (seconds < 60) return 'just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes} min ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} hr ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days} day ago`;
+    return date.toLocaleDateString();
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-3 sm:space-y-4">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="flex items-start gap-2 sm:gap-3 animate-pulse">
+            <div className="w-6 h-6 sm:w-8 sm:h-8 bg-gray-200 rounded-lg" />
+            <div className="flex-1">
+              <div className="h-3 sm:h-4 bg-gray-200 rounded w-3/4 mb-2" />
+              <div className="h-2 sm:h-3 bg-gray-200 rounded w-1/4" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (activities.length === 0) {
+    return (
+      <div className="text-center py-6 sm:py-8">
+        <div className="text-3xl sm:text-4xl mb-2 sm:mb-3">📋</div>
+        <p className="text-gray-500 font-medium text-sm sm:text-base">No recent activity</p>
+        <p className="text-xs text-gray-400 mt-1">Update your profile to see activity here</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 sm:space-y-4">
+      {activities.map((activity, index) => (
+        <div key={activity.id} className="flex items-start gap-2 sm:gap-3 group">
+          <div className="relative">
+            <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center text-[10px] sm:text-sm transition-transform group-hover:scale-110 ${getActivityColor(activity.activity_type)}`}>
+              {getActivityIcon(activity.activity_type)}
+            </div>
+            {index < activities.length - 1 && (
+              <div className="absolute top-6 sm:top-8 left-3 sm:left-4 w-0.5 h-8 sm:h-12 bg-gray-200" />
+            )}
+          </div>
+          <div className="flex-1 pt-0.5">
+            <p className="text-xs sm:text-sm text-gray-700">{activity.description}</p>
+            <p className="text-[10px] sm:text-xs text-gray-400 mt-1">{formatTimeAgo(activity.created_at)}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// ==================== ANNOUNCEMENT PAGE COMPONENT ====================
+const AnnouncementPage: React.FC<{
+  announcements: Announcement[];
+  loading: boolean;
+  onMarkAsRead: (id: string) => void;
+}> = ({ announcements, loading, onMarkAsRead }) => {
+  const getCategoryBadge = (category: string) => {
+    const badges: Record<string, string> = {
+      alumni_events: 'bg-purple-100 text-purple-700',
+      job_fairs: 'bg-blue-100 text-blue-700',
+      seminars: 'bg-green-100 text-green-700',
+      career_opportunities: 'bg-amber-100 text-amber-700',
+    };
+    return badges[category] || 'bg-gray-100 text-gray-700';
+  };
+
+  const getCategoryLabel = (category: string) => {
+    const labels: Record<string, string> = {
+      alumni_events: '🎉 Alumni Event',
+      job_fairs: '💼 Job Fair',
+      seminars: '📚 Seminar',
+      career_opportunities: '🎯 Career Opportunity',
+    };
+    return labels[category] || category;
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-3 sm:space-y-4">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="p-4 sm:p-6 border-b border-gray-100 animate-pulse">
+            <div className="h-3 sm:h-4 bg-gray-200 rounded w-1/4 mb-2 sm:mb-3" />
+            <div className="h-4 sm:h-6 bg-gray-200 rounded w-3/4 mb-2" />
+            <div className="h-3 sm:h-4 bg-gray-200 rounded w-full" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (announcements.length === 0) {
+    return (
+      <div className="text-center py-12 sm:py-16">
+        <div className="text-4xl sm:text-5xl mb-3 sm:mb-4">📭</div>
+        <p className="text-gray-600 font-medium text-base sm:text-lg">No announcements yet</p>
+        <p className="text-xs sm:text-sm text-gray-400 mt-2">Check back later for updates from the career office</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="divide-y divide-gray-100">
+      {announcements.map(ann => (
+        <div 
+          key={ann.id} 
+          className={`p-4 sm:p-6 hover:bg-gray-50 transition-all duration-300 ${!ann.viewed ? 'bg-gradient-to-r from-blue-50/50 to-transparent' : ''}`}
+        >
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-2 sm:mb-3 gap-2">
+            <div className="flex gap-2 flex-wrap">
+              <span className={`px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-lg ${getCategoryBadge(ann.category)}`}>
+                {getCategoryLabel(ann.category)}
+              </span>
+              {!ann.viewed && (
+                <Badge variant="info">
+                  <span className="flex items-center gap-1">
+                    <span className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-blue-500 rounded-full animate-pulse" />
+                    New
+                  </span>
+                </Badge>
+              )}
+            </div>
+            <span className="text-[10px] sm:text-xs text-gray-400">{new Date(ann.created_at).toLocaleDateString()}</span>
+          </div>
+          <h3 className="text-base sm:text-xl font-bold text-gray-900 mb-2">{ann.title}</h3>
+          <p className="text-sm sm:text-base text-gray-600 leading-relaxed">{ann.content}</p>
+          {!ann.viewed && (
+            <button
+              onClick={() => onMarkAsRead(ann.id)}
+              className="mt-3 sm:mt-4 text-xs sm:text-sm text-[#800000] font-semibold hover:underline inline-flex items-center gap-1 group"
+            >
+              Mark as read
+              <span className="group-hover:translate-x-1 transition-transform">→</span>
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// ==================== MAIN DASHBOARD COMPONENT ====================
+export default function AlumniDashboard({ session }: { session: Session }) {
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [announcementsLoading, setAnnouncementsLoading] = useState(true);
+  const [activitiesLoading, setActivitiesLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'overview' | 'announcements'>('overview');
+  const [showEmploymentModal, setShowEmploymentModal] = useState(false);
+  const [showNotificationDropdown, setShowNotificationDropdown] = useState(false);
+  const [signOutLoading, setSignOutLoading] = useState(false);
+  
+  const [employmentForm, setEmploymentForm] = useState({ 
+    job_title: '', 
+    company: '', 
+    employment_status: '',
+    industry: '',
+    location: '',
+    linkedin_url: '',
+  });
+  
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  useEffect(() => {
+    fetchProfile();
+    fetchAnnouncements();
+    fetchActivities();
+    addActivity('login', 'Logged into your account');
+  }, [session.user.id]);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  const fetchProfile = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('alumni_profiles')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .single();
+
+      if (error && error.code === 'PGRST116') {
+        const newProfile = {
+          user_id: session.user.id,
+          full_name: session.user.user_metadata?.full_name || '',
+          course: '',
+          batch_year: null,
+          company: '',
+          job_title: '',
+          industry: '',
+          location: '',
+          employment_status: 'Unemployed',
+          linkedin_url: '',
+          auto_sync_enabled: false,
+          career_alignment_status: 'Pending',
+          ai_confidence_score: 0,
+          profile_completion: 15,
+          avatar_url: null,
+        };
+        const { data: created } = await supabase
+          .from('alumni_profiles')
+          .insert(newProfile)
+          .select()
+          .single();
+        setProfile(created);
+      } else if (data) {
+        let avatarUrl = null;
+        if (data.avatar_url) {
+          const { data: publicUrlData } = supabase.storage
+            .from('profile-pictures')
+            .getPublicUrl(data.avatar_url);
+          avatarUrl = publicUrlData.publicUrl;
+        }
+        
+        setProfile({ ...data, avatar_url: avatarUrl });
+        setEmploymentForm({
+          job_title: data.job_title || '',
+          company: data.company || '',
+          employment_status: data.employment_status || 'Unemployed',
+          industry: data.industry || '',
+          location: data.location || '',
+          linkedin_url: data.linkedin_url || '',
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchAnnouncements = async () => {
+    setAnnouncementsLoading(true);
+    try {
+      const { data: announcementsData } = await supabase
+        .from('announcements')
+        .select('*')
+        .eq('published', true)
+        .order('created_at', { ascending: false });
+
+      if (announcementsData) {
+        const { data: viewsData } = await supabase
+          .from('announcement_views')
+          .select('announcement_id')
+          .eq('user_id', session.user.id);
+
+        const viewedIds = new Set(viewsData?.map(v => v.announcement_id) || []);
+        
+        setAnnouncements(announcementsData.map(ann => ({
+          ...ann,
+          viewed: viewedIds.has(ann.id),
+        })));
+      }
+    } catch (error) {
+      console.error('Error fetching announcements:', error);
+    } finally {
+      setAnnouncementsLoading(false);
+    }
+  };
+
+  const fetchActivities = async () => {
+    setActivitiesLoading(true);
+    try {
+      const { data } = await supabase
+        .from('alumni_activities')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      
+      if (data) setActivities(data);
+    } catch (error) {
+      console.error('Error fetching activities:', error);
+    } finally {
+      setActivitiesLoading(false);
+    }
+  };
+
+  const addActivity = async (type: string, description: string) => {
+    try {
+      await supabase.from('alumni_activities').insert({
+        user_id: session.user.id,
+        activity_type: type,
+        description: description,
+        metadata: { timestamp: new Date().toISOString() }
+      });
+      fetchActivities();
+    } catch (error) {
+      console.error('Error adding activity:', error);
+    }
+  };
+
+  const markAnnouncementAsRead = async (announcementId: string) => {
+    try {
+      await supabase.from('announcement_views').insert({
+        announcement_id: announcementId,
+        user_id: session.user.id,
+      });
+      
+      setAnnouncements(prev => prev.map(ann => 
+        ann.id === announcementId ? { ...ann, viewed: true } : ann
+      ));
+      
+      await addActivity('announcement_view', `Read announcement`);
+    } catch (error) {
+      console.error('Error marking as read:', error);
+    }
+  };
+
+  const handleAvatarUpload = async (url: string) => {
+    setProfile(prev => prev ? { ...prev, avatar_url: url } : null);
+    await addActivity('avatar_upload', 'Updated profile picture');
+    showToast('Profile picture updated successfully!', 'success');
+  };
+
+  const calculateCompletion = (empData: typeof employmentForm) => {
+    let score = 15;
+    if (profile?.full_name) score += 15;
+    if (profile?.course) score += 15;
+    if (profile?.batch_year) score += 15;
+    if (empData.job_title) score += 15;
+    if (empData.company) score += 10;
+    if (empData.industry) score += 5;
+    if (empData.location) score += 5;
+    if (empData.linkedin_url) score += 5;
+    return Math.min(score, 100);
+  };
+
+  const handleSaveEmployment = async () => {
+    setSaveLoading(true);
+    const completionScore = calculateCompletion(employmentForm);
+    
+    const { error } = await supabase
+      .from('alumni_profiles')
+      .update({
+        job_title: employmentForm.job_title,
+        company: employmentForm.company,
+        employment_status: employmentForm.employment_status,
+        industry: employmentForm.industry,
+        location: employmentForm.location,
+        linkedin_url: employmentForm.linkedin_url,
+        last_synced_at: new Date().toISOString(),
+        profile_completion: completionScore,
+      })
+      .eq('user_id', session.user.id);
+
+    if (!error) {
+      setProfile(prev => prev ? { ...prev, ...employmentForm, profile_completion: completionScore } : null);
+      setShowEmploymentModal(false);
+      await addActivity('employment_update', `Updated employment status to ${employmentForm.employment_status}`);
+      showToast('Career information updated successfully!', 'success');
+    } else {
+      showToast('Error updating career information', 'error');
+    }
+    setSaveLoading(false);
+  };
+
+  const getFirstName = (name: string | null) => name?.split(' ')[0] || 'Alumni';
+  const unreadCount = announcements.filter(a => !a.viewed).length;
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 sm:w-16 sm:h-16 border-4 border-[#800000]/20 border-t-[#800000] rounded-full animate-spin mx-auto mb-3 sm:mb-4" />
+          <p className="text-sm sm:text-base text-gray-600 font-medium">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const completionScore = profile?.profile_completion || 15;
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
+      {/* Navigation - Fully Responsive */}
+      <nav className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-40 shadow-sm">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8">
+          <div className="flex items-center justify-between h-14 sm:h-16">
+            {/* Logo Section */}
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-[#800000] to-[#a10000] rounded-full flex items-center justify-center text-white font-bold text-base sm:text-lg shadow-md">
+                GT
+              </div>
+              <div className="hidden xs:block">
+                <h1 className="text-base sm:text-xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+                  GradTrack
+                </h1>
+                <p className="text-[10px] sm:text-xs text-gray-500">Alumni Portal</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-1.5 sm:gap-4">
+              {/* Mobile Tab Switcher */}
+              <div className="flex md:hidden bg-gray-100 rounded-xl p-0.5 sm:p-1">
+                <button
+                  onClick={() => {
+                    setActiveTab('overview');
+                    setShowNotificationDropdown(false);
+                  }}
+                  className={`flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg font-medium text-[11px] sm:text-xs transition-all duration-200 ${
+                    activeTab === 'overview' 
+                      ? 'bg-white text-[#800000] shadow-sm' 
+                      : 'text-gray-600 hover:text-gray-800'
+                  }`}
+                >
+                  <span className="text-sm sm:text-base">📊</span>
+                  <span className="hidden xs:inline">Overview</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setActiveTab('announcements');
+                    setShowNotificationDropdown(false);
+                  }}
+                  className={`flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg font-medium text-[11px] sm:text-xs transition-all duration-200 ${
+                    activeTab === 'announcements' 
+                      ? 'bg-white text-[#800000] shadow-sm' 
+                      : 'text-gray-600 hover:text-gray-800'
+                  }`}
+                >
+                  <span className="text-sm sm:text-base">📢</span>
+                  <span className="hidden xs:inline">Announcements</span>
+                </button>
+              </div>
+
+              {/* Desktop Navigation */}
+              <div className="hidden md:flex gap-1">
+                <button
+                  onClick={() => {
+                    setActiveTab('overview');
+                    setShowNotificationDropdown(false);
+                  }}
+                  className={`px-4 py-2 sm:px-5 sm:py-2 rounded-xl font-medium text-sm sm:text-base transition-all duration-200 ${
+                    activeTab === 'overview' 
+                      ? 'bg-[#800000]/10 text-[#800000] shadow-sm' 
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  Overview
+                </button>
+                <button
+                  onClick={() => {
+                    setActiveTab('announcements');
+                    setShowNotificationDropdown(false);
+                  }}
+                  className={`px-4 py-2 sm:px-5 sm:py-2 rounded-xl font-medium text-sm sm:text-base transition-all duration-200 ${
+                    activeTab === 'announcements' 
+                      ? 'bg-[#800000]/10 text-[#800000] shadow-sm' 
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  Announcements
+                </button>
+              </div>
+              
+              {/* Notification Bell */}
+              <div className="relative">
+                <NotificationBell 
+                  unreadCount={unreadCount}
+                  onClick={() => setShowNotificationDropdown(!showNotificationDropdown)}
+                  isOpen={showNotificationDropdown}
+                />
+                {showNotificationDropdown && (
+                  <NotificationDropdown
+                    announcements={announcements}
+                    loading={announcementsLoading}
+                    onMarkAsRead={markAnnouncementAsRead}
+                    onViewAll={() => {
+                      setActiveTab('announcements');
+                      setShowNotificationDropdown(false);
+                    }}
+                    onClose={() => setShowNotificationDropdown(false)}
+                  />
+                )}
+              </div>
+              
+              {/* Sign Out Button */}
+              <Button 
+                variant="danger" 
+                size="sm" 
+                onClick={async () => {
+                  setSignOutLoading(true);
+                  await supabase.auth.signOut();
+                  setSignOutLoading(false);
+                }}
+                loading={signOutLoading}
+                loadingText="Signing Out..."
+                className="!px-2 !py-1 sm:!px-3 sm:!py-1.5 text-[11px] sm:text-sm"
+              >
+                Sign Out
+              </Button>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8">
+        {activeTab === 'overview' ? (
+          <div className="space-y-4 sm:space-y-6 lg:space-y-8">
+            {/* Welcome Banner */}
+            <div className="bg-gradient-to-r from-[#800000]/5 via-transparent to-transparent rounded-xl sm:rounded-2xl p-4 sm:p-6">
+              <h2 className="text-base sm:text-2xl font-bold text-gray-900">
+                Welcome back, {getFirstName(profile?.full_name)}! 👋
+              </h2>
+              <p className="text-xs sm:text-sm text-gray-600 mt-1">Track your career journey and stay connected with your alma mater</p>
+            </div>
+
+            {/* Profile Header Card */}
+            <Card className="p-4 sm:p-6 hover:shadow-xl transition-all duration-300">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-6">
+                <div className="flex items-center gap-4 sm:gap-6">
+                  <ProfilePictureUpload
+                    avatarUrl={profile?.avatar_url || null}
+                    onUpload={handleAvatarUpload}
+                    userId={session.user.id}
+                    fullName={profile?.full_name}
+                  />
+                  <div>
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <h2 className="text-base sm:text-2xl font-bold text-gray-900">{profile?.full_name || 'Loading...'}</h2>
+                      <Badge variant="success">✓ Verified</Badge>
+                    </div>
+                    <p className="text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3">
+                      {profile?.course || 'Course not set'} • Class of {profile?.batch_year || '----'}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                      {profile?.employment_status && profile.employment_status !== 'Unemployed' && (
+                        <Badge variant="info">{profile.employment_status}</Badge>
+                      )}
+                      <Badge variant="default" className="bg-amber-50 text-amber-700 text-[10px] sm:text-xs">
+                        🔒 Verified from Master List
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+                <Button size="sm" onClick={() => setShowEmploymentModal(true)}>
+                  Update Career
+                </Button>
+              </div>
+            </Card>
+
+            {/* Stats Grid - 2 columns on mobile, 4 on desktop */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
+              <Card className="p-3 sm:p-6 cursor-pointer hover:border-[#800000]/30 transition-all group" onClick={() => setShowEmploymentModal(true)}>
+                <div className="w-8 h-8 sm:w-12 sm:h-12 bg-blue-100 rounded-lg sm:rounded-xl flex items-center justify-center text-lg sm:text-2xl mb-2 sm:mb-4 group-hover:scale-110 transition-transform">
+                  💼
+                </div>
+                <h3 className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider mb-0.5 sm:mb-1">Current Role</h3>
+                <p className="text-sm sm:text-lg font-bold text-gray-900 truncate">{profile?.job_title || 'Not Set'}</p>
+                <p className="text-[10px] sm:text-sm text-gray-500 mt-0.5 sm:mt-1 truncate">{profile?.company || 'Click to add'}</p>
+              </Card>
+
+              <Card className="p-3 sm:p-6 cursor-pointer hover:border-[#800000]/30 transition-all group" onClick={() => setShowEmploymentModal(true)}>
+                <div className="w-8 h-8 sm:w-12 sm:h-12 bg-emerald-100 rounded-lg sm:rounded-xl flex items-center justify-center text-lg sm:text-2xl mb-2 sm:mb-4 group-hover:scale-110 transition-transform">
+                  📊
+                </div>
+                <h3 className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider mb-0.5 sm:mb-1">Employment</h3>
+                <p className="text-sm sm:text-lg font-bold text-gray-900">{profile?.employment_status || 'Unemployed'}</p>
+                <p className="text-[10px] sm:text-sm text-gray-500 mt-0.5 sm:mt-1">Status</p>
+              </Card>
+
+              <Card className="p-3 sm:p-6">
+                <div className="w-8 h-8 sm:w-12 sm:h-12 bg-purple-100 rounded-lg sm:rounded-xl flex items-center justify-center text-lg sm:text-2xl mb-2 sm:mb-4">
+                  🎯
+                </div>
+                <h3 className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider mb-0.5 sm:mb-1">Alignment</h3>
+                <p className="text-sm sm:text-lg font-bold text-gray-900">{profile?.career_alignment_status || 'Pending'}</p>
+                {profile?.ai_confidence_score && profile.ai_confidence_score > 0 && (
+                  <p className="text-[10px] sm:text-sm text-gray-500 mt-0.5 sm:mt-1">{profile.ai_confidence_score}%</p>
+                )}
+              </Card>
+
+              <Card className="p-3 sm:p-6">
+                <ProgressBar value={completionScore} label="Profile Completion" showPercentage={true} />
+                <p className="text-[10px] sm:text-xs text-gray-400 mt-2 sm:mt-3">
+                  {completionScore === 100 ? 'Complete!' : `${100 - completionScore}% remaining`}
+                </p>
+              </Card>
+            </div>
+
+            {/* Verified Information Section */}
+            <Card className="p-4 sm:p-6 bg-gradient-to-r from-amber-50/30 to-transparent border-amber-100">
+              <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-amber-100 rounded-lg sm:rounded-xl flex items-center justify-center text-base sm:text-lg">
+                  🔒
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-lg font-bold text-gray-900">Verified Academic Records</h3>
+                  <p className="text-[10px] sm:text-xs text-gray-500">From Master List - Contact admin for corrections</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-6">
+                <InfoBox 
+                  title="Full Name" 
+                  value={profile?.full_name} 
+                  icon="👤"
+                  hint="Official records - Contact admin"
+                />
+                <InfoBox 
+                  title="Course / Program" 
+                  value={profile?.course} 
+                  icon="📚"
+                  hint="Official records - Contact admin"
+                />
+                <InfoBox 
+                  title="Batch Year" 
+                  value={profile?.batch_year} 
+                  icon="🎓"
+                  hint="Official records - Contact admin"
+                />
+              </div>
+            </Card>
+
+            {/* Career Information Section */}
+            <Card className="p-4 sm:p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 sm:mb-6 gap-3">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-[#800000]/10 rounded-lg sm:rounded-xl flex items-center justify-center text-base sm:text-lg">
+                    📋
+                  </div>
+                  <h3 className="text-base sm:text-lg font-bold text-gray-900">Career Information</h3>
+                  <Badge variant="default" className="bg-green-50 text-green-700 text-[10px] sm:text-xs">
+                    ✏️ Editable
+                  </Badge>
+                </div>
+                <Button variant="secondary" size="sm" onClick={() => setShowEmploymentModal(true)}>
+                  Update Career Info
+                </Button>
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6">
+                <div className="space-y-1">
+                  <label className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider">Job Title</label>
+                  <p className="text-sm sm:text-base text-gray-900 font-medium">{profile?.job_title || 'Not specified'}</p>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider">Company</label>
+                  <p className="text-sm sm:text-base text-gray-900 font-medium">{profile?.company || 'Not specified'}</p>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider">Industry</label>
+                  <p className="text-sm sm:text-base text-gray-900 font-medium">{profile?.industry || 'Not specified'}</p>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider">Location</label>
+                  <p className="text-sm sm:text-base text-gray-900 font-medium">{profile?.location || 'Not specified'}</p>
+                </div>
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider">LinkedIn Profile</label>
+                  {profile?.linkedin_url ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <a 
+                        href={profile.linkedin_url} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="text-[#800000] text-sm sm:text-base font-medium hover:underline inline-flex items-center gap-1 break-all"
+                      >
+                        <svg className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
+                        </svg>
+                        <span className="truncate max-w-[200px] sm:max-w-none">{profile.linkedin_url}</span>
+                      </a>
+                      <Badge variant="success">✓ Connected</Badge>
+                    </div>
+                  ) : (
+                    <p className="text-gray-500 text-sm sm:text-base">Not specified - <button onClick={() => setShowEmploymentModal(true)} className="text-[#800000] hover:underline">Add LinkedIn</button></p>
+                  )}
+                </div>
+              </div>
+            </Card>
+
+            {/* Recent Activity Section */}
+            <Card className="p-4 sm:p-6">
+              <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-[#800000]/10 rounded-lg sm:rounded-xl flex items-center justify-center text-base sm:text-lg">
+                  📋
+                </div>
+                <h3 className="text-base sm:text-lg font-bold text-gray-900">Recent Activity</h3>
+              </div>
+              <ActivityTimeline activities={activities} loading={activitiesLoading} />
+            </Card>
+          </div>
+        ) : (
+          // Announcements Page
+          <div className="space-y-4 sm:space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-[#800000]/10 rounded-xl flex items-center justify-center text-xl sm:text-2xl">
+                  📢
+                </div>
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Announcements</h2>
+                  {unreadCount > 0 && (
+                    <p className="text-xs sm:text-sm text-gray-500">You have {unreadCount} unread announcement{unreadCount !== 1 ? 's' : ''}</p>
+                  )}
+                </div>
+              </div>
+              {unreadCount > 0 && (
+                <Button 
+                  variant="secondary" 
+                  size="sm"
+                  onClick={() => announcements.filter(a => !a.viewed).forEach(a => markAnnouncementAsRead(a.id))}
+                >
+                  Mark all as read
+                </Button>
+              )}
+            </div>
+            <Card>
+              <AnnouncementPage 
+                announcements={announcements} 
+                loading={announcementsLoading} 
+                onMarkAsRead={markAnnouncementAsRead}
+              />
+            </Card>
+          </div>
+        )}
+      </main>
+
+      {/* Footer */}
+      <footer className="border-t border-gray-100 mt-8 sm:mt-12 py-6 sm:py-8 text-center">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-[#800000] to-[#a10000] rounded-full flex items-center justify-center text-white font-bold text-base sm:text-lg mx-auto mb-3 sm:mb-4 shadow-md">
+            GT
+          </div>
+          <p className="text-xs sm:text-sm text-gray-600 font-medium">Cebu Roosevelt Memorial Colleges</p>
+          <p className="text-[10px] sm:text-xs text-gray-400 mt-1">Alumni Relations & Career Tracking Platform</p>
+          <p className="text-[10px] sm:text-xs text-gray-400 mt-3 sm:mt-4">© 2026 All Rights Reserved</p>
+        </div>
+      </footer>
+
+      {/* Career Information Modal */}
+      <Modal isOpen={showEmploymentModal} onClose={() => setShowEmploymentModal(false)} title="Update Career Information" size="lg">
+        <div className="space-y-3 sm:space-y-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg sm:rounded-xl p-3 sm:p-4">
+            <p className="text-xs sm:text-sm text-amber-800 flex items-start gap-2">
+              <span>🔒</span>
+              <span><strong>Full Name, Course, and Batch Year</strong> are locked from the master list. Only career information can be updated.</span>
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            <Input
+              label="Job Title"
+              value={employmentForm.job_title}
+              onChange={e => setEmploymentForm({ ...employmentForm, job_title: e.target.value })}
+              placeholder="e.g., Software Engineer"
+              icon="💼"
+            />
+            <Input
+              label="Company"
+              value={employmentForm.company}
+              onChange={e => setEmploymentForm({ ...employmentForm, company: e.target.value })}
+              placeholder="Company name"
+              icon="🏢"
+            />
+            <div className="sm:col-span-2">
+              <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
+                Employment Status
+              </label>
+              <select
+                value={employmentForm.employment_status}
+                onChange={e => setEmploymentForm({ ...employmentForm, employment_status: e.target.value })}
+                className="w-full px-3 py-2 sm:px-4 sm:py-2.5 bg-white border border-gray-200 rounded-xl focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none transition-all text-gray-900 text-sm sm:text-base"
+              >
+                <option value="Employed">Employed - Full Time</option>
+                <option value="Employed Part Time">Employed - Part Time</option>
+                <option value="Self-Employed">Self-Employed</option>
+                <option value="Freelancer">Freelancer</option>
+                <option value="Unemployed">Unemployed</option>
+                <option value="Further Studies">Further Studies</option>
+              </select>
+            </div>
+            <Input
+              label="Industry"
+              value={employmentForm.industry}
+              onChange={e => setEmploymentForm({ ...employmentForm, industry: e.target.value })}
+              placeholder="e.g., Technology, Education"
+              icon="🏭"
+            />
+            <Input
+              label="Location"
+              value={employmentForm.location}
+              onChange={e => setEmploymentForm({ ...employmentForm, location: e.target.value })}
+              placeholder="City, Country"
+              icon="📍"
+            />
+            <div className="sm:col-span-2">
+              <Input
+                label="LinkedIn Profile URL"
+                value={employmentForm.linkedin_url}
+                onChange={e => setEmploymentForm({ ...employmentForm, linkedin_url: e.target.value })}
+                placeholder="https://linkedin.com/in/yourusername"
+                icon="🔗"
+              />
+              {employmentForm.linkedin_url && (
+                <div className="mt-2">
+                  <a
+                    href={employmentForm.linkedin_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs sm:text-sm text-[#800000] hover:underline inline-flex items-center gap-1"
+                  >
+                    <span>🔗</span> View your LinkedIn profile →
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+          
+          <div className="flex flex-col sm:flex-row gap-3 pt-3 sm:pt-4">
+            <Button onClick={handleSaveEmployment} loading={saveLoading} className="flex-1">
+              Save Career Info
+            </Button>
+            <Button variant="secondary" onClick={() => setShowEmploymentModal(false)} className="flex-1">
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 duration-300">
+          <div className={`px-4 py-2 sm:px-6 sm:py-3 rounded-xl shadow-lg flex items-center gap-2 text-white font-medium text-xs sm:text-sm ${
+            toast.type === 'success' ? 'bg-emerald-500' : toast.type === 'error' ? 'bg-red-500' : 'bg-blue-500'
+          }`}>
+            <span>{toast.type === 'success' ? '✅' : toast.type === 'error' ? '❌' : 'ℹ️'}</span>
+            <span>{toast.message}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
