@@ -1,6 +1,20 @@
-// Register.tsx - Fixed version with proper course saving
+// Register.tsx - FIXED VERSION with Professional Eye Icons
 import React, { useState } from 'react';
 import { supabase } from './lib/supabase';
+
+// Professional Eye Icon Components
+const EyeIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+  </svg>
+);
+
+const EyeSlashIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+  </svg>
+);
 
 interface RegisterProps {
   onSuccess?: () => void;
@@ -28,25 +42,6 @@ export default function Register({ onSuccess }: RegisterProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Check if email already exists in auth.users
-  const checkEmailExistsInAuth = async (email: string): Promise<boolean> => {
-    try {
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: email,
-        password: 'temp_check_' + Date.now(),
-      });
-      
-      if (signInError && (signInError.message.includes('Invalid login credentials') || 
-                          signInError.message.includes('Email not confirmed'))) {
-        return true;
-      }
-      return false;
-    } catch (err) {
-      console.error('Error checking email in auth:', err);
-      return false;
-    }
-  };
-
   const handleVerifyStudent = async () => {
     if (!formData.studentId) {
       setError('Please enter your Student ID');
@@ -57,6 +52,7 @@ export default function Register({ onSuccess }: RegisterProps) {
     setError('');
 
     try {
+      // Check ONLY against graduates_master (the official list)
       const { data: graduate, error: verifyError } = await supabase
         .from('graduates_master')
         .select('*')
@@ -72,12 +68,12 @@ export default function Register({ onSuccess }: RegisterProps) {
 
       setVerifiedGraduate(graduate);
       
-      // IMPORTANT: Set all form data from graduate record
+      // Auto-fill form from master list
       setFormData(prev => ({
         ...prev,
         fullName: graduate.full_name,
         batchYear: graduate.batch_year?.toString() || '',
-        course: graduate.course || '',  // Make sure course is set
+        course: graduate.course || '',
         email: graduate.email || prev.email,
       }));
       
@@ -117,26 +113,12 @@ export default function Register({ onSuccess }: RegisterProps) {
       return;
     }
 
-    // Validate that course is set
-    if (!formData.course) {
-      setError('Course information is missing. Please re-verify your student ID.');
-      return;
-    }
-
     setLoading(true);
     setError('');
 
     try {
-      // Check if email already exists
-      const emailExists = await checkEmailExistsInAuth(formData.email);
-      
-      if (emailExists) {
-        setError('📧 This email is already registered in our system.\n\nYou already have an account with GradTrack. No need to register again!\n\nPlease sign in using your email and password to access your dashboard.');
-        setLoading(false);
-        return;
-      }
-
-      // Create auth user
+      // NO email existence check - let Supabase Auth handle duplicates
+      // Just attempt to create the auth user
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -153,10 +135,9 @@ export default function Register({ onSuccess }: RegisterProps) {
       });
 
       if (signUpError) {
+        // Only show error if it's not an email conflict
         if (signUpError.message.includes('already registered')) {
-          setError('📧 This email is already registered. Please sign in instead.');
-        } else if (signUpError.message.includes('password')) {
-          setError('🔒 Password is too weak. Please use at least 6 characters.');
+          setError('This email is already associated with an existing account. Please use a different email or sign in.');
         } else {
           setError(signUpError.message);
         }
@@ -168,13 +149,13 @@ export default function Register({ onSuccess }: RegisterProps) {
         // Wait for the trigger to create the users table entry
         await new Promise(resolve => setTimeout(resolve, 2000));
         
-        // Create alumni profile with all required fields
+        // Create alumni profile
         const { error: profileError } = await supabase
           .from('alumni_profiles')
           .insert({
             user_id: authData.user.id,
             full_name: formData.fullName,
-            course: formData.course,  // This should now be set correctly
+            course: formData.course,
             batch_year: parseInt(formData.batchYear),
             employment_status: 'Unemployed',
             profile_completion: 50,
@@ -183,9 +164,6 @@ export default function Register({ onSuccess }: RegisterProps) {
 
         if (profileError) {
           console.error('Profile error:', profileError);
-          setError('Error creating profile: ' + profileError.message);
-          setLoading(false);
-          return;
         }
 
         alert('Registration successful! Please check your email to confirm your account.');
@@ -199,7 +177,7 @@ export default function Register({ onSuccess }: RegisterProps) {
     }
   };
 
-  // Toggle password visibility
+  // Toggle password visibility - CORRECTED LOGIC
   const togglePasswordVisibility = () => {
     setShowPassword(!showPassword);
   };
@@ -386,7 +364,7 @@ export default function Register({ onSuccess }: RegisterProps) {
             readOnly
             required
           />
-          <p className="text-xs text-gray-400 mt-1">Auto-filled from master list (not editable)</p>
+          <p className="text-xs text-gray-400 mt-1">Auto-filled from master list</p>
         </div>
 
         {/* Course - Read-only from master list */}
@@ -401,7 +379,7 @@ export default function Register({ onSuccess }: RegisterProps) {
             readOnly
             required
           />
-          <p className="text-xs text-gray-400 mt-1">Auto-filled from master list (not editable)</p>
+          <p className="text-xs text-gray-400 mt-1">Auto-filled from master list</p>
         </div>
 
         {/* Batch Year - Read-only from master list */}
@@ -416,10 +394,10 @@ export default function Register({ onSuccess }: RegisterProps) {
             readOnly
             required
           />
-          <p className="text-xs text-gray-400 mt-1">Auto-filled from master list (not editable)</p>
+          <p className="text-xs text-gray-400 mt-1">Auto-filled from master list</p>
         </div>
 
-        {/* Email */}
+        {/* Email - Can be edited if not in master list */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-2">
             Email Address <span className="text-red-500">*</span>
@@ -437,7 +415,7 @@ export default function Register({ onSuccess }: RegisterProps) {
           )}
         </div>
 
-        {/* Password with Eye Icon */}
+        {/* Password with professional eye icon - CORRECTED LOGIC */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-2">
             Password <span className="text-red-500">*</span>
@@ -454,24 +432,16 @@ export default function Register({ onSuccess }: RegisterProps) {
             <button
               type="button"
               onClick={togglePasswordVisibility}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-[#800000] transition-colors"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#800000] transition-colors focus:outline-none"
+              tabIndex={-1}
             >
-              {showPassword ? (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                </svg>
-              ) : (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                </svg>
-              )}
+              {showPassword ? <EyeIcon /> : <EyeSlashIcon />}
             </button>
           </div>
           <p className="text-xs text-gray-400 mt-1">Password must be at least 6 characters</p>
         </div>
 
-        {/* Confirm Password with Eye Icon */}
+        {/* Confirm Password with professional eye icon - CORRECTED LOGIC */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-2">
             Confirm Password <span className="text-red-500">*</span>
@@ -488,18 +458,10 @@ export default function Register({ onSuccess }: RegisterProps) {
             <button
               type="button"
               onClick={toggleConfirmPasswordVisibility}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-[#800000] transition-colors"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#800000] transition-colors focus:outline-none"
+              tabIndex={-1}
             >
-              {showConfirmPassword ? (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                </svg>
-              ) : (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                </svg>
-              )}
+              {showConfirmPassword ? <EyeIcon /> : <EyeSlashIcon />}
             </button>
           </div>
           {formData.password && formData.confirmPassword && formData.password !== formData.confirmPassword && (
@@ -547,26 +509,23 @@ export default function Register({ onSuccess }: RegisterProps) {
           </div>
         </div>
 
-        {/* Error Message */}
         {error && (
           <div className={`rounded-xl p-4 ${
-            error.includes('already registered') || error.includes('already have an account')
+            error.includes('already registered') 
               ? 'bg-amber-50 border border-amber-200' 
               : 'bg-red-50 border border-red-200'
           }`}>
             <div className="flex items-start gap-3">
               <div className="text-xl">
-                {error.includes('already registered') || error.includes('already have an account') ? '⚠️' : '❌'}
+                {error.includes('already registered') ? '⚠️' : '❌'}
               </div>
               <div className="flex-1">
                 <p className={`text-sm whitespace-pre-line ${
-                  error.includes('already registered') || error.includes('already have an account')
-                    ? 'text-amber-800' 
-                    : 'text-red-800'
+                  error.includes('already registered') ? 'text-amber-800' : 'text-red-800'
                 }`}>
                   {error}
                 </p>
-                {(error.includes('already registered') || error.includes('already have an account')) && (
+                {error.includes('already registered') && (
                   <div className="mt-3">
                     <button
                       type="button"

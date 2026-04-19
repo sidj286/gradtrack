@@ -1,4 +1,4 @@
-// AlumniDashboard.tsx
+// src/AlumniDashboard.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './lib/supabase';
 import type { Session } from '@supabase/supabase-js';
@@ -218,151 +218,6 @@ const Modal: React.FC<{
   );
 };
 
-// ==================== PROFILE PICTURE UPLOAD COMPONENT ====================
-const ProfilePictureUpload: React.FC<{
-  avatarUrl: string | null;
-  onUpload: (url: string) => void;
-  userId: string;
-  fullName: string | null;
-}> = ({ avatarUrl, onUpload, userId, fullName }) => {
-  const [uploading, setUploading] = useState(false);
-  const [hovering, setHovering] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const uploadAvatar = async (file: File) => {
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      alert('Please upload an image file');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      alert('File size must be less than 5MB');
-      return;
-    }
-
-    setUploading(true);
-    try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${userId}/avatar.${fileExt}`;
-      const filePath = fileName;
-
-      const { error: uploadError } = await supabase.storage
-        .from('profile-pictures')
-        .upload(filePath, file, { upsert: true });
-      if (uploadError) throw uploadError;
-
-      const { data: publicUrlData } = supabase.storage
-        .from('profile-pictures')
-        .getPublicUrl(filePath);
-      const publicUrl = publicUrlData.publicUrl;
-      
-      const { error: updateError } = await supabase
-        .from('alumni_profiles')
-        .update({ avatar_url: filePath })
-        .eq('user_id', userId);
-      if (updateError) throw updateError;
-
-      onUpload(publicUrl);
-      alert('Profile picture updated successfully!');
-    } catch (error) {
-      console.error('Error uploading avatar:', error);
-      alert('Error uploading profile picture');
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const removeAvatar = async () => {
-    if (!avatarUrl) return;
-    setUploading(true);
-    try {
-      const filePath = avatarUrl.includes('profile-pictures') 
-        ? avatarUrl.split('/profile-pictures/')[1] 
-        : avatarUrl;
-      const { error: deleteError } = await supabase.storage
-        .from('profile-pictures')
-        .remove([filePath]);
-      if (deleteError) throw deleteError;
-
-      const { error: updateError } = await supabase
-        .from('alumni_profiles')
-        .update({ avatar_url: null })
-        .eq('user_id', userId);
-      if (updateError) throw updateError;
-
-      onUpload('');
-      alert('Profile picture removed');
-    } catch (error) {
-      console.error('Error removing avatar:', error);
-      alert('Error removing profile picture');
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) uploadAvatar(file);
-  };
-
-  return (
-    <div 
-      className="relative"
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
-    >
-      <div className="relative group">
-        {avatarUrl ? (
-          <img
-            src={avatarUrl}
-            alt="Profile"
-            className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover shadow-lg ring-4 ring-white"
-          />
-        ) : (
-          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-[#800000] to-[#a10000] rounded-full flex items-center justify-center text-2xl sm:text-3xl font-bold text-white shadow-lg ring-4 ring-white">
-            {fullName?.charAt(0)?.toUpperCase() || 'A'}
-          </div>
-        )}
-        
-        {hovering && (
-          <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center gap-2 transition-all duration-200">
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="p-1 sm:p-1.5 bg-white rounded-full text-gray-700 hover:bg-gray-100 transition-colors text-xs sm:text-base"
-              title="Change photo"
-            >
-              📷
-            </button>
-            {avatarUrl && (
-              <button
-                onClick={removeAvatar}
-                disabled={uploading}
-                className="p-1 sm:p-1.5 bg-white rounded-full text-red-500 hover:bg-gray-100 transition-colors text-xs sm:text-base"
-                title="Remove photo"
-              >
-                🗑️
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        onChange={handleFileChange}
-        className="hidden"
-      />
-      {uploading && (
-        <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center">
-          <div className="w-4 h-4 sm:w-6 sm:h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
-        </div>
-      )}
-    </div>
-  );
-};
-
 // ==================== NOTIFICATION BELL COMPONENT ====================
 const NotificationBell: React.FC<{ 
   unreadCount: number; 
@@ -391,7 +246,7 @@ const NotificationBell: React.FC<{
   );
 };
 
-// ==================== NOTIFICATION DROPDOWN ====================
+// ==================== NOTIFICATION DROPDOWN COMPONENT ====================
 const NotificationDropdown: React.FC<{
   announcements: Announcement[];
   loading: boolean;
@@ -506,25 +361,6 @@ const NotificationDropdown: React.FC<{
     </div>
   );
 };
-
-// ==================== INFO BOX COMPONENT ====================
-const InfoBox: React.FC<{ title: string; value: string | number | null | undefined; icon: string; hint?: string }> = ({ 
-  title, 
-  value, 
-  icon, 
-  hint 
-}) => (
-  <div className="bg-gradient-to-r from-gray-50 to-white rounded-lg sm:rounded-xl p-3 sm:p-4 border border-gray-100">
-    <div className="flex items-start gap-2 sm:gap-3">
-      <div className="text-xl sm:text-2xl">{icon}</div>
-      <div className="flex-1">
-        <p className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider">{title}</p>
-        <p className="text-base sm:text-lg font-bold text-gray-900 mt-1">{value || 'Not set'}</p>
-        {hint && <p className="text-[10px] sm:text-xs text-amber-600 mt-2 flex items-center gap-1">🔒 {hint}</p>}
-      </div>
-    </div>
-  </div>
-);
 
 // ==================== ACTIVITY TIMELINE COMPONENT ====================
 const ActivityTimeline: React.FC<{ activities: Activity[]; loading: boolean }> = ({ activities, loading }) => {
@@ -707,6 +543,25 @@ const AnnouncementPage: React.FC<{
   );
 };
 
+// ==================== INFO BOX COMPONENT ====================
+const InfoBox: React.FC<{ title: string; value: string | number | null | undefined; icon: string; hint?: string }> = ({ 
+  title, 
+  value, 
+  icon, 
+  hint 
+}) => (
+  <div className="bg-gradient-to-r from-gray-50 to-white rounded-lg sm:rounded-xl p-3 sm:p-4 border border-gray-100">
+    <div className="flex items-start gap-2 sm:gap-3">
+      <div className="text-xl sm:text-2xl">{icon}</div>
+      <div className="flex-1">
+        <p className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider">{title}</p>
+        <p className="text-base sm:text-lg font-bold text-gray-900 mt-1">{value || 'Not set'}</p>
+        {hint && <p className="text-[10px] sm:text-xs text-amber-600 mt-2 flex items-center gap-1">🔒 {hint}</p>}
+      </div>
+    </div>
+  </div>
+);
+
 // ==================== MAIN DASHBOARD COMPONENT ====================
 export default function AlumniDashboard({ session }: { session: Session }) {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -733,10 +588,20 @@ export default function AlumniDashboard({ session }: { session: Session }) {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   useEffect(() => {
+    // Timeout to force loading to stop after 5 seconds
+    const timeoutId = setTimeout(() => {
+      if (loading) {
+        console.warn('Loading timeout triggered – forcing loading to false');
+        setLoading(false);
+      }
+    }, 8000);
+
     fetchProfile();
     fetchAnnouncements();
     fetchActivities();
     addActivity('login', 'Logged into your account');
+
+    return () => clearTimeout(timeoutId);
   }, [session.user.id]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info') => {
@@ -746,13 +611,22 @@ export default function AlumniDashboard({ session }: { session: Session }) {
 
   const fetchProfile = async () => {
     try {
+      console.log('Fetching profile for user:', session.user.id);
       const { data, error } = await supabase
         .from('alumni_profiles')
         .select('*')
         .eq('user_id', session.user.id)
-        .single();
+        .maybeSingle();
 
-      if (error && error.code === 'PGRST116') {
+      if (error) {
+        console.error('Error fetching profile:', error);
+        setLoading(false);
+        return;
+      }
+
+      if (!data) {
+        // Create new profile
+        console.log('No profile found, creating new profile...');
         const newProfile = {
           user_id: session.user.id,
           full_name: session.user.user_metadata?.full_name || '',
@@ -770,13 +644,20 @@ export default function AlumniDashboard({ session }: { session: Session }) {
           profile_completion: 15,
           avatar_url: null,
         };
-        const { data: created } = await supabase
+        const { data: created, error: insertError } = await supabase
           .from('alumni_profiles')
           .insert(newProfile)
           .select()
           .single();
+        if (insertError) {
+          console.error('Error creating profile:', insertError);
+          setLoading(false);
+          return;
+        }
         setProfile(created);
-      } else if (data) {
+        console.log('Profile created successfully');
+      } else {
+        // Existing profile
         let avatarUrl = null;
         if (data.avatar_url) {
           const { data: publicUrlData } = supabase.storage
@@ -784,7 +665,6 @@ export default function AlumniDashboard({ session }: { session: Session }) {
             .getPublicUrl(data.avatar_url);
           avatarUrl = publicUrlData.publicUrl;
         }
-        
         setProfile({ ...data, avatar_url: avatarUrl });
         setEmploymentForm({
           job_title: data.job_title || '',
@@ -794,11 +674,13 @@ export default function AlumniDashboard({ session }: { session: Session }) {
           location: data.location || '',
           linkedin_url: data.linkedin_url || '',
         });
+        console.log('Profile loaded');
       }
-    } catch (error) {
-      console.error('Error fetching profile:', error);
+    } catch (err) {
+      console.error('Unexpected error in fetchProfile:', err);
     } finally {
       setLoading(false);
+      console.log('fetchProfile finished, loading set to false');
     }
   };
 
@@ -880,10 +762,64 @@ export default function AlumniDashboard({ session }: { session: Session }) {
     }
   };
 
-  const handleAvatarUpload = async (url: string) => {
-    setProfile(prev => prev ? { ...prev, avatar_url: url } : null);
-    await addActivity('avatar_upload', 'Updated profile picture');
-    showToast('Profile picture updated successfully!', 'success');
+  // ==================== PROFILE PICTURE UPLOAD FUNCTIONS ====================
+  const uploadAvatar = async (file: File) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('Please upload an image file', 'error');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('File size must be less than 5MB', 'error');
+      return;
+    }
+
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${session.user.id}/avatar.${fileExt}`;
+      const filePath = fileName;
+
+      const { error: uploadError } = await supabase.storage
+        .from('profile-pictures')
+        .upload(filePath, file, { upsert: true });
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from('profile-pictures')
+        .getPublicUrl(filePath);
+      const publicUrl = publicUrlData.publicUrl;
+      
+      const { error: updateError } = await supabase
+        .from('alumni_profiles')
+        .update({ avatar_url: filePath })
+        .eq('user_id', session.user.id);
+      if (updateError) throw updateError;
+
+      setProfile(prev => prev ? { ...prev, avatar_url: publicUrl } : null);
+      await addActivity('avatar_upload', 'Updated profile picture');
+      showToast('Profile picture updated successfully!', 'success');
+    } catch (error) {
+      console.error('Error uploading avatar:', error);
+      showToast('Error uploading profile picture', 'error');
+    }
+  };
+
+  const removeAvatar = async () => {
+    if (!profile?.avatar_url) return;
+    
+    try {
+      const filePath = profile.avatar_url.includes('profile-pictures') 
+        ? profile.avatar_url.split('/profile-pictures/')[1] 
+        : profile.avatar_url;
+      await supabase.storage.from('profile-pictures').remove([filePath]);
+      await supabase.from('alumni_profiles').update({ avatar_url: null }).eq('user_id', session.user.id);
+      setProfile(prev => prev ? { ...prev, avatar_url: null } : null);
+      await addActivity('avatar_upload', 'Removed profile picture');
+      showToast('Profile picture removed', 'success');
+    } catch (error) {
+      console.error('Error removing avatar:', error);
+      showToast('Error removing profile picture', 'error');
+    }
   };
 
   const calculateCompletion = (empData: typeof employmentForm) => {
@@ -903,18 +839,21 @@ export default function AlumniDashboard({ session }: { session: Session }) {
     setSaveLoading(true);
     const completionScore = calculateCompletion(employmentForm);
     
+    const updateData: Record<string, unknown> = {
+      last_synced_at: new Date().toISOString(),
+      profile_completion: completionScore,
+    };
+    
+    if (employmentForm.job_title !== undefined) updateData.job_title = employmentForm.job_title || null;
+    if (employmentForm.company !== undefined) updateData.company = employmentForm.company || null;
+    if (employmentForm.employment_status !== undefined) updateData.employment_status = employmentForm.employment_status || null;
+    if (employmentForm.industry !== undefined) updateData.industry = employmentForm.industry || null;
+    if (employmentForm.location !== undefined) updateData.location = employmentForm.location || null;
+    if (employmentForm.linkedin_url !== undefined) updateData.linkedin_url = employmentForm.linkedin_url || null;
+    
     const { error } = await supabase
       .from('alumni_profiles')
-      .update({
-        job_title: employmentForm.job_title,
-        company: employmentForm.company,
-        employment_status: employmentForm.employment_status,
-        industry: employmentForm.industry,
-        location: employmentForm.location,
-        linkedin_url: employmentForm.linkedin_url,
-        last_synced_at: new Date().toISOString(),
-        profile_completion: completionScore,
-      })
+      .update(updateData)
       .eq('user_id', session.user.id);
 
     if (!error) {
@@ -928,7 +867,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
     setSaveLoading(false);
   };
 
-  const getFirstName = (name: string | null) => name?.split(' ')[0] || 'Alumni';
+  const getFirstName = (name: string | null | undefined) => name?.split(' ')[0] || 'Alumni';
   const unreadCount = announcements.filter(a => !a.viewed).length;
 
   if (loading) {
@@ -946,11 +885,10 @@ export default function AlumniDashboard({ session }: { session: Session }) {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
-      {/* Navigation - Fully Responsive */}
+      {/* Navigation */}
       <nav className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8">
           <div className="flex items-center justify-between h-14 sm:h-16">
-            {/* Logo Section */}
             <div className="flex items-center gap-2 sm:gap-3">
               <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-[#800000] to-[#a10000] rounded-full flex items-center justify-center text-white font-bold text-base sm:text-lg shadow-md">
                 GT
@@ -967,10 +905,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
               {/* Mobile Tab Switcher */}
               <div className="flex md:hidden bg-gray-100 rounded-xl p-0.5 sm:p-1">
                 <button
-                  onClick={() => {
-                    setActiveTab('overview');
-                    setShowNotificationDropdown(false);
-                  }}
+                  onClick={() => setActiveTab('overview')}
                   className={`flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg font-medium text-[11px] sm:text-xs transition-all duration-200 ${
                     activeTab === 'overview' 
                       ? 'bg-white text-[#800000] shadow-sm' 
@@ -981,10 +916,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
                   <span className="hidden xs:inline">Overview</span>
                 </button>
                 <button
-                  onClick={() => {
-                    setActiveTab('announcements');
-                    setShowNotificationDropdown(false);
-                  }}
+                  onClick={() => setActiveTab('announcements')}
                   className={`flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg font-medium text-[11px] sm:text-xs transition-all duration-200 ${
                     activeTab === 'announcements' 
                       ? 'bg-white text-[#800000] shadow-sm' 
@@ -999,10 +931,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
               {/* Desktop Navigation */}
               <div className="hidden md:flex gap-1">
                 <button
-                  onClick={() => {
-                    setActiveTab('overview');
-                    setShowNotificationDropdown(false);
-                  }}
+                  onClick={() => setActiveTab('overview')}
                   className={`px-4 py-2 sm:px-5 sm:py-2 rounded-xl font-medium text-sm sm:text-base transition-all duration-200 ${
                     activeTab === 'overview' 
                       ? 'bg-[#800000]/10 text-[#800000] shadow-sm' 
@@ -1012,10 +941,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
                   Overview
                 </button>
                 <button
-                  onClick={() => {
-                    setActiveTab('announcements');
-                    setShowNotificationDropdown(false);
-                  }}
+                  onClick={() => setActiveTab('announcements')}
                   className={`px-4 py-2 sm:px-5 sm:py-2 rounded-xl font-medium text-sm sm:text-base transition-all duration-200 ${
                     activeTab === 'announcements' 
                       ? 'bg-[#800000]/10 text-[#800000] shadow-sm' 
@@ -1083,12 +1009,36 @@ export default function AlumniDashboard({ session }: { session: Session }) {
             <Card className="p-4 sm:p-6 hover:shadow-xl transition-all duration-300">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-6">
                 <div className="flex items-center gap-4 sm:gap-6">
-                  <ProfilePictureUpload
-                    avatarUrl={profile?.avatar_url || null}
-                    onUpload={handleAvatarUpload}
-                    userId={session.user.id}
-                    fullName={profile?.full_name}
-                  />
+                  {/* Profile Picture */}
+                  <div className="relative group">
+                    <img
+                      src={profile?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.full_name || 'A')}&background=800000&color=fff&rounded=true&size=80`}
+                      alt="Profile"
+                      className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover shadow-lg ring-4 ring-white"
+                    />
+                    <div className="absolute inset-0 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                      <label className="cursor-pointer p-1 sm:p-1.5 bg-white rounded-full text-gray-700 hover:bg-gray-100 transition-colors text-xs sm:text-base">
+                        📷
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) uploadAvatar(file);
+                          }}
+                        />
+                      </label>
+                      {profile?.avatar_url && (
+                        <button
+                          onClick={removeAvatar}
+                          className="p-1 sm:p-1.5 bg-white rounded-full text-red-500 hover:bg-gray-100 transition-colors text-xs sm:text-base"
+                        >
+                          🗑️
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   <div>
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <h2 className="text-base sm:text-2xl font-bold text-gray-900">{profile?.full_name || 'Loading...'}</h2>
@@ -1101,9 +1051,9 @@ export default function AlumniDashboard({ session }: { session: Session }) {
                       {profile?.employment_status && profile.employment_status !== 'Unemployed' && (
                         <Badge variant="info">{profile.employment_status}</Badge>
                       )}
-                      <Badge variant="default" className="bg-amber-50 text-amber-700 text-[10px] sm:text-xs">
+                      <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-lg bg-amber-50 text-amber-700">
                         🔒 Verified from Master List
-                      </Badge>
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1113,7 +1063,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
               </div>
             </Card>
 
-            {/* Stats Grid - 2 columns on mobile, 4 on desktop */}
+            {/* Stats Grid */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
               <Card className="p-3 sm:p-6 cursor-pointer hover:border-[#800000]/30 transition-all group" onClick={() => setShowEmploymentModal(true)}>
                 <div className="w-8 h-8 sm:w-12 sm:h-12 bg-blue-100 rounded-lg sm:rounded-xl flex items-center justify-center text-lg sm:text-2xl mb-2 sm:mb-4 group-hover:scale-110 transition-transform">
@@ -1194,9 +1144,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
                     📋
                   </div>
                   <h3 className="text-base sm:text-lg font-bold text-gray-900">Career Information</h3>
-                  <Badge variant="default" className="bg-green-50 text-green-700 text-[10px] sm:text-xs">
-                    ✏️ Editable
-                  </Badge>
+                  <Badge variant="default">✏️ Editable</Badge>
                 </div>
                 <Button variant="secondary" size="sm" onClick={() => setShowEmploymentModal(true)}>
                   Update Career Info
