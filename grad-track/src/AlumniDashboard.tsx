@@ -599,7 +599,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
     fetchProfile();
     fetchAnnouncements();
     fetchActivities();
-    addActivity('login', 'Logged into your account');
+    addActivity('login', 'Logged into account');
 
     return () => clearTimeout(timeoutId);
   }, [session.user.id]);
