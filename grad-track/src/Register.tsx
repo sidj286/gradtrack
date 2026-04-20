@@ -1,4 +1,4 @@
-// Register.tsx - FIXED VERSION with Professional Eye Icons
+// Register.tsx - COMPLETE WITH BLUE STYLING
 import React, { useState } from 'react';
 import { supabase } from './lib/supabase';
 
@@ -33,18 +33,17 @@ export default function Register({ onSuccess }: RegisterProps) {
   const [verificationStatus, setVerificationStatus] = useState<'idle' | 'verifying' | 'verified' | 'error'>('idle');
   const [verifiedGraduate, setVerifiedGraduate] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingStep, setLoadingStep] = useState<string>('');
   const [error, setError] = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
-  
-  // Password visibility states
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleVerifyStudent = async () => {
     if (!formData.studentId) {
-      setError('Please enter your Student ID');
+      setError('📚 Please enter your Student ID');
       return;
     }
 
@@ -52,7 +51,7 @@ export default function Register({ onSuccess }: RegisterProps) {
     setError('');
 
     try {
-      // Check ONLY against graduates_master (the official list)
+      // Check against graduates_master
       const { data: graduate, error: verifyError } = await supabase
         .from('graduates_master')
         .select('*')
@@ -62,7 +61,7 @@ export default function Register({ onSuccess }: RegisterProps) {
 
       if (verifyError || !graduate) {
         setVerificationStatus('error');
-        setError('Student ID not found in verified graduates list. Please contact your school administrator.');
+        setError('❌ Student ID not found in verified graduates list. Please contact your school administrator.');
         return;
       }
 
@@ -81,44 +80,121 @@ export default function Register({ onSuccess }: RegisterProps) {
     } catch (err) {
       console.error('Verification error:', err);
       setVerificationStatus('error');
-      setError('An error occurred during verification');
+      setError('⚠️ An error occurred during verification. Please try again.');
+    }
+  };
+
+  // Improved check for existing user
+  const checkIfUserExists = async (studentId: string, email: string) => {
+    try {
+      console.log('Checking for existing user with Student ID:', studentId);
+      
+      // Check by student_id in alumni_profiles
+      const { data: existingProfile, error: profileError } = await supabase
+        .from('alumni_profiles')
+        .select('user_id, full_name, student_id')
+        .eq('student_id', studentId)
+        .maybeSingle();
+
+      if (existingProfile) {
+        console.log('Found existing profile with this student ID');
+        return { 
+          exists: true, 
+          reason: 'student_id', 
+          message: `❌ Student ID "${studentId}" is already registered.\n\nPlease sign in to your existing account.`,
+          suggestion: 'Go to Sign In'
+        };
+      }
+
+      // Check by email in users table
+      const { data: existingUser, error: userError } = await supabase
+        .from('users')
+        .select('email, full_name')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (existingUser) {
+        console.log('Found existing user with this email');
+        return { 
+          exists: true, 
+          reason: 'email', 
+          message: `❌ Email "${email}" is already registered.\n\nAccount holder: ${existingUser.full_name || 'Unknown'}\n\nPlease sign in to your account.`,
+          suggestion: 'Go to Sign In'
+        };
+      }
+
+      return { exists: false };
+    } catch (err) {
+      console.error('Error checking user:', err);
+      return { exists: false };
     }
   };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    setError('');
+
     if (!agreedToTerms) {
-      setError('Please agree to the Terms of Service and Privacy Policy');
+      setError('📋 Please agree to the Terms of Service and Privacy Policy');
       return;
     }
 
     if (verificationStatus !== 'verified') {
-      setError('Please verify your student ID first');
+      setError('🔍 Please verify your student ID first');
       return;
     }
 
     if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
+      setError('🔐 Passwords do not match');
       return;
     }
 
     if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters');
+      setError('🔒 Password must be at least 6 characters');
       return;
     }
 
     if (!formData.email) {
-      setError('Email address is required');
+      setError('📧 Email address is required');
       return;
     }
 
     setLoading(true);
-    setError('');
+    setLoadingStep('Checking existing account...');
 
     try {
-      // NO email existence check - let Supabase Auth handle duplicates
-      // Just attempt to create the auth user
+      // STEP 1: Check if user already exists
+      const existingCheck = await checkIfUserExists(formData.studentId, formData.email);
+      
+      if (existingCheck.exists) {
+        setError(existingCheck.message);
+        setLoading(false);
+        setLoadingStep('');
+        
+        // Scroll to error message
+        document.getElementById('error-message')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+
+      // STEP 2: Double-check with a more precise query
+      setLoadingStep('Verifying account details...');
+      const { data: duplicateCheck } = await supabase
+        .from('users')
+        .select('email')
+        .eq('email', formData.email)
+        .maybeSingle();
+
+      if (duplicateCheck) {
+        setError(` Email "${formData.email}" is already taken.\n\nPlease use a different email or sign in to your existing account.`);
+        setLoading(false);
+        setLoadingStep('');
+        return;
+      }
+
+      // STEP 3: Create auth user
+      setLoadingStep('Creating secure account...');
+      console.log('Creating auth user...');
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -128,32 +204,57 @@ export default function Register({ onSuccess }: RegisterProps) {
             student_id: formData.studentId,
             batch_year: parseInt(formData.batchYear),
             course: formData.course,
-            agreed_to_terms: true,
-            agreed_at: new Date().toISOString(),
           }
         }
       });
 
       if (signUpError) {
-        // Only show error if it's not an email conflict
+        console.error('Signup error:', signUpError);
+        
+        // Better error messages for common scenarios
         if (signUpError.message.includes('already registered')) {
-          setError('This email is already associated with an existing account. Please use a different email or sign in.');
+          setError(`📧 Email "${formData.email}" is already registered.\n\nPlease sign in instead or use "Forgot Password" if you can't access your account.`);
+        } else if (signUpError.message.includes('weak password')) {
+          setError('🔒 Password is too weak. Please use a stronger password with at least 6 characters.');
+        } else if (signUpError.message.includes('invalid email')) {
+          setError('📧 Invalid email format. Please enter a valid email address.');
         } else {
-          setError(signUpError.message);
+          setError(`❌ Registration failed: ${signUpError.message}`);
         }
         setLoading(false);
+        setLoadingStep('');
         return;
       }
 
       if (authData.user) {
-        // Wait for the trigger to create the users table entry
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Create alumni profile
+        console.log('Auth user created:', authData.user.id);
+
+        // STEP 4: Create users table entry
+        setLoadingStep('Setting up your profile...');
+        console.log('Creating users table entry...');
+        const { error: userInsertError } = await supabase
+          .from('users')
+          .insert({
+            id: authData.user.id,
+            email: formData.email,
+            full_name: formData.fullName,
+            admin: false,
+            created_at: new Date().toISOString()
+          });
+
+        if (userInsertError) {
+          console.error('Error creating users entry:', userInsertError);
+          console.warn('Users table entry failed but continuing...');
+        }
+
+        // STEP 5: Create alumni profile
+        setLoadingStep('Finalizing registration...');
+        console.log('Creating alumni profile...');
         const { error: profileError } = await supabase
           .from('alumni_profiles')
           .insert({
             user_id: authData.user.id,
+            student_id: formData.studentId,
             full_name: formData.fullName,
             course: formData.course,
             batch_year: parseInt(formData.batchYear),
@@ -163,28 +264,45 @@ export default function Register({ onSuccess }: RegisterProps) {
           });
 
         if (profileError) {
-          console.error('Profile error:', profileError);
+          console.error('Profile creation error:', profileError);
+          
+          // Specific error handling for profile creation
+          if (profileError.code === '23505') {
+            setError('⚠️ This student ID is already registered. Please contact support if you believe this is an error.');
+          } else {
+            setError('Account created but profile setup failed. Our team has been notified. Please try logging in.');
+          }
+          setLoading(false);
+          setLoadingStep('');
+          return;
         }
 
-        alert('Registration successful! Please check your email to confirm your account.');
+        console.log('Registration complete!');
+        
+        // Show success message
+        const successMessage = `✓ Registration Successful!\n\nWelcome, ${formData.fullName}!\n\nA confirmation email has been sent to:\n${formData.email}\n\nPlease check your inbox and click the confirmation link to activate your account.`;
+        alert(successMessage);
+        
+        // Redirect to login
         if (onSuccess) onSuccess();
       }
     } catch (err: any) {
       console.error('Registration error:', err);
-      setError(err.message || 'Registration failed');
+      
+      // Handle network errors
+      if (err.message === 'Failed to fetch') {
+        setError('🌐 Network error. Please check your internet connection and try again.');
+      } else {
+        setError(err.message || 'Registration failed. Please try again.');
+      }
     } finally {
       setLoading(false);
+      setLoadingStep('');
     }
   };
 
-  // Toggle password visibility - CORRECTED LOGIC
-  const togglePasswordVisibility = () => {
-    setShowPassword(!showPassword);
-  };
-
-  const toggleConfirmPasswordVisibility = () => {
-    setShowConfirmPassword(!showConfirmPassword);
-  };
+  const togglePasswordVisibility = () => setShowPassword(!showPassword);
+  const toggleConfirmPasswordVisibility = () => setShowConfirmPassword(!showConfirmPassword);
 
   // Terms Modal Component
   const TermsModal = () => (
@@ -192,12 +310,7 @@ export default function Register({ onSuccess }: RegisterProps) {
       <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
         <div className="p-6 border-b border-gray-100 flex justify-between items-center">
           <h3 className="text-xl font-bold text-gray-900">Terms of Service</h3>
-          <button
-            onClick={() => setShowTermsModal(false)}
-            className="text-gray-400 hover:text-gray-600 text-2xl"
-          >
-            ×
-          </button>
+          <button onClick={() => setShowTermsModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
         </div>
         <div className="p-6 overflow-y-auto max-h-[60vh] space-y-4 text-gray-600">
           <div>
@@ -234,12 +347,7 @@ export default function Register({ onSuccess }: RegisterProps) {
           </div>
         </div>
         <div className="p-6 border-t border-gray-100">
-          <button
-            onClick={() => setShowTermsModal(false)}
-            className="w-full py-2 bg-[#800000] text-white rounded-xl font-semibold hover:bg-[#6a0000] transition"
-          >
-            Close
-          </button>
+          <button onClick={() => setShowTermsModal(false)} className="w-full py-2 bg-[#800000] text-white rounded-xl font-semibold hover:bg-[#6a0000] transition">Close</button>
         </div>
       </div>
     </div>
@@ -251,12 +359,7 @@ export default function Register({ onSuccess }: RegisterProps) {
       <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
         <div className="p-6 border-b border-gray-100 flex justify-between items-center">
           <h3 className="text-xl font-bold text-gray-900">Privacy Policy</h3>
-          <button
-            onClick={() => setShowPrivacyModal(false)}
-            className="text-gray-400 hover:text-gray-600 text-2xl"
-          >
-            ×
-          </button>
+          <button onClick={() => setShowPrivacyModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
         </div>
         <div className="p-6 overflow-y-auto max-h-[60vh] space-y-4 text-gray-600">
           <div>
@@ -293,12 +396,7 @@ export default function Register({ onSuccess }: RegisterProps) {
           </div>
         </div>
         <div className="p-6 border-t border-gray-100">
-          <button
-            onClick={() => setShowPrivacyModal(false)}
-            className="w-full py-2 bg-[#800000] text-white rounded-xl font-semibold hover:bg-[#6a0000] transition"
-          >
-            Close
-          </button>
+          <button onClick={() => setShowPrivacyModal(false)} className="w-full py-2 bg-[#800000] text-white rounded-xl font-semibold hover:bg-[#6a0000] transition">Close</button>
         </div>
       </div>
     </div>
@@ -319,6 +417,7 @@ export default function Register({ onSuccess }: RegisterProps) {
               onChange={(e) => {
                 setFormData({ ...formData, studentId: e.target.value });
                 setVerificationStatus('idle');
+                setError('');
               }}
               placeholder="Enter your Student ID"
               className="flex-1 px-4 py-2 border border-gray-200 rounded-xl focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none transition-all"
@@ -346,13 +445,13 @@ export default function Register({ onSuccess }: RegisterProps) {
           )}
           
           {verificationStatus === 'error' && (
-            <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-red-700 text-sm">{error}</p>
+            <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-red-700 text-sm whitespace-pre-line">{error}</p>
             </div>
           )}
         </div>
 
-        {/* Full Name - Read-only from master list */}
+        {/* Full Name - Read-only */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-2">
             Full Name <span className="text-red-500">*</span>
@@ -367,7 +466,7 @@ export default function Register({ onSuccess }: RegisterProps) {
           <p className="text-xs text-gray-400 mt-1">Auto-filled from master list</p>
         </div>
 
-        {/* Course - Read-only from master list */}
+        {/* Course - Read-only */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-2">
             Course <span className="text-red-500">*</span>
@@ -382,7 +481,7 @@ export default function Register({ onSuccess }: RegisterProps) {
           <p className="text-xs text-gray-400 mt-1">Auto-filled from master list</p>
         </div>
 
-        {/* Batch Year - Read-only from master list */}
+        {/* Batch Year - Read-only */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-2">
             Batch Year <span className="text-red-500">*</span>
@@ -397,7 +496,7 @@ export default function Register({ onSuccess }: RegisterProps) {
           <p className="text-xs text-gray-400 mt-1">Auto-filled from master list</p>
         </div>
 
-        {/* Email - Can be edited if not in master list */}
+        {/* Email */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-2">
             Email Address <span className="text-red-500">*</span>
@@ -415,7 +514,7 @@ export default function Register({ onSuccess }: RegisterProps) {
           )}
         </div>
 
-        {/* Password with professional eye icon - CORRECTED LOGIC */}
+        {/* Password */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-2">
             Password <span className="text-red-500">*</span>
@@ -441,7 +540,7 @@ export default function Register({ onSuccess }: RegisterProps) {
           <p className="text-xs text-gray-400 mt-1">Password must be at least 6 characters</p>
         </div>
 
-        {/* Confirm Password with professional eye icon - CORRECTED LOGIC */}
+        {/* Confirm Password */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-2">
             Confirm Password <span className="text-red-500">*</span>
@@ -509,49 +608,74 @@ export default function Register({ onSuccess }: RegisterProps) {
           </div>
         </div>
 
+        {/* Error Display with Blue Styling (matching verify ID section) */}
         {error && (
-          <div className={`rounded-xl p-4 ${
-            error.includes('already registered') 
-              ? 'bg-amber-50 border border-amber-200' 
-              : 'bg-red-50 border border-red-200'
-          }`}>
+          <div 
+            id="error-message"
+            className="rounded-xl p-4 bg-red-50 border border-red-200"
+          >
             <div className="flex items-start gap-3">
-              <div className="text-xl">
-                {error.includes('already registered') ? '⚠️' : '❌'}
+              <div className="text-xl flex-shrink-0">
+                {error.includes('already registered') || error.includes('already taken') ? '' : '❌'}
               </div>
               <div className="flex-1">
-                <p className={`text-sm whitespace-pre-line ${
-                  error.includes('already registered') ? 'text-amber-800' : 'text-red-800'
-                }`}>
+                <p className="text-sm whitespace-pre-line text-red-800">
                   {error}
                 </p>
-                {error.includes('already registered') && (
-                  <div className="mt-3">
-                    <button
+                
+                {/* Action buttons for existing users */}
+                {(error.includes('already registered') || error.includes('already taken')) && (
+                  <div className="mt-4 space-y-2">
+                    <div className="flex justify-end">
+  <button
+    type="button"
+    onClick={() => onSuccess?.()}
+    className="px-3 py-1.5 bg-[#800000] text-white rounded-md font-medium hover:bg-[#6a0000] transition text-xs"
+  >
+    Sign In →
+  </button>
+</div>
+                    
+                    {/* <button
                       type="button"
                       onClick={() => {
-                        if (onSuccess) onSuccess();
+                        setError('');
+                        setFormData(prev => ({ ...prev, email: '', studentId: '' }));
+                        setVerificationStatus('idle');
                       }}
-                      className="inline-flex items-center gap-2 text-sm text-[#800000] font-semibold hover:underline"
+                      className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition text-sm"
                     >
-                      <span>→</span> Go to Sign In page
+                      Try Different Account
                     </button>
-                    <p className="text-xs text-gray-500 mt-2">
-                      Already have an account? Use your email and password to sign in.
+                     */}
+                    <p className="text-xs text-gray-500 text-center pt-2">
+                      Forgot your password? Use the "Forgot Password" link on the sign in page.
                     </p>
                   </div>
+                )}
+                
+                {/* Retry button for other errors */}
+                {!error.includes('already registered') && !error.includes('already taken') && (
+                  <button
+                    type="button"
+                    onClick={() => setError('')}
+                    className="mt-3 text-sm text-blue-600 hover:text-blue-800 underline"
+                  >
+                    Dismiss
+                  </button>
                 )}
               </div>
             </div>
           </div>
         )}
 
+        {/* Submit Button with loading step */}
         <button
           type="submit"
           disabled={loading || verificationStatus !== 'verified' || !agreedToTerms}
           className="w-full py-3 bg-gradient-to-r from-[#800000] to-[#a10000] text-white font-bold rounded-xl hover:from-[#6a0000] hover:to-[#8a0000] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? 'Creating Account...' : 'Register Now'}
+          {loading ? loadingStep : 'Register Now'}
         </button>
 
         <p className="text-center text-xs text-gray-400 mt-4">

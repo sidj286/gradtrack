@@ -1,12 +1,13 @@
-// src/App.tsx
+// App.tsx - With Gmail Image Logo on Both Buttons
 import { useEffect, useState } from 'react';
 import { supabase } from './lib/supabase';
 import AlumniDashboard from './AlumniDashboard';
 import AdminDashboard from './AdminDashboard';
 import Register from './Register';
+import ResetPassword from './ResetPassword';
 import type { Session } from '@supabase/supabase-js';
 
-// Professional Eye Icon Components
+// Eye Icons
 const EyeIcon = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -30,46 +31,56 @@ function App() {
   const [error, setError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  
-  // Forgot password states
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
-  const [resetMessage, setResetMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [resetMessage, setResetMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+  
+  // Email link states
+  const [useEmailLink, setUseEmailLink] = useState(false);
+  const [emailLinkSent, setEmailLinkSent] = useState(false);
+  const [emailLinkAddress, setEmailLinkAddress] = useState('');
 
   useEffect(() => {
+    // Check for password recovery hash
+    const hash = window.location.hash;
+    if (hash && hash.includes('type=recovery')) {
+      setIsResettingPassword(true);
+      setLoading(false);
+      return;
+    }
+    
     checkUser();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsResettingPassword(true);
+        setLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const checkUser = async () => {
     try {
-      console.log("1. Getting session...");
       const { data: { session } } = await supabase.auth.getSession();
-      console.log("2. Session user:", session?.user?.email);
       setSession(session);
       
       if (session) {
         const userEmail = session.user.email;
         if (userEmail === 'caayoncj@gmail.com') {
-          console.log("3. Admin detected by email!");
           setIsAdmin(true);
         } else {
-          console.log("3. Checking database for admin status...");
-          const { data, error } = await supabase
+          const { data } = await supabase
             .from('users')
             .select('admin')
             .eq('id', session.user.id)
             .maybeSingle();
           
-          console.log("4. Database result:", data);
-          
-          if (data && data.admin === true) {
-            setIsAdmin(true);
-            console.log("5. User is ADMIN from database");
-          } else {
-            setIsAdmin(false);
-            console.log("5. User is ALUMNI");
-          }
+          setIsAdmin(data?.admin === true);
         }
       }
     } catch (err) {
@@ -77,10 +88,10 @@ function App() {
       setIsAdmin(false);
     } finally {
       setLoading(false);
-      console.log("6. Loading finished, isAdmin:", isAdmin);
     }
   };
 
+  // Regular password login
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginLoading(true);
@@ -99,6 +110,30 @@ function App() {
     setLoginLoading(false);
   };
 
+  // Email link login
+  const handleEmailLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginLoading(true);
+    setError('');
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email,
+      options: {
+        emailRedirectTo: window.location.origin,
+      }
+    });
+
+    if (error) {
+      setError(error.message);
+      setLoginLoading(false);
+    } else {
+      setEmailLinkSent(true);
+      setEmailLinkAddress(email);
+      setLoginLoading(false);
+    }
+  };
+
+  // Forgot password
   const handleForgotPassword = async () => {
     if (!resetEmail) {
       setResetMessage({ type: 'error', text: 'Please enter your email address' });
@@ -108,10 +143,8 @@ function App() {
     setResetLoading(true);
     setResetMessage(null);
 
-    const redirectTo = `${window.location.origin}/reset-password`;
-    
     const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-      redirectTo: redirectTo,
+      redirectTo: window.location.origin,
     });
 
     if (error) {
@@ -119,7 +152,7 @@ function App() {
     } else {
       setResetMessage({ 
         type: 'success', 
-        text: 'Password reset email sent! Check your inbox (and spam folder).' 
+        text: 'Password reset link sent to your Gmail inbox!' 
       });
       setTimeout(() => {
         setShowResetModal(false);
@@ -130,9 +163,32 @@ function App() {
     setResetLoading(false);
   };
 
-  const togglePasswordVisibility = () => {
-    setShowPassword(!showPassword);
+  const handleResetComplete = () => {
+    setIsResettingPassword(false);
+    window.location.hash = '';
+    window.location.reload();
   };
+
+  const togglePasswordVisibility = () => setShowPassword(!showPassword);
+
+  // Reset email link state when switching back
+  const switchToPasswordLogin = () => {
+    setUseEmailLink(false);
+    setEmailLinkSent(false);
+    setEmailLinkAddress('');
+    setError('');
+  };
+
+  const switchToEmailLink = () => {
+    setUseEmailLink(true);
+    setEmailLinkSent(false);
+    setError('');
+  };
+
+  // Show reset password page
+  if (isResettingPassword) {
+    return <ResetPassword onComplete={handleResetComplete} />;
+  }
 
   if (loading) {
     return (
@@ -164,8 +220,9 @@ function App() {
                   onClick={() => {
                     setShowLogin(true);
                     setError('');
+                    switchToPasswordLogin();
                   }}
-                  className={`pb-3 px-4 font-semibold transition-all duration-200 ${
+                  className={`pb-3 px-4 font-semibold transition ${
                     showLogin ? 'text-[#800000] border-b-2 border-[#800000]' : 'text-gray-500'
                   }`}
                 >
@@ -175,8 +232,9 @@ function App() {
                   onClick={() => {
                     setShowLogin(false);
                     setError('');
+                    switchToPasswordLogin();
                   }}
-                  className={`pb-3 px-4 font-semibold transition-all duration-200 ${
+                  className={`pb-3 px-4 font-semibold transition ${
                     !showLogin ? 'text-[#800000] border-b-2 border-[#800000]' : 'text-gray-500'
                   }`}
                 >
@@ -185,84 +243,185 @@ function App() {
               </div>
 
               {showLogin ? (
-                <form onSubmit={handleLogin} className="space-y-6">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Email Address</label>
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none transition-all"
-                      placeholder="your@email.com"
-                      required
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Password</label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? "text" : "password"}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="w-full px-4 py-2.5 pr-12 border border-gray-200 rounded-xl focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none transition-all"
-                        placeholder="Enter your password"
-                        required
-                      />
+                <>
+                  {!useEmailLink ? (
+                    // PASSWORD LOGIN FORM
+                    <>
+                      <form onSubmit={handleLogin} className="space-y-6">
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Email Address</label>
+                          <input
+                            type="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none"
+                            placeholder="your@gmail.com"
+                            required
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Password</label>
+                          <div className="relative">
+                            <input
+                              type={showPassword ? "text" : "password"}
+                              value={password}
+                              onChange={(e) => setPassword(e.target.value)}
+                              className="w-full px-4 py-2.5 pr-12 border border-gray-200 rounded-xl focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none"
+                              placeholder="Enter your password"
+                              required
+                            />
+                            <button
+                              type="button"
+                              onClick={togglePasswordVisibility}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#800000]"
+                            >
+                              {showPassword ? <EyeIcon /> : <EyeSlashIcon />}
+                            </button>
+                          </div>
+                          <div className="flex justify-end mt-3">
+                            <button
+                              type="button"
+                              onClick={() => setShowResetModal(true)}
+                              className="text-xs text-[#800000] font-medium hover:underline"
+                            >
+                              Forgot password?
+                            </button>
+                          </div>
+                        </div>
+                        
+                        {error && (
+                          <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+                            <p className="text-red-600 text-sm">{error}</p>
+                          </div>
+                        )}
+                        
+                        <button
+                          type="submit"
+                          disabled={loginLoading}
+                          className="w-full py-3 bg-gradient-to-r from-[#800000] to-[#a10000] text-white font-bold rounded-xl hover:from-[#6a0000] hover:to-[#8a0000] transition-all disabled:opacity-50"
+                        >
+                          {loginLoading ? 'Signing in...' : 'Sign In'}
+                        </button>
+                      </form>
+                      
+                      <div className="mt-4 relative">
+                        <div className="absolute inset-0 flex items-center">
+                          <div className="w-full border-t border-gray-200"></div>
+                        </div>
+                        <div className="relative flex justify-center text-sm">
+                          <span className="px-2 bg-white text-gray-400">or</span>
+                        </div>
+                      </div>
+                      
                       <button
-                        type="button"
-                        onClick={togglePasswordVisibility}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#800000] transition-colors focus:outline-none"
-                        tabIndex={-1}
+                        onClick={switchToEmailLink}
+                        className="w-full mt-4 py-2.5 border-2 border-[#800000] text-[#800000] font-semibold rounded-xl hover:bg-[#800000]/5 transition-all duration-200 flex items-center justify-center gap-2"
                       >
-                       {showPassword ? <EyeIcon /> : <EyeSlashIcon />}
+                        <img 
+                          src="https://www.gstatic.com/images/branding/product/1x/gmail_2020q4_48dp.png" 
+                          alt="Gmail" 
+                          className="w-5 h-5"
+                        />
+                        Continue with email
+                      </button>
+                      
+                      <p className="text-center text-sm text-gray-600 mt-6">
+                        Don't have an account?{' '}
+                        <button
+                          type="button"
+                          onClick={() => setShowLogin(false)}
+                          className="text-[#800000] font-semibold hover:underline"
+                        >
+                          Create account
+                        </button>
+                      </p>
+                    </>
+                  ) : emailLinkSent ? (
+                    // EMAIL LINK SENT MESSAGE
+                    <div className="text-center space-y-4">
+                      <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                        <img 
+                          src="https://www.gstatic.com/images/branding/product/1x/gmail_2020q4_48dp.png" 
+                          alt="Gmail" 
+                          className="w-8 h-8"
+                        />
+                      </div>
+                      <h3 className="text-xl font-bold text-gray-900">Check your Gmail</h3>
+                      <p className="text-gray-600">
+                        We sent a secure sign-in link to:<br/>
+                        <strong className="text-[#800000]">{emailLinkAddress}</strong>
+                      </p>
+                      <div className="bg-blue-50 rounded-lg p-3 text-sm text-gray-600">
+                        <p> Open your Gmail inbox and click the link to sign in instantly.</p>
+                        <p className="text-xs text-gray-500 mt-1">For security, the link expires in 24 hours.</p>
+                      </div>
+                      <button
+                        onClick={switchToPasswordLogin}
+                        className="text-[#800000] text-sm hover:underline mt-2"
+                      >
+                        ← Back to password sign in
                       </button>
                     </div>
-                    {/* Forgot Password link with proper spacing */}
-                    <div className="flex justify-end mt-3">
+                  ) : (
+                    // EMAIL LINK FORM
+                    <form onSubmit={handleEmailLink} className="space-y-6">
+                      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
+                        <p className="text-sm text-blue-800">
+                           Enter your email address and we'll send a secure sign-in link to your Gmail.
+                        </p>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Email Address
+                        </label>
+                        <input
+                          type="email"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none"
+                          placeholder="your@gmail.com"
+                          required
+                          autoFocus
+                        />
+                      </div>
+                      
+                      {error && (
+                        <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+                          <p className="text-red-600 text-sm">{error}</p>
+                        </div>
+                      )}
+                      
                       <button
-                        type="button"
-                        onClick={() => setShowResetModal(true)}
-                        className="text-xs text-[#800000] font-medium hover:underline transition-all"
+                        type="submit"
+                        disabled={loginLoading}
+                        className="w-full py-3 bg-gradient-to-r from-[#800000] to-[#a10000] text-white font-bold rounded-xl hover:from-[#6a0000] hover:to-[#8a0000] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                       >
-                        Forgot Password?
+                        <img 
+                          src="https://www.gstatic.com/images/branding/product/1x/gmail_2020q4_48dp.png" 
+                          alt="Gmail" 
+                          className="w-5 h-5"
+                        />
+                        {loginLoading ? 'Sending...' : 'Send secure link'}
                       </button>
-                    </div>
-                  </div>
-                  
-                  {error && (
-                    <div className="bg-red-50 border border-red-200 rounded-xl p-3 mt-2">
-                      <p className="text-red-600 text-sm">{error}</p>
-                    </div>
+                      
+                      <div className="text-center">
+                        <button
+                          type="button"
+                          onClick={switchToPasswordLogin}
+                          className="text-sm text-[#800000] hover:underline"
+                        >
+                          ← Sign in with password
+                        </button>
+                      </div>
+                    </form>
                   )}
-                  
-                  <button
-                    type="submit"
-                    disabled={loginLoading}
-                    className="w-full py-3 bg-gradient-to-r from-[#800000] to-[#a10000] text-white font-bold rounded-xl hover:from-[#6a0000] hover:to-[#8a0000] transition-all disabled:opacity-50 shadow-md mt-4"
-                  >
-                    {loginLoading ? 'Signing in...' : 'Sign In'}
-                  </button>
-                  
-                  <p className="text-center text-sm text-gray-600 pt-2">
-                    Don't have an account?{' '}
-                    <button
-                      type="button"
-                      onClick={() => setShowLogin(false)}
-                      className="text-[#800000] font-semibold hover:underline"
-                    >
-                      Register here
-                    </button>
-                  </p>
-                </form>
+                </>
               ) : (
                 <Register onSuccess={() => setShowLogin(true)} />
               )}
             </div>
-
-            <p className="text-center text-xs text-gray-400 mt-6">
-              Secure alumni portal for Cebu Roosevelt Memorial Colleges graduates
-            </p>
           </div>
         </div>
 
@@ -271,12 +430,10 @@ function App() {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
             <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl">
               <div className="p-6 border-b border-gray-100">
-                <div className="flex items-center justify-between">
+                <div className="flex justify-between items-center">
                   <div>
                     <h3 className="text-xl font-bold text-gray-900">Reset Password</h3>
-                    <p className="text-sm text-gray-500 mt-1">
-                      Enter your email to receive a reset link
-                    </p>
+                    <p className="text-sm text-gray-500 mt-1">Enter your email to receive a reset link</p>
                   </div>
                   <button
                     onClick={() => {
@@ -284,7 +441,7 @@ function App() {
                       setResetEmail('');
                       setResetMessage(null);
                     }}
-                    className="text-gray-400 hover:text-gray-600 text-2xl leading-none transition-colors"
+                    className="text-gray-400 hover:text-gray-600 text-2xl"
                   >
                     ×
                   </button>
@@ -298,8 +455,8 @@ function App() {
                     type="email"
                     value={resetEmail}
                     onChange={(e) => setResetEmail(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none transition-all"
-                    placeholder="your@email.com"
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none"
+                    placeholder="your@gmail.com"
                     autoFocus
                   />
                 </div>
@@ -307,8 +464,8 @@ function App() {
                 {resetMessage && (
                   <div className={`p-3 rounded-xl text-sm text-center font-medium ${
                     resetMessage.type === 'error' 
-                      ? 'bg-red-50 text-red-600 border border-red-100' 
-                      : 'bg-green-50 text-green-600 border border-green-100'
+                      ? 'bg-red-50 text-red-600' 
+                      : 'bg-green-50 text-green-600'
                   }`}>
                     {resetMessage.text}
                   </div>
@@ -317,7 +474,7 @@ function App() {
                 <button
                   onClick={handleForgotPassword}
                   disabled={resetLoading}
-                  className="w-full py-2.5 bg-[#800000] hover:bg-[#6a0000] text-white font-semibold rounded-xl transition-all disabled:opacity-50"
+                  className="w-full py-2.5 bg-[#800000] hover:bg-[#6a0000] text-white font-semibold rounded-xl transition disabled:opacity-50"
                 >
                   {resetLoading ? 'Sending...' : 'Send Reset Link'}
                 </button>
@@ -329,15 +486,7 @@ function App() {
     );
   }
 
-  console.log("Rendering dashboard, isAdmin:", isAdmin);
-  
-  if (isAdmin) {
-    console.log("Showing ADMIN Dashboard");
-    return <AdminDashboard session={session} />;
-  }
-
-  console.log("Showing ALUMNI Dashboard");
-  return <AlumniDashboard session={session} />;
+  return isAdmin ? <AdminDashboard session={session} /> : <AlumniDashboard session={session} />;
 }
 
 export default App;
