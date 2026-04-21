@@ -6,9 +6,25 @@
   --color-maroon-50: #fff5f5;
 }
 
-/* Now this will work! */
+/* Dark mode styles - IMPORTANT! */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Light mode (default) */
+:root {
+  color-scheme: light;
+}
+
+/* Dark mode class applied to html element */
+.dark {
+  color-scheme: dark;
+}
+
 body {
-  @apply bg-maroon-50;
+  background-color: #f9fafb;
+}
+
+.dark body {
+  background-color: #000000;
 }
 
 /* Custom scrollbar for modals */
@@ -21,11 +37,23 @@ body {
   border-radius: 10px;
 }
 
+.dark .custom-scrollbar::-webkit-scrollbar-track {
+  background: #000000;
+}
+
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background: #c1c1c1;
   border-radius: 10px;
 }
 
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #6b7280;
+}
+
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
 }
