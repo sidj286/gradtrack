@@ -4,6 +4,7 @@ import { supabase } from './lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import { PieChart, Pie, BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip, Legend, Cell } from 'recharts';
 import { getProgramPromotionRecommendations, getProgramStrengthAnalysis, getInstitutionalSummary } from './lib/gemini';
+import ImportMasterListModal from './ImportMasterListModal';
 
 // ==================== TYPES ====================
 interface AlumniProfile {
@@ -179,15 +180,18 @@ export default function AdminDashboard({ session }: { session: Session }) {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [departmentStats, setDepartmentStats] = useState<DepartmentStat[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeMainTab, setActiveMainTab] = useState<'overview' | 'departments' | 'announcements' | 'insights'>('overview');
+  const [activeMainTab, setActiveMainTab] = useState<'overview' | 'departments' | 'announcements' | 'insights' | 'masterlist'>('overview');
   
-  // 1.2 AI INSIGHTS STATE
+  // 1.2 IMPORT MODAL STATE
+  const [showImportModal, setShowImportModal] = useState(false);
+  
+  // 1.3 AI INSIGHTS STATE
   const [aiPromotionRecs, setAiPromotionRecs] = useState<string>('');
   const [aiStrengthAnalysis, setAiStrengthAnalysis] = useState<string>('');
   const [aiSummary, setAiSummary] = useState<string>('');
   const [aiLoading, setAiLoading] = useState(false);
   
-  // 1.3 UI STATE
+  // 1.4 UI STATE
   const [signOutLoading, setSignOutLoading] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
@@ -197,7 +201,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<{ type: 'success' | 'error' | 'info', text: string } | null>(null);
   
-  // 1.4 FORM STATE
+  // 1.5 FORM STATE
   const [newAnnouncement, setNewAnnouncement] = useState({
     title: '',
     content: '',
@@ -207,7 +211,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
     target_batch_year: '',
   });
   
-  // 1.5 FILTER STATE
+  // 1.6 FILTER STATE
   const [filterCourse, setFilterCourse] = useState('');
   const [filterBatch, setFilterBatch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -215,15 +219,15 @@ export default function AdminDashboard({ session }: { session: Session }) {
   const [courses, setCourses] = useState<string[]>([]);
   const [batchYears, setBatchYears] = useState<number[]>([]);
   
-  // 1.6 ANNOUNCEMENT FILTER STATE
+  // 1.7 ANNOUNCEMENT FILTER STATE
   const [announcementFilterType, setAnnouncementFilterType] = useState<'all' | 'course' | 'batch_year'>('all');
   const [announcementFilterCourse, setAnnouncementFilterCourse] = useState('');
   const [announcementFilterBatchYear, setAnnouncementFilterBatchYear] = useState('');
   
-  // 1.7 CHART STATE
+  // 1.8 CHART STATE
   const [chartKey, setChartKey] = useState(0);
   
-  // 1.8 PROFILE STATE
+  // 1.9 PROFILE STATE
   const [adminProfile, setAdminProfile] = useState({
     full_name: session.user.user_metadata?.full_name || 'Administrator',
     email: session.user.email || '',
@@ -240,7 +244,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
     confirmPassword: ''
   });
 
-  // 1.9 STATS STATE
+  // 1.10 STATS STATE
   const [stats, setStats] = useState({
     total: 0,
     employed: 0,
@@ -249,7 +253,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
     outOfField: 0,
   });
 
-  // 1.10 CHART DATA STATE
+  // 1.11 CHART DATA STATE
   const [employmentChartData, setEmploymentChartData] = useState([
     { name: 'Employed', value: 0, color: '#10b981' },
     { name: 'Unemployed', value: 0, color: '#ef4444' },
@@ -262,9 +266,23 @@ export default function AdminDashboard({ session }: { session: Session }) {
   const [courseStats, setCourseStats] = useState<{ course: string; total: number; inField: number; rate: number }[]>([]);
   const [weeklyActivities, setWeeklyActivities] = useState<{ day: string; count: number }[]>([]);
   
-  // 1.11 DEPARTMENT BATCH DATA
+  // 1.12 DEPARTMENT BATCH DATA
   const [selectedDepartment, setSelectedDepartment] = useState<string>('CCS');
   const [departmentBatchData, setDepartmentBatchData] = useState<{ batch: number; total: number; inField: number; rate: number }[]>([]);
+
+  // 1.13 MASTER LIST STATE
+  const [masterListData, setMasterListData] = useState<any[]>([]);
+  const [masterListLoading, setMasterListLoading] = useState(false);
+  const [masterListSearch, setMasterListSearch] = useState('');
+  const [masterListFilterBatch, setMasterListFilterBatch] = useState('');
+  const [masterListFilterCourse, setMasterListFilterCourse] = useState('');
+  const [masterListPage, setMasterListPage] = useState(1);
+  const [masterListStats, setMasterListStats] = useState({
+    total: 0,
+    byBatch: [] as number[],
+    byCourse: [] as string[],
+    latestBatch: null as number | null,
+  });
 
   // ============================================================
   // SECTION 2: useEffect HOOKS
@@ -303,6 +321,13 @@ export default function AdminDashboard({ session }: { session: Session }) {
       fetchAIInsights();
     }
   }, [activeMainTab, departmentStats]);
+
+  // 2.2 Load master list when switching to masterlist tab
+  useEffect(() => {
+    if (activeMainTab === 'masterlist') {
+      fetchMasterList();
+    }
+  }, [activeMainTab]);
 
   // ============================================================
   // SECTION 3: HELPER FUNCTIONS
@@ -394,39 +419,155 @@ export default function AdminDashboard({ session }: { session: Session }) {
 
   // 3.1 Fetch AI Insights
   const fetchAIInsights = async () => {
-  if (departmentStats.length === 0) return;
-  
-  setAiLoading(true);
-  
-  try {
-    // Call 1: Program Promotion Recommendations
-    const promotions = await getProgramPromotionRecommendations(departmentStats);
-    setAiPromotionRecs(promotions.text);
+    if (departmentStats.length === 0) return;
     
-    // Wait 2 seconds before next call
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    setAiLoading(true);
     
-    // Call 2: Program Strength Analysis
-    const strength = await getProgramStrengthAnalysis(departmentStats);
-    setAiStrengthAnalysis(strength.text);
-    
-    // Wait 2 seconds before next call
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Call 3: Institutional Summary
-    const summary = await getInstitutionalSummary(departmentStats);
-    setAiSummary(summary.text);
-    
-    // Optional: Log if any used fallback
-    if (!promotions.success || !strength.success || !summary.success) {
-      console.log('Some insights using fallback (rate limit or API issue)');
+    try {
+      const promotions = await getProgramPromotionRecommendations(departmentStats);
+      setAiPromotionRecs(promotions.text);
+      
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const strength = await getProgramStrengthAnalysis(departmentStats);
+      setAiStrengthAnalysis(strength.text);
+      
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const summary = await getInstitutionalSummary(departmentStats);
+      setAiSummary(summary.text);
+      
+      if (!promotions.success || !strength.success || !summary.success) {
+        console.log('Some insights using fallback (rate limit or API issue)');
+      }
+    } catch (error) {
+      console.error('AI insights error:', error);
+    } finally {
+      setAiLoading(false);
     }
-  } catch (error) {
-    console.error('AI insights error:', error);
-  } finally {
-    setAiLoading(false);
-  }
-};
+  };
+
+  // 3.2 MASTER LIST FUNCTIONS
+  const fetchMasterList = async () => {
+    setMasterListLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('graduates_master')
+        .select('*')
+        .order('student_id', { ascending: false });
+
+      if (error) throw error;
+      
+      setMasterListData(data || []);
+      
+      const batches = [...new Set(data?.map((r: any) => r.batch_year).filter(Boolean))] as number[];
+      const coursesArr = [...new Set(data?.map((r: any) => r.course).filter(Boolean))] as string[];
+      const latestBatch = batches.length > 0 ? Math.max(...batches) : null;
+      
+      setMasterListStats({
+        total: data?.length || 0,
+        byBatch: batches.sort((a, b) => b - a),
+        byCourse: coursesArr,
+        latestBatch: latestBatch,
+      });
+    } catch (error) {
+      console.error('Error fetching master list:', error);
+      showSettingsToast('Failed to load master list', 'error');
+    } finally {
+      setMasterListLoading(false);
+    }
+  };
+
+  const refreshMasterList = () => {
+    fetchMasterList();
+    showSettingsToast('Master list refreshed', 'success');
+  };
+
+  const deleteMasterListRecord = async (id: string, fullName: string) => {
+    if (!confirm(`Are you sure you want to delete "${fullName}" from the master list?`)) return;
+    
+    try {
+      const { error } = await supabase
+        .from('graduates_master')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw error;
+      
+      showSettingsToast(`Deleted ${fullName} from master list`, 'success');
+      fetchMasterList();
+    } catch (error) {
+      console.error('Error deleting record:', error);
+      showSettingsToast('Failed to delete record', 'error');
+    }
+  };
+
+  const toggleRecordVerification = async (id: string, newStatus: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('graduates_master')
+        .update({ verified: newStatus })
+        .eq('id', id);
+      
+      if (error) throw error;
+      
+      showSettingsToast(`Record ${newStatus ? 'verified' : 'unverified'}`, 'success');
+      fetchMasterList();
+    } catch (error) {
+      console.error('Error updating verification:', error);
+      showSettingsToast('Failed to update verification status', 'error');
+    }
+  };
+
+  const exportMasterListToCSV = () => {
+    if (masterListData.length === 0) {
+      showSettingsToast('No data to export', 'error');
+      return;
+    }
+    
+    const headers = ['student_id', 'full_name', 'email', 'course', 'batch_year', 'verified'];
+    const csvRows = [headers.join(',')];
+    
+    for (const record of masterListData) {
+      const values = headers.map(header => {
+        let value = record[header] !== null ? record[header] : '';
+        if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
+          value = `"${value.replace(/"/g, '""')}"`;
+        }
+        return value;
+      });
+      csvRows.push(values.join(','));
+    }
+    
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `master_list_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    showSettingsToast('Master list exported successfully', 'success');
+  };
+
+  // Filtered master list
+  const filteredMasterList = masterListData.filter((record: any) => {
+    if (masterListSearch) {
+      const searchLower = masterListSearch.toLowerCase();
+      const matchesSearch = 
+        record.student_id?.toLowerCase().includes(searchLower) ||
+        record.full_name?.toLowerCase().includes(searchLower) ||
+        record.email?.toLowerCase().includes(searchLower) ||
+        record.course?.toLowerCase().includes(searchLower);
+      if (!matchesSearch) return false;
+    }
+    if (masterListFilterBatch && record.batch_year !== parseInt(masterListFilterBatch)) return false;
+    if (masterListFilterCourse && record.course !== masterListFilterCourse) return false;
+    return true;
+  });
+
   // ============================================================
   // SECTION 4: DATA FETCHING FUNCTIONS
   // ============================================================
@@ -468,15 +609,15 @@ export default function AdminDashboard({ session }: { session: Session }) {
       if (activitiesError) {
         setActivities([]);
       } else if (activitiesData && activitiesData.length > 0) {
-        const userIds = [...new Set(activitiesData.map(a => a.user_id).filter(Boolean))];
+        const userIds = [...new Set(activitiesData.map((a: any) => a.user_id).filter(Boolean))];
         if (userIds.length > 0) {
           const { data: userNames } = await supabase
             .from('alumni_profiles')
             .select('user_id, full_name')
             .in('user_id', userIds);
           
-          const nameMap = new Map(userNames?.map(u => [u.user_id, u.full_name]) || []);
-          const activitiesWithNames = activitiesData.map(a => ({
+          const nameMap = new Map(userNames?.map((u: any) => [u.user_id, u.full_name]) || []);
+          const activitiesWithNames = activitiesData.map((a: any) => ({
             ...a,
             full_name: nameMap.get(a.user_id) || 'Someone'
           }));
@@ -492,7 +633,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
         }).reverse();
         
         const weeklyData = last7Days.map(day => {
-          const count = activitiesData?.filter(a => a.created_at?.startsWith(day)).length || 0;
+          const count = activitiesData?.filter((a: any) => a.created_at?.startsWith(day)).length || 0;
           return { day: day.slice(5), count };
         });
         setWeeklyActivities(weeklyData);
@@ -533,9 +674,9 @@ export default function AdminDashboard({ session }: { session: Session }) {
     const courseStatsData = uniqueCourses.map(course => {
       const courseAlumni = alumniData.filter(a => a.course === course);
       const total = courseAlumni.length;
-      const inField = courseAlumni.filter(a => a.career_alignment_status === 'In-Field').length;
-      const rate = total > 0 ? (inField / total) * 100 : 0;
-      return { course: course || 'Unknown', total, inField, rate };
+      const inFieldCount = courseAlumni.filter(a => a.career_alignment_status === 'In-Field').length;
+      const rate = total > 0 ? (inFieldCount / total) * 100 : 0;
+      return { course: course || 'Unknown', total, inField: inFieldCount, rate };
     });
     setCourseStats(courseStatsData);
   };
@@ -562,7 +703,6 @@ export default function AdminDashboard({ session }: { session: Session }) {
     });
     setDepartmentStats(deptStats);
     
-    // Process batch data for selected department
     processDepartmentBatchData(alumniData, selectedDepartment);
   };
 
@@ -790,6 +930,13 @@ export default function AdminDashboard({ session }: { session: Session }) {
   const nonZeroEmploymentData = employmentChartData.filter(item => item.value > 0);
   const nonZeroAlignmentData = alignmentChartData.filter(item => item.value > 0);
 
+  // Pagination for master list
+  const itemsPerPage = 10;
+  const paginatedMasterList = filteredMasterList.slice(
+    (masterListPage - 1) * itemsPerPage,
+    masterListPage * itemsPerPage
+  );
+
   // ============================================================
   // SECTION 10: MAIN UI RENDER
   // ============================================================
@@ -802,7 +949,6 @@ export default function AdminDashboard({ session }: { session: Session }) {
       <nav className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-b border-gray-100 dark:border-gray-700 sticky top-0 z-40 transition-colors duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16 sm:h-20">
-            
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-[#800000] to-[#a10000] rounded-xl flex items-center justify-center shadow-md">
                 <span className="text-white font-bold text-lg sm:text-xl">GT</span>
@@ -966,11 +1112,19 @@ export default function AdminDashboard({ session }: { session: Session }) {
           >
             🤖 Program Insights
           </button>
+          <button
+            onClick={() => setActiveMainTab('masterlist')}
+            className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${
+              activeMainTab === 'masterlist'
+                ? 'bg-[#800000] text-white shadow-md'
+                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+            }`}
+          >
+            📥 Master List
+          </button>
         </div>
 
-        {/* ======================================================== */}
-        {/* TAB 1: OVERVIEW (Original Dashboard) */}
-        {/* ======================================================== */}
+        {/* TAB 1: OVERVIEW */}
         {activeMainTab === 'overview' && (
           <>
             {/* STATS CARDS */}
@@ -1221,7 +1375,6 @@ export default function AdminDashboard({ session }: { session: Session }) {
         {/* ======================================================== */}
         {activeMainTab === 'departments' && (
           <>
-            {/* Department Overview Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5 mb-8">
               {DEPARTMENTS.map(dept => {
                 const deptStat = departmentStats.find(d => d.department === dept.code);
@@ -1252,7 +1405,6 @@ export default function AdminDashboard({ session }: { session: Session }) {
               })}
             </div>
 
-            {/* Department Comparison Chart */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
               <Card>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 text-center">Department Employment Rates</h3>
@@ -1291,7 +1443,6 @@ export default function AdminDashboard({ session }: { session: Session }) {
               </Card>
             </div>
 
-            {/* Selected Department Detailed View */}
             <Card className="mb-8">
               <div className="flex items-center justify-between mb-6">
                 <div>
@@ -1369,7 +1520,6 @@ export default function AdminDashboard({ session }: { session: Session }) {
               </div>
             </Card>
 
-            {/* Department Summary Table */}
             <Card>
               <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Department Summary</h3>
               <div className="overflow-x-auto">
@@ -1505,11 +1655,10 @@ export default function AdminDashboard({ session }: { session: Session }) {
         )}
 
         {/* ======================================================== */}
-        {/* TAB 4: PROGRAM INSIGHTS (AI-Powered) */}
+        {/* TAB 4: PROGRAM INSIGHTS */}
         {/* ======================================================== */}
         {activeMainTab === 'insights' && (
           <>
-            {/* AI Summary Header */}
             <div className="mb-6">
               <div className="bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 rounded-2xl p-6 border border-purple-100 dark:border-purple-800">
                 <div className="flex items-center gap-3 mb-3">
@@ -1537,12 +1686,9 @@ export default function AdminDashboard({ session }: { session: Session }) {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Program Promotion Recommendations */}
               <Card className="h-full">
                 <div className="flex items-center gap-2 mb-4">
-                  <div className="w-8 h-8 bg-amber-100 dark:bg-amber-900 rounded-lg flex items-center justify-center text-amber-600">
-                    🚀
-                  </div>
+                  <div className="w-8 h-8 bg-amber-100 dark:bg-amber-900 rounded-lg flex items-center justify-center text-amber-600">🚀</div>
                   <h3 className="text-lg font-bold text-gray-900 dark:text-white">Program Promotion Recommendations</h3>
                 </div>
                 <div className="prose prose-sm dark:prose-invert max-w-none">
@@ -1552,29 +1698,19 @@ export default function AdminDashboard({ session }: { session: Session }) {
                       <span className="text-gray-500">Analyzing program performance...</span>
                     </div>
                   ) : aiPromotionRecs ? (
-                    <div className="whitespace-pre-wrap text-gray-700 dark:text-gray-300 leading-relaxed">
-                      {aiPromotionRecs}
-                    </div>
+                    <div className="whitespace-pre-wrap text-gray-700 dark:text-gray-300 leading-relaxed">{aiPromotionRecs}</div>
                   ) : (
                     <div className="text-center py-8 text-gray-500">
                       <p>No recommendations yet.</p>
-                      <button 
-                        onClick={fetchAIInsights} 
-                        className="mt-3 text-sm text-[#800000] hover:underline"
-                      >
-                        Generate Recommendations
-                      </button>
+                      <button onClick={fetchAIInsights} className="mt-3 text-sm text-[#800000] hover:underline">Generate Recommendations</button>
                     </div>
                   )}
                 </div>
               </Card>
 
-              {/* Program Strength Analysis */}
               <Card className="h-full">
                 <div className="flex items-center gap-2 mb-4">
-                  <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900 rounded-lg flex items-center justify-center text-emerald-600">
-                    📊
-                  </div>
+                  <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900 rounded-lg flex items-center justify-center text-emerald-600">📊</div>
                   <h3 className="text-lg font-bold text-gray-900 dark:text-white">Program Strength Analysis</h3>
                 </div>
                 <div className="prose prose-sm dark:prose-invert max-w-none">
@@ -1584,56 +1720,283 @@ export default function AdminDashboard({ session }: { session: Session }) {
                       <span className="text-gray-500">Analyzing program strength...</span>
                     </div>
                   ) : aiStrengthAnalysis ? (
-                    <div className="whitespace-pre-wrap text-gray-700 dark:text-gray-300 leading-relaxed">
-                      {aiStrengthAnalysis}
-                    </div>
+                    <div className="whitespace-pre-wrap text-gray-700 dark:text-gray-300 leading-relaxed">{aiStrengthAnalysis}</div>
                   ) : (
                     <div className="text-center py-8 text-gray-500">
                       <p>No analysis available.</p>
-                      <button 
-                        onClick={fetchAIInsights} 
-                        className="mt-3 text-sm text-[#800000] hover:underline"
-                      >
-                        Generate Analysis
-                      </button>
+                      <button onClick={fetchAIInsights} className="mt-3 text-sm text-[#800000] hover:underline">Generate Analysis</button>
                     </div>
                   )}
                 </div>
               </Card>
             </div>
 
-            {/* Quick Stats Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
               <div className="bg-gradient-to-r from-emerald-50 to-transparent dark:from-emerald-900/20 rounded-xl p-4 border border-emerald-100 dark:border-emerald-800">
-                <p className="text-2xl font-bold text-emerald-600">
-                  {departmentStats.reduce((sum, d) => sum + d.employed_count, 0)}
-                </p>
+                <p className="text-2xl font-bold text-emerald-600">{departmentStats.reduce((sum, d) => sum + d.employed_count, 0)}</p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Total Employed Alumni</p>
-                <p className="text-xs text-emerald-600 mt-1">
-                  {((departmentStats.reduce((sum, d) => sum + d.employed_count, 0) / 
-                     departmentStats.reduce((sum, d) => sum + d.total_alumni, 0)) * 100).toFixed(0)}% employment rate
-                </p>
+                <p className="text-xs text-emerald-600 mt-1">{((departmentStats.reduce((sum, d) => sum + d.employed_count, 0) / departmentStats.reduce((sum, d) => sum + d.total_alumni, 0)) * 100).toFixed(0)}% employment rate</p>
               </div>
               <div className="bg-gradient-to-r from-[#800000]/10 to-transparent rounded-xl p-4 border border-[#800000]/20">
-                <p className="text-2xl font-bold text-[#800000]">
-                  {departmentStats.reduce((sum, d) => sum + d.in_field_count, 0)}
-                </p>
+                <p className="text-2xl font-bold text-[#800000]">{departmentStats.reduce((sum, d) => sum + d.in_field_count, 0)}</p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Alumni Working In-Field</p>
-                <p className="text-xs text-[#800000] mt-1">
-                  {((departmentStats.reduce((sum, d) => sum + d.in_field_count, 0) / 
-                     departmentStats.reduce((sum, d) => sum + d.total_alumni, 0)) * 100).toFixed(0)}% career alignment
-                </p>
+                <p className="text-xs text-[#800000] mt-1">{((departmentStats.reduce((sum, d) => sum + d.in_field_count, 0) / departmentStats.reduce((sum, d) => sum + d.total_alumni, 0)) * 100).toFixed(0)}% career alignment</p>
               </div>
               <div className="bg-gradient-to-r from-amber-50 to-transparent dark:from-amber-900/20 rounded-xl p-4 border border-amber-100 dark:border-amber-800">
-                <p className="text-2xl font-bold text-amber-600">
-                  {((departmentStats.reduce((sum, d) => sum + d.employment_rate, 0) / departmentStats.length) * 
-                    0.6 + (departmentStats.reduce((sum, d) => sum + d.alignment_rate, 0) / departmentStats.length) * 0.4).toFixed(0)}/100
-                </p>
+                <p className="text-2xl font-bold text-amber-600">{((departmentStats.reduce((sum, d) => sum + d.employment_rate, 0) / departmentStats.length) * 0.6 + (departmentStats.reduce((sum, d) => sum + d.alignment_rate, 0) / departmentStats.length) * 0.4).toFixed(0)}/100</p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Overall Institutional Score</p>
                 <p className="text-xs text-amber-600 mt-1">Based on employment + alignment</p>
               </div>
             </div>
           </>
+        )}
+
+        {/* ======================================================== */}
+        {/* TAB 5: MASTER LIST */}
+        {/* ======================================================== */}
+        {activeMainTab === 'masterlist' && (
+          <div className="space-y-6">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center text-white text-xl shadow-md">
+                  📥
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Master List Management</h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Manage official graduate records for registration verification</p>
+                </div>
+              </div>
+              <Button variant="primary" onClick={() => setShowImportModal(true)} className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                Import New List
+              </Button>
+            </div>
+
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-gradient-to-r from-blue-50 to-white dark:from-blue-900/20 dark:to-gray-800 rounded-xl p-5 border border-blue-100 dark:border-blue-800">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-2xl font-bold text-blue-600">{masterListStats.total}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Total Records</p>
+                  </div>
+                  <div className="w-10 h-10 bg-blue-100 dark:bg-blue-800 rounded-full flex items-center justify-center text-blue-600 text-lg">📋</div>
+                </div>
+              </div>
+              <div className="bg-gradient-to-r from-green-50 to-white dark:from-green-900/20 dark:to-gray-800 rounded-xl p-5 border border-green-100 dark:border-green-800">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-2xl font-bold text-green-600">{masterListStats.byBatch.length}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Batch Years</p>
+                  </div>
+                  <div className="w-10 h-10 bg-green-100 dark:bg-green-800 rounded-full flex items-center justify-center text-green-600 text-lg">🎓</div>
+                </div>
+              </div>
+              <div className="bg-gradient-to-r from-purple-50 to-white dark:from-purple-900/20 dark:to-gray-800 rounded-xl p-5 border border-purple-100 dark:border-purple-800">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-2xl font-bold text-purple-600">{masterListStats.byCourse.length}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Courses</p>
+                  </div>
+                  <div className="w-10 h-10 bg-purple-100 dark:bg-purple-800 rounded-full flex items-center justify-center text-purple-600 text-lg">📚</div>
+                </div>
+              </div>
+              <div className="bg-gradient-to-r from-amber-50 to-white dark:from-amber-900/20 dark:to-gray-800 rounded-xl p-5 border border-amber-100 dark:border-amber-800">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-2xl font-bold text-amber-600">{masterListStats.latestBatch || 'N/A'}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Latest Batch</p>
+                  </div>
+                  <div className="w-10 h-10 bg-amber-100 dark:bg-amber-800 rounded-full flex items-center justify-center text-amber-600 text-lg">📅</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Search and Filter Bar */}
+            <Card>
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex-1">
+                  <div className="relative">
+                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <input
+                      type="text"
+                      placeholder="Search by student ID, name, email, or course..."
+                      value={masterListSearch}
+                      onChange={(e) => setMasterListSearch(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:border-[#800000] focus:ring-1 focus:ring-[#800000] outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <select
+                    value={masterListFilterBatch}
+                    onChange={(e) => setMasterListFilterBatch(e.target.value)}
+                    className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:border-[#800000] focus:ring-1 focus:ring-[#800000] outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                  >
+                    <option value="">All Batches</option>
+                    {masterListStats.byBatch.map(b => (
+                      <option key={b} value={b}>{b}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={masterListFilterCourse}
+                    onChange={(e) => setMasterListFilterCourse(e.target.value)}
+                    className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:border-[#800000] focus:ring-1 focus:ring-[#800000] outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                  >
+                    <option value="">All Courses</option>
+                    {masterListStats.byCourse.map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                  {(masterListSearch || masterListFilterBatch || masterListFilterCourse) && (
+                    <button
+                      onClick={() => {
+                        setMasterListSearch('');
+                        setMasterListFilterBatch('');
+                        setMasterListFilterCourse('');
+                      }}
+                      className="px-3 py-2 text-sm text-[#800000] hover:underline"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+            </Card>
+
+            {/* Master List Table */}
+            <Card>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Graduate Records</h3>
+                <div className="flex gap-2">
+                  <button onClick={refreshMasterList} className="text-sm text-gray-500 hover:text-[#800000] transition-colors flex items-center gap-1">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Refresh
+                  </button>
+                  <button onClick={exportMasterListToCSV} className="text-sm text-gray-500 hover:text-green-600 transition-colors flex items-center gap-1">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                    </svg>
+                    Export CSV
+                  </button>
+                </div>
+              </div>
+              
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">Student ID</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">Full Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">Email</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">Course</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">Batch Year</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                    {masterListLoading ? (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-12 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <div className="w-5 h-5 border-2 border-[#800000]/20 border-t-[#800000] rounded-full animate-spin" />
+                            <span className="text-gray-500">Loading master list...</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : paginatedMasterList.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
+                          No records found in master list. Click "Import New List" to add graduate records.
+                        </td>
+                      </tr>
+                    ) : (
+                      paginatedMasterList.map((record: any) => (
+                        <tr key={record.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200">
+                          <td className="px-4 py-3 font-mono text-sm text-gray-900 dark:text-white">{record.student_id}</td>
+                          <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{record.full_name}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{record.email || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{record.course || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{record.batch_year || '-'}</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                              record.verified 
+                                ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                                : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
+                            }`}>
+                              {record.verified ? 'Verified' : 'Pending'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => toggleRecordVerification(record.id, !record.verified)}
+                                className={`p-1 rounded-lg transition-colors ${
+                                  record.verified 
+                                    ? 'text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/20'
+                                    : 'text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20'
+                                }`}
+                                title={record.verified ? 'Unverify' : 'Verify'}
+                              >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={() => deleteMasterListRecord(record.id, record.full_name)}
+                                className="p-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                title="Delete Record"
+                              >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              
+              {/* Pagination */}
+              {filteredMasterList.length > 0 && (
+                <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+                  <p className="text-sm text-gray-500">
+                    Showing {paginatedMasterList.length} of {filteredMasterList.length} records
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setMasterListPage(Math.max(1, masterListPage - 1))}
+                      disabled={masterListPage === 1}
+                      className="px-3 py-1 text-sm border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                    >
+                      Previous
+                    </button>
+                    <span className="px-3 py-1 text-sm text-gray-600 dark:text-gray-400">
+                      Page {masterListPage} of {Math.ceil(filteredMasterList.length / itemsPerPage)}
+                    </span>
+                    <button
+                      onClick={() => setMasterListPage(masterListPage + 1)}
+                      disabled={masterListPage === Math.ceil(filteredMasterList.length / itemsPerPage)}
+                      className="px-3 py-1 text-sm border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </Card>
+          </div>
         )}
       </main>
 
@@ -1641,7 +2004,6 @@ export default function AdminDashboard({ session }: { session: Session }) {
       {/* BLOCK 4: MODALS */}
       {/* ========================================================== */}
       
-      {/* MODAL: Profile Details */}
       <Modal isOpen={showProfileModal} onClose={() => setShowProfileModal(false)} title="Profile Details" size="md">
         <div className="space-y-5">
           <div className="flex items-center gap-4 pb-4 border-b border-gray-100 dark:border-gray-700">
@@ -1678,7 +2040,6 @@ export default function AdminDashboard({ session }: { session: Session }) {
         </div>
       </Modal>
 
-      {/* MODAL: Settings */}
       <Modal isOpen={showSettingsModal} onClose={() => setShowSettingsModal(false)} title="Settings" size="lg">
         <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2">
           <div>
@@ -1692,9 +2053,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
               <label className="flex items-center justify-between cursor-pointer">
                 <div><p className="font-medium text-gray-700 dark:text-gray-300">Dark Mode</p><p className="text-xs text-gray-400">Switch between light and dark theme</p></div>
                 <button onClick={toggleDarkMode} className="relative w-12 h-6 rounded-full transition-colors duration-300 focus:outline-none" style={{ backgroundColor: isDarkMode ? '#800000' : '#d1d5db' }}>
-                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform duration-300 flex items-center justify-center text-xs ${isDarkMode ? 'translate-x-6' : 'translate-x-0'}`}>
-                    {isDarkMode ? '🌙' : '☀️'}
-                  </span>
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform duration-300 flex items-center justify-center text-xs ${isDarkMode ? 'translate-x-6' : 'translate-x-0'}`}>{isDarkMode ? '🌙' : '☀️'}</span>
                 </button>
               </label>
             </div>
@@ -1779,7 +2138,6 @@ export default function AdminDashboard({ session }: { session: Session }) {
         </div>
       </Modal>
 
-      {/* MODAL: Create Announcement */}
       <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="Create Announcement" size="lg">
         <div className="space-y-4">
           <input type="text" value={newAnnouncement.title} onChange={e => setNewAnnouncement({ ...newAnnouncement, title: e.target.value })} placeholder="Announcement Title" className="w-full px-4 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white" />
@@ -1865,6 +2223,15 @@ export default function AdminDashboard({ session }: { session: Session }) {
           </div>
         </div>
       </Modal>
+
+      <ImportMasterListModal 
+        isOpen={showImportModal} 
+        onClose={() => setShowImportModal(false)}
+        onImportComplete={() => {
+          fetchMasterList();
+          showSettingsToast('Import completed successfully!', 'success');
+        }}
+      />
     </div>
   );
 }
