@@ -367,12 +367,13 @@ const ActivityTimeline: React.FC<{ activities: Activity[]; loading: boolean }> =
   const getActivityIcon = (type: string) => {
     const icons: Record<string, string> = {
       profile_update: '✏️',
-      employment_update: '💼',
+      employment_update: '📊',
       verification: '✅',
       profile_completed: '🏆',
       announcement_view: '📢',
       login: '🔐',
-      avatar_upload: '📷',
+      logout: '🔒',
+      avatar_upload: '🖼️',
     };
     return icons[type] || '📌';
   };
@@ -385,6 +386,7 @@ const ActivityTimeline: React.FC<{ activities: Activity[]; loading: boolean }> =
       profile_completed: 'bg-amber-100 text-amber-700',
       announcement_view: 'bg-purple-100 text-purple-700',
       login: 'bg-indigo-100 text-indigo-700',
+      logout: 'bg-gray-100 text-gray-700',
       avatar_upload: 'bg-pink-100 text-pink-700',
     };
     return colors[type] || 'bg-gray-100 text-gray-700';
@@ -587,8 +589,43 @@ export default function AlumniDashboard({ session }: { session: Session }) {
   const [saveLoading, setSaveLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
+  // FIXED: Working Sign Out Handler with logout tracking
+  const handleSignOut = async () => {
+    setSignOutLoading(true);
+    try {
+      // Add logout activity BEFORE signing out
+      const { error: activityError } = await supabase.from('alumni_activities').insert({
+        user_id: session.user.id,
+        activity_type: 'logout',
+        description: 'Signed out',
+        metadata: { timestamp: new Date().toISOString() }
+      });
+      
+      if (activityError) {
+        console.error('Error logging logout activity:', activityError);
+      }
+      
+      // Sign out from Supabase
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('Sign out error:', error);
+        setSignOutLoading(false);
+        showToast('Error signing out. Please try again.', 'error');
+        return;
+      }
+      // Force redirect to login page
+      window.location.href = '/';
+    } catch (error) {
+      console.error('Sign out exception:', error);
+      setSignOutLoading(false);
+      showToast('Error signing out. Please try again.', 'error');
+      // Force redirect even on error
+      window.location.href = '/';
+    }
+  };
+
   useEffect(() => {
-    // Timeout to force loading to stop after 5 seconds
+    // Timeout to force loading to stop after 8 seconds
     const timeoutId = setTimeout(() => {
       if (loading) {
         console.warn('Loading timeout triggered – forcing loading to false');
@@ -599,7 +636,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
     fetchProfile();
     fetchAnnouncements();
     fetchActivities();
-    addActivity('login', 'Logged into account');
+    addActivity('login', 'Signed in');
 
     return () => clearTimeout(timeoutId);
   }, [session.user.id]);
@@ -835,9 +872,20 @@ export default function AlumniDashboard({ session }: { session: Session }) {
     return Math.min(score, 100);
   };
 
+  // ==================== FIXED: HANDLE SAVE EMPLOYMENT WITH SPECIFIC DETAILS ====================
   const handleSaveEmployment = async () => {
     setSaveLoading(true);
     const completionScore = calculateCompletion(employmentForm);
+    
+    // Store old values to compare
+    const oldValues = {
+      job_title: profile?.job_title || '',
+      company: profile?.company || '',
+      employment_status: profile?.employment_status || '',
+      industry: profile?.industry || '',
+      location: profile?.location || '',
+      linkedin_url: profile?.linkedin_url || '',
+    };
     
     const updateData: Record<string, unknown> = {
       last_synced_at: new Date().toISOString(),
@@ -857,9 +905,68 @@ export default function AlumniDashboard({ session }: { session: Session }) {
       .eq('user_id', session.user.id);
 
     if (!error) {
+      // Build specific activity description
+      let activityDescription = '';
+      
+      // Check job title change
+      if (employmentForm.job_title !== oldValues.job_title) {
+        const oldVal = oldValues.job_title || 'not set';
+        const newVal = employmentForm.job_title || 'not set';
+        activityDescription += `changed job title from "${oldVal}" to "${newVal}". `;
+      }
+      
+      // Check company change
+      if (employmentForm.company !== oldValues.company) {
+        const oldVal = oldValues.company || 'not set';
+        const newVal = employmentForm.company || 'not set';
+        activityDescription += `changed company from "${oldVal}" to "${newVal}". `;
+      }
+      
+      // Check employment status change
+      if (employmentForm.employment_status !== oldValues.employment_status) {
+        const oldVal = oldValues.employment_status || 'not set';
+        const newVal = employmentForm.employment_status;
+        activityDescription += `changed employment status from "${oldVal}" to "${newVal}". `;
+      }
+      
+      // Check industry change
+      if (employmentForm.industry !== oldValues.industry) {
+        const oldVal = oldValues.industry || 'not set';
+        const newVal = employmentForm.industry || 'not set';
+        activityDescription += `changed industry from "${oldVal}" to "${newVal}". `;
+      }
+      
+      // Check location change
+      if (employmentForm.location !== oldValues.location) {
+        const oldVal = oldValues.location || 'not set';
+        const newVal = employmentForm.location || 'not set';
+        activityDescription += `changed location from "${oldVal}" to "${newVal}". `;
+      }
+      
+      // Check LinkedIn change
+      if (employmentForm.linkedin_url !== oldValues.linkedin_url) {
+        if (employmentForm.linkedin_url && !oldValues.linkedin_url) {
+          activityDescription += `added LinkedIn profile. `;
+        } else if (!employmentForm.linkedin_url && oldValues.linkedin_url) {
+          activityDescription += `removed LinkedIn profile. `;
+        } else if (employmentForm.linkedin_url !== oldValues.linkedin_url) {
+          activityDescription += `updated LinkedIn profile. `;
+        }
+      }
+      
+      // If nothing specific changed, log a generic update
+      if (!activityDescription) {
+        activityDescription = `updated career information`;
+      }
+      
+      // Remove trailing space
+      activityDescription = activityDescription.trim();
+      
+      // Add activity with specific details
+      await addActivity('employment_update', activityDescription);
+      
       setProfile(prev => prev ? { ...prev, ...employmentForm, profile_completion: completionScore } : null);
       setShowEmploymentModal(false);
-      await addActivity('employment_update', `Updated employment status to ${employmentForm.employment_status}`);
       showToast('Career information updated successfully!', 'success');
     } else {
       showToast('Error updating career information', 'error');
@@ -973,20 +1080,15 @@ export default function AlumniDashboard({ session }: { session: Session }) {
                 )}
               </div>
               
-              {/* Sign Out Button */}
+              {/* Sign Out Button - UPDATED with logout tracking */}
               <Button 
                 variant="danger" 
                 size="sm" 
-                onClick={async () => {
-                  setSignOutLoading(true);
-                  await supabase.auth.signOut();
-                  setSignOutLoading(false);
-                }}
-                loading={signOutLoading}
-                loadingText="Signing Out..."
+                onClick={handleSignOut}
+                disabled={signOutLoading}
                 className="!px-2 !py-1 sm:!px-3 sm:!py-1.5 text-[11px] sm:text-sm"
               >
-                Sign Out
+                {signOutLoading ? 'Signing Out...' : 'Sign Out'}
               </Button>
             </div>
           </div>
@@ -1277,9 +1379,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
               icon="🏢"
             />
             <div className="sm:col-span-2">
-              <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                Employment Status
-              </label>
+              <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">Employment Status</label>
               <select
                 value={employmentForm.employment_status}
                 onChange={e => setEmploymentForm({ ...employmentForm, employment_status: e.target.value })}

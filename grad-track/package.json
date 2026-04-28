@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "autoprefixer": "^10.5.0",
     "postcss": "^8.5.10",
     "react": "^19.2.4",

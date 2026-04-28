@@ -1,4 +1,4 @@
-// Register.tsx - COMPLETE WITH BLUE STYLING
+// Register.tsx - COMPLETE WITH BLUE STYLING (ERRORS FIXED)
 import React, { useState } from 'react';
 import { supabase } from './lib/supabase';
 
@@ -90,7 +90,7 @@ export default function Register({ onSuccess }: RegisterProps) {
       console.log('Checking for existing user with Student ID:', studentId);
       
       // Check by student_id in alumni_profiles
-      const { data: existingProfile, error: profileError } = await supabase
+      const { data: existingProfile } = await supabase
         .from('alumni_profiles')
         .select('user_id, full_name, student_id')
         .eq('student_id', studentId)
@@ -107,7 +107,7 @@ export default function Register({ onSuccess }: RegisterProps) {
       }
 
       // Check by email in users table
-      const { data: existingUser, error: userError } = await supabase
+      const { data: existingUser } = await supabase
         .from('users')
         .select('email, full_name')
         .eq('email', email)
@@ -186,7 +186,7 @@ export default function Register({ onSuccess }: RegisterProps) {
         .maybeSingle();
 
       if (duplicateCheck) {
-        setError(` Email "${formData.email}" is already taken.\n\nPlease use a different email or sign in to your existing account.`);
+        setError(`⚠️ Email "${formData.email}" is already taken.\n\nPlease use a different email or sign in to your existing account.`);
         setLoading(false);
         setLoadingStep('');
         return;
@@ -280,7 +280,7 @@ export default function Register({ onSuccess }: RegisterProps) {
         console.log('Registration complete!');
         
         // Show success message
-        const successMessage = `✓ Registration Successful!\n\nWelcome, ${formData.fullName}!\n\nA confirmation email has been sent to:\n${formData.email}\n\nPlease check your inbox and click the confirmation link to activate your account.`;
+        const successMessage = `✓ Registration Successful!\n\nWelcome, ${formData.fullName}!\n\nA confirmation email has been sent to:\n${formData.email}\n\nPlease check your inbox and click the confirmation link to activate your GradTrack account.`;
         alert(successMessage);
         
         // Redirect to login
@@ -612,14 +612,14 @@ export default function Register({ onSuccess }: RegisterProps) {
         {error && (
           <div 
             id="error-message"
-            className="rounded-xl p-4 bg-red-50 border border-red-200"
+            className="rounded-xl p-4 bg-blue-50 border border-blue-200"
           >
             <div className="flex items-start gap-3">
               <div className="text-xl flex-shrink-0">
-                {error.includes('already registered') || error.includes('already taken') ? '' : '❌'}
+                {error.includes('already registered') || error.includes('already taken') ? '⚠️' : '❌'}
               </div>
               <div className="flex-1">
-                <p className="text-sm whitespace-pre-line text-red-800">
+                <p className="text-sm whitespace-pre-line text-blue-800">
                   {error}
                 </p>
                 
@@ -627,27 +627,15 @@ export default function Register({ onSuccess }: RegisterProps) {
                 {(error.includes('already registered') || error.includes('already taken')) && (
                   <div className="mt-4 space-y-2">
                     <div className="flex justify-end">
-  <button
-    type="button"
-    onClick={() => onSuccess?.()}
-    className="px-3 py-1.5 bg-[#800000] text-white rounded-md font-medium hover:bg-[#6a0000] transition text-xs"
-  >
-    Sign In →
-  </button>
-</div>
+                      <button
+                        type="button"
+                        onClick={() => onSuccess?.()}
+                        className="px-3 py-1.5 bg-[#800000] text-white rounded-md font-medium hover:bg-[#6a0000] transition text-xs"
+                      >
+                        Sign In →
+                      </button>
+                    </div>
                     
-                    {/* <button
-                      type="button"
-                      onClick={() => {
-                        setError('');
-                        setFormData(prev => ({ ...prev, email: '', studentId: '' }));
-                        setVerificationStatus('idle');
-                      }}
-                      className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition text-sm"
-                    >
-                      Try Different Account
-                    </button>
-                     */}
                     <p className="text-xs text-gray-500 text-center pt-2">
                       Forgot your password? Use the "Forgot Password" link on the sign in page.
                     </p>
