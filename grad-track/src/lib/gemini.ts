@@ -1,4 +1,4 @@
-// src/lib/gemini.ts - WITH RATE LIMIT DETECTION
+// src/lib/gemini.ts
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
 interface DepartmentStat {
@@ -12,18 +12,16 @@ interface DepartmentStat {
   alignment_rate: number;
 }
 
-// Track if we're currently rate limited
+// Track rate limiting
 let isRateLimited = false;
 let rateLimitResetTime = 0;
 
 async function callGemini(prompt: string): Promise<{ success: boolean; text: string }> {
-  // Check if we're still in rate limit cooldown
   if (isRateLimited && Date.now() < rateLimitResetTime) {
     console.log('Still rate limited, using fallback');
     return { success: false, text: '' };
   }
   
-  // Reset rate limit flag after cooldown
   if (isRateLimited && Date.now() >= rateLimitResetTime) {
     isRateLimited = false;
     console.log('Rate limit cooldown ended');
@@ -40,11 +38,10 @@ async function callGemini(prompt: string): Promise<{ success: boolean; text: str
       })
     });
     
-    // Handle rate limit
     if (response.status === 429) {
       isRateLimited = true;
-      rateLimitResetTime = Date.now() + 60000; // Wait 60 seconds
-      console.log('Rate limit hit, using fallback for next 60 seconds');
+      rateLimitResetTime = Date.now() + 60000;
+      console.log('Rate limit hit, using fallback');
       return { success: false, text: '' };
     }
     
@@ -67,13 +64,27 @@ async function callGemini(prompt: string): Promise<{ success: boolean; text: str
   }
 }
 
-// ==================== FEATURE FUNCTIONS ====================
-
+// ============================================================
+// PROGRAM PROMOTION RECOMMENDATIONS
+// ============================================================
 export async function getProgramPromotionRecommendations(stats: DepartmentStat[]): Promise<{ success: boolean; text: string }> {
   if (!stats.length) {
     return { 
       success: false, 
       text: 'No alumni data available to generate recommendations.' 
+    };
+  }
+
+  // Filter out departments with zero alumni for more relevant analysis
+  const departmentsWithAlumni = stats.filter(s => s.total_alumni > 0);
+  
+  // If only one department has data, provide specific recommendation
+  if (departmentsWithAlumni.length === 1) {
+    const dept = departmentsWithAlumni[0];
+    const deptName = getDepartmentName(dept.department);
+    return {
+      success: false,
+      text: `📊 Based on current data, ${deptName} (${dept.department}) has ${dept.total_alumni} registered alumni with ${dept.employment_rate.toFixed(0)}% employment rate. As more alumni join, we'll provide comparative program recommendations.`
     };
   }
 
@@ -87,7 +98,7 @@ ${JSON.stringify(stats, null, 2)}
 
 Identify the TOP 2 programs with the best employment and alignment rates.
 For each program, provide:
-- Program name
+- Program name (full name, not just code)
 - Why they are successful (one short sentence)
 - Target audience to promote to
 
@@ -97,23 +108,45 @@ Keep response concise, professional, and under 150 words.
   const result = await callGemini(prompt);
   
   if (!result.success) {
-    // Return fallback based on real data
-    const sorted = [...stats].sort((a, b) => b.alignment_rate - a.alignment_rate);
+    // IMPROVED FALLBACK: Only consider departments with data
+    const validDepts = stats.filter(s => s.total_alumni > 0);
+    if (validDepts.length === 0) {
+      return {
+        success: false,
+        text: `No alumni data available yet. Once alumni register and update their career information, insights will appear here.`
+      };
+    }
+    
+    const sorted = [...validDepts].sort((a, b) => b.alignment_rate - a.alignment_rate);
     const topDept = sorted[0];
+    const topDeptName = getDepartmentName(topDept.department);
+    
     return {
       success: false,
-      text: `Based on alumni data, ${topDept.department} shows the strongest performance with ${topDept.alignment_rate.toFixed(0)}% career alignment and ${topDept.employment_rate.toFixed(0)}% employment rate. Consider promoting this program to prospective students.`
+      text: `📈 Based on current data, ${topDeptName} (${topDept.department}) is the top performer with ${topDept.alignment_rate.toFixed(0)}% career alignment and ${topDept.employment_rate.toFixed(0)}% employment rate. Continue monitoring as more alumni join for comprehensive insights.`
     };
   }
   
   return result;
 }
 
+// ============================================================
+// PROGRAM STRENGTH ANALYSIS
+// ============================================================
 export async function getProgramStrengthAnalysis(stats: DepartmentStat[]): Promise<{ success: boolean; text: string }> {
   if (!stats.length) {
     return { 
       success: false, 
       text: 'No alumni data available for analysis.' 
+    };
+  }
+
+  const validDepts = stats.filter(s => s.total_alumni > 0);
+  
+  if (validDepts.length === 0) {
+    return {
+      success: false,
+      text: `Waiting for alumni data. Insights will appear as graduates register and update their profiles.`
     };
   }
 
@@ -133,22 +166,38 @@ Keep response professional and under 150 words.
   const result = await callGemini(prompt);
   
   if (!result.success) {
-    const bestDept = stats.reduce((prev, current) => 
+    const validDepts = stats.filter(s => s.total_alumni > 0);
+    const bestDept = validDepts.reduce((prev, current) => 
       (prev.alignment_rate > current.alignment_rate) ? prev : current
     );
-    const worstDept = stats.reduce((prev, current) => 
+    const bestDeptName = getDepartmentName(bestDept.department);
+    const avgAlignment = validDepts.reduce((sum, d) => sum + d.alignment_rate, 0) / validDepts.length;
+    
+    // Only mention "needs attention" if there's an actual underperformer with data
+    const worstDept = validDepts.reduce((prev, current) => 
       (prev.alignment_rate < current.alignment_rate) ? prev : current
     );
-    const avgAlignment = stats.reduce((sum, d) => sum + d.alignment_rate, 0) / stats.length;
+    const worstDeptName = getDepartmentName(worstDept.department);
+    
+    if (validDepts.length === 1) {
+      return {
+        success: false,
+        text: `Currently tracking ${bestDept.total_alumni} alumni in ${bestDeptName} with ${bestDept.employment_rate.toFixed(0)}% employment and ${bestDept.alignment_rate.toFixed(0)}% alignment. More departments will appear as alumni register.`
+      };
+    }
+    
     return {
       success: false,
-      text: `Overall CRMC shows ${avgAlignment.toFixed(0)}% average career alignment. ${bestDept.department} is the top performer at ${bestDept.alignment_rate.toFixed(0)}% alignment. ${worstDept.department} may need curriculum review at ${worstDept.alignment_rate.toFixed(0)}% alignment.`
+      text: `Based on ${validDepts.length} departments with data, average career alignment is ${avgAlignment.toFixed(0)}%. ${bestDeptName} leads with ${bestDept.alignment_rate.toFixed(0)}% alignment. ${worstDeptName} has ${worstDept.alignment_rate.toFixed(0)}% alignment - consider reviewing career support.`
     };
   }
   
   return result;
 }
 
+// ============================================================
+// INSTITUTIONAL SUMMARY
+// ============================================================
 export async function getInstitutionalSummary(stats: DepartmentStat[]): Promise<{ success: boolean; text: string }> {
   if (!stats.length) {
     return { 
@@ -157,9 +206,10 @@ export async function getInstitutionalSummary(stats: DepartmentStat[]): Promise<
     };
   }
 
-  const totalAlumni = stats.reduce((sum, d) => sum + d.total_alumni, 0);
-  const avgEmployment = stats.reduce((sum, d) => sum + d.employment_rate, 0) / stats.length;
-  const avgAlignment = stats.reduce((sum, d) => sum + d.alignment_rate, 0) / stats.length;
+  const validDepts = stats.filter(s => s.total_alumni > 0);
+  const totalAlumni = validDepts.reduce((sum, d) => sum + d.total_alumni, 0);
+  const avgEmployment = validDepts.reduce((sum, d) => sum + d.employment_rate, 0) / validDepts.length;
+  const avgAlignment = validDepts.reduce((sum, d) => sum + d.alignment_rate, 0) / validDepts.length;
   
   const prompt = `
 Write ONE professional sentence summarizing GradTrack's alumni performance:
@@ -173,11 +223,39 @@ Keep under 20 words, encouraging tone.
   const result = await callGemini(prompt);
   
   if (!result.success) {
+    if (totalAlumni === 0) {
+      return {
+        success: false,
+        text: `🎓 GradTrack is ready to track alumni careers. Insights will appear as graduates join and update their profiles.`
+      };
+    }
+    if (validDepts.length === 1) {
+      const dept = validDepts[0];
+      const deptName = getDepartmentName(dept.department);
+      return {
+        success: false,
+        text: `🎓 Tracking ${totalAlumni} alumni in ${deptName} with ${avgEmployment.toFixed(0)}% employment and ${avgAlignment.toFixed(0)}% career alignment.`
+      };
+    }
     return {
       success: false,
-      text: `🎓 Tracking ${totalAlumni} alumni with ${avgEmployment.toFixed(0)}% employment and ${avgAlignment.toFixed(0)}% career alignment across 5 departments.`
+      text: `🎓 Tracking ${totalAlumni} alumni across ${validDepts.length} departments with ${avgEmployment.toFixed(0)}% employment and ${avgAlignment.toFixed(0)}% career alignment.`
     };
   }
   
   return result;
+}
+
+// ============================================================
+// HELPER FUNCTION: Get department full name
+// ============================================================
+function getDepartmentName(code: string): string {
+  const names: Record<string, string> = {
+    'CCS': 'Computer Studies',
+    'CTE': 'Teacher Education',
+    'CCJE': 'Criminal Justice Education',
+    'CBE': 'Business Education',
+    'PSY': 'Psychology'
+  };
+  return names[code] || code;
 }

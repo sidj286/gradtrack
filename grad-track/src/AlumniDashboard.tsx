@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './lib/supabase';
 import type { Session } from '@supabase/supabase-js';
+import { classifyCareerAlignment, getAlignmentDisplay, getAlignmentBadgeColor } from './lib/careerClassifier';
 
 // ==================== TYPES ====================
 interface Profile {
@@ -18,7 +19,7 @@ interface Profile {
   linkedin_url: string | null;
   auto_sync_enabled: boolean;
   last_synced_at: string | null;
-  career_alignment_status: string | null;
+  career_alignment_bool: boolean | null;  // TRUE = In-Field, FALSE = Out-of-Field, NULL = Pending
   ai_confidence_score: number | null;
   profile_completion: number;
   avatar_url: string | null;
@@ -589,11 +590,9 @@ export default function AlumniDashboard({ session }: { session: Session }) {
   const [saveLoading, setSaveLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
-  // FIXED: Working Sign Out Handler with logout tracking
   const handleSignOut = async () => {
     setSignOutLoading(true);
     try {
-      // Add logout activity BEFORE signing out
       const { error: activityError } = await supabase.from('alumni_activities').insert({
         user_id: session.user.id,
         activity_type: 'logout',
@@ -605,7 +604,6 @@ export default function AlumniDashboard({ session }: { session: Session }) {
         console.error('Error logging logout activity:', activityError);
       }
       
-      // Sign out from Supabase
       const { error } = await supabase.auth.signOut();
       if (error) {
         console.error('Sign out error:', error);
@@ -613,19 +611,16 @@ export default function AlumniDashboard({ session }: { session: Session }) {
         showToast('Error signing out. Please try again.', 'error');
         return;
       }
-      // Force redirect to login page
       window.location.href = '/';
     } catch (error) {
       console.error('Sign out exception:', error);
       setSignOutLoading(false);
       showToast('Error signing out. Please try again.', 'error');
-      // Force redirect even on error
       window.location.href = '/';
     }
   };
 
   useEffect(() => {
-    // Timeout to force loading to stop after 8 seconds
     const timeoutId = setTimeout(() => {
       if (loading) {
         console.warn('Loading timeout triggered – forcing loading to false');
@@ -640,6 +635,31 @@ export default function AlumniDashboard({ session }: { session: Session }) {
 
     return () => clearTimeout(timeoutId);
   }, [session.user.id]);
+
+  // Add this useEffect in your AlumniDashboard component
+useEffect(() => {
+  const channel = supabase
+    .channel('alumni-announcements')
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT', // Only listen for new announcements
+        schema: 'public',
+        table: 'announcements',
+        filter: `published=eq.true` // Only get published ones
+      },
+      (payload) => {
+        console.log('New announcement!', payload);
+        // Add to existing announcements or refresh list
+        fetchAnnouncements(); // Your existing function
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, []);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info') => {
     setToast({ message, type });
@@ -662,7 +682,6 @@ export default function AlumniDashboard({ session }: { session: Session }) {
       }
 
       if (!data) {
-        // Create new profile
         console.log('No profile found, creating new profile...');
         const newProfile = {
           user_id: session.user.id,
@@ -676,7 +695,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
           employment_status: 'Unemployed',
           linkedin_url: '',
           auto_sync_enabled: false,
-          career_alignment_status: 'Pending',
+          career_alignment_bool: null,
           ai_confidence_score: 0,
           profile_completion: 15,
           avatar_url: null,
@@ -694,7 +713,6 @@ export default function AlumniDashboard({ session }: { session: Session }) {
         setProfile(created);
         console.log('Profile created successfully');
       } else {
-        // Existing profile
         let avatarUrl = null;
         if (data.avatar_url) {
           const { data: publicUrlData } = supabase.storage
@@ -799,7 +817,6 @@ export default function AlumniDashboard({ session }: { session: Session }) {
     }
   };
 
-  // ==================== PROFILE PICTURE UPLOAD FUNCTIONS ====================
   const uploadAvatar = async (file: File) => {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
@@ -872,12 +889,11 @@ export default function AlumniDashboard({ session }: { session: Session }) {
     return Math.min(score, 100);
   };
 
-  // ==================== FIXED: HANDLE SAVE EMPLOYMENT WITH SPECIFIC DETAILS ====================
+  // ==================== UPDATED HANDLE SAVE EMPLOYMENT ====================
   const handleSaveEmployment = async () => {
     setSaveLoading(true);
     const completionScore = calculateCompletion(employmentForm);
     
-    // Store old values to compare
     const oldValues = {
       job_title: profile?.job_title || '',
       company: profile?.company || '',
@@ -899,73 +915,69 @@ export default function AlumniDashboard({ session }: { session: Session }) {
     if (employmentForm.location !== undefined) updateData.location = employmentForm.location || null;
     if (employmentForm.linkedin_url !== undefined) updateData.linkedin_url = employmentForm.linkedin_url || null;
     
+    // ============================================================
+    // CLASSIFICATION: Save boolean directly to career_alignment_bool
+    // ============================================================
+    let classificationResult = null;
+    if (employmentForm.job_title !== oldValues.job_title && employmentForm.job_title) {
+      classificationResult = await classifyCareerAlignment(
+        profile?.course || '',
+        employmentForm.job_title,
+        ''
+      );
+      
+      // ✅ NEW CODE: Save the boolean value directly
+      if (classificationResult) {
+        updateData.career_alignment_bool = classificationResult.isAligned;
+        updateData.ai_confidence_score = classificationResult.confidence_score;
+      }
+    }
+    
     const { error } = await supabase
       .from('alumni_profiles')
       .update(updateData)
       .eq('user_id', session.user.id);
 
     if (!error) {
-      // Build specific activity description
       let activityDescription = '';
       
-      // Check job title change
       if (employmentForm.job_title !== oldValues.job_title) {
         const oldVal = oldValues.job_title || 'not set';
         const newVal = employmentForm.job_title || 'not set';
         activityDescription += `changed job title from "${oldVal}" to "${newVal}". `;
       }
       
-      // Check company change
       if (employmentForm.company !== oldValues.company) {
         const oldVal = oldValues.company || 'not set';
         const newVal = employmentForm.company || 'not set';
         activityDescription += `changed company from "${oldVal}" to "${newVal}". `;
       }
       
-      // Check employment status change
       if (employmentForm.employment_status !== oldValues.employment_status) {
         const oldVal = oldValues.employment_status || 'not set';
         const newVal = employmentForm.employment_status;
         activityDescription += `changed employment status from "${oldVal}" to "${newVal}". `;
       }
       
-      // Check industry change
-      if (employmentForm.industry !== oldValues.industry) {
-        const oldVal = oldValues.industry || 'not set';
-        const newVal = employmentForm.industry || 'not set';
-        activityDescription += `changed industry from "${oldVal}" to "${newVal}". `;
+      if (classificationResult && classificationResult.isAligned !== null) {
+        const alignmentText = classificationResult.isAligned ? 'In-Field' : 'Out-of-Field';
+        activityDescription += ` AI classified as ${alignmentText} (${Math.round(classificationResult.confidence_score * 100)}% confidence).`;
       }
       
-      // Check location change
-      if (employmentForm.location !== oldValues.location) {
-        const oldVal = oldValues.location || 'not set';
-        const newVal = employmentForm.location || 'not set';
-        activityDescription += `changed location from "${oldVal}" to "${newVal}". `;
-      }
-      
-      // Check LinkedIn change
-      if (employmentForm.linkedin_url !== oldValues.linkedin_url) {
-        if (employmentForm.linkedin_url && !oldValues.linkedin_url) {
-          activityDescription += `added LinkedIn profile. `;
-        } else if (!employmentForm.linkedin_url && oldValues.linkedin_url) {
-          activityDescription += `removed LinkedIn profile. `;
-        } else if (employmentForm.linkedin_url !== oldValues.linkedin_url) {
-          activityDescription += `updated LinkedIn profile. `;
-        }
-      }
-      
-      // If nothing specific changed, log a generic update
       if (!activityDescription) {
         activityDescription = `updated career information`;
       }
       
-      // Remove trailing space
-      activityDescription = activityDescription.trim();
+      await addActivity('employment_update', activityDescription.trim());
       
-      // Add activity with specific details
-      await addActivity('employment_update', activityDescription);
+      setProfile(prev => prev ? { 
+        ...prev, 
+        ...employmentForm, 
+        profile_completion: completionScore,
+        career_alignment_bool: classificationResult?.isAligned !== undefined ? classificationResult.isAligned : prev.career_alignment_bool,
+        ai_confidence_score: classificationResult?.confidence_score || prev.ai_confidence_score
+      } : null);
       
-      setProfile(prev => prev ? { ...prev, ...employmentForm, profile_completion: completionScore } : null);
       setShowEmploymentModal(false);
       showToast('Career information updated successfully!', 'success');
     } else {
@@ -1009,7 +1021,6 @@ export default function AlumniDashboard({ session }: { session: Session }) {
             </div>
             
             <div className="flex items-center gap-1.5 sm:gap-4">
-              {/* Mobile Tab Switcher */}
               <div className="flex md:hidden bg-gray-100 rounded-xl p-0.5 sm:p-1">
                 <button
                   onClick={() => setActiveTab('overview')}
@@ -1035,7 +1046,6 @@ export default function AlumniDashboard({ session }: { session: Session }) {
                 </button>
               </div>
 
-              {/* Desktop Navigation */}
               <div className="hidden md:flex gap-1">
                 <button
                   onClick={() => setActiveTab('overview')}
@@ -1059,7 +1069,6 @@ export default function AlumniDashboard({ session }: { session: Session }) {
                 </button>
               </div>
               
-              {/* Notification Bell */}
               <div className="relative">
                 <NotificationBell 
                   unreadCount={unreadCount}
@@ -1080,7 +1089,6 @@ export default function AlumniDashboard({ session }: { session: Session }) {
                 )}
               </div>
               
-              {/* Sign Out Button - UPDATED with logout tracking */}
               <Button 
                 variant="danger" 
                 size="sm" 
@@ -1111,7 +1119,6 @@ export default function AlumniDashboard({ session }: { session: Session }) {
             <Card className="p-4 sm:p-6 hover:shadow-xl transition-all duration-300">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-6">
                 <div className="flex items-center gap-4 sm:gap-6">
-                  {/* Profile Picture */}
                   <div className="relative group">
                     <img
                       src={profile?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.full_name || 'A')}&background=800000&color=fff&rounded=true&size=80`}
@@ -1190,9 +1197,17 @@ export default function AlumniDashboard({ session }: { session: Session }) {
                   🎯
                 </div>
                 <h3 className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider mb-0.5 sm:mb-1">Alignment</h3>
-                <p className="text-sm sm:text-lg font-bold text-gray-900">{profile?.career_alignment_status || 'Pending'}</p>
+                <div className="flex items-center gap-2">
+                  {profile?.career_alignment_bool === true ? (
+                    <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-full bg-green-100 text-green-700">✓ In-Field</span>
+                  ) : profile?.career_alignment_bool === false ? (
+                    <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-full bg-amber-100 text-amber-700">⚠️ Out-of-Field</span>
+                  ) : (
+                    <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-full bg-gray-100 text-gray-500">⏳ Pending</span>
+                  )}
+                </div>
                 {profile?.ai_confidence_score && profile.ai_confidence_score > 0 && (
-                  <p className="text-[10px] sm:text-sm text-gray-500 mt-0.5 sm:mt-1">{profile.ai_confidence_score}%</p>
+                  <p className="text-[10px] sm:text-sm text-gray-500 mt-1">{Math.round(profile.ai_confidence_score * 100)}% confidence</p>
                 )}
               </Card>
 
@@ -1306,7 +1321,6 @@ export default function AlumniDashboard({ session }: { session: Session }) {
             </Card>
           </div>
         ) : (
-          // Announcements Page
           <div className="space-y-4 sm:space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2 sm:gap-3">
