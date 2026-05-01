@@ -2,17 +2,18 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+// https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react(), 
     VitePWA({
       registerType: 'autoUpdate',
-      // Disable devOptions for the production build to avoid internal path errors
-      devOptions: {
-        enabled: false 
-      },
+      injectRegister: 'auto',
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}']
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
+        skipWaiting: true
       },
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg', 'gt-favicon.svg'],
       manifest: {
@@ -42,5 +43,8 @@ export default defineConfig({
         ]
       }
     })
-  ]
+  ],
+  build: {
+    chunkSizeWarningLimit: 1600,
+  }
 });
