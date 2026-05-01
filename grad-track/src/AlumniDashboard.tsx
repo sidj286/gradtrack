@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './lib/supabase';
 import type { Session } from '@supabase/supabase-js';
-import { classifyCareerAlignment, getAlignmentDisplay, getAlignmentBadgeColor } from './lib/careerClassifier';
+import { classifyCareerAlignment } from './lib/careerClassifier';
 
 // ==================== TYPES ====================
 interface Profile {

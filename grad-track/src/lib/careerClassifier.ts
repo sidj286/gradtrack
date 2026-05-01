@@ -147,7 +147,7 @@ function fallbackClassify(course: string, jobTitle: string): CareerAlignmentResu
 export async function classifyCareerAlignment(
   course: string,
   jobTitle: string,
-  jobDescription?: string
+  _jobDescription?: string
 ): Promise<CareerAlignmentResult> {
   // Validate inputs
   if (!jobTitle || jobTitle.trim() === '') {

@@ -168,7 +168,7 @@ export default function Register({ onSuccess }: RegisterProps) {
       const existingCheck = await checkIfUserExists(formData.studentId, formData.email);
       
       if (existingCheck.exists) {
-        setError(existingCheck.message);
+        setError(existingCheck.message || 'User already exists');
         setLoading(false);
         setLoadingStep('');
         

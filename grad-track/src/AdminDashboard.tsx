@@ -5,6 +5,7 @@ import type { Session } from '@supabase/supabase-js';
 import { PieChart, Pie, BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip, Legend, Cell } from 'recharts';
 import { getProgramPromotionRecommendations, getProgramStrengthAnalysis, getInstitutionalSummary } from './lib/gemini';
 import ImportMasterListModal from './ImportMasterListModal';
+import ReportsPanel from './ReportsPanel';
 
 // ==================== TYPES ====================
 interface AlumniProfile {
@@ -185,7 +186,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [departmentStats, setDepartmentStats] = useState<DepartmentStat[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeMainTab, setActiveMainTab] = useState<'overview' | 'departments' | 'announcements' | 'insights' | 'masterlist'>('overview');
+  const [activeMainTab, setActiveMainTab] = useState<"overview" | "departments" | "announcements" | "insights" | "masterlist" | "reports">("overview");
   
   const [showImportModal, setShowImportModal] = useState(false);
   
@@ -258,7 +259,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
     { name: 'Out-of-Field', value: 0, color: '#f59e0b' },
     { name: 'Pending', value: 0, color: '#6b7280' },
   ]);
-  const [courseStats, setCourseStats] = useState<{ course: string; total: number; inField: number; rate: number }[]>([]);
+  const [_courseStats, setCourseStats] = useState<{ course: string; total: number; inField: number; rate: number }[]>([]);
   const [weeklyActivities, setWeeklyActivities] = useState<{ day: string; count: number }[]>([]);
   
   const [selectedDepartment, setSelectedDepartment] = useState<string>('CCS');
@@ -1230,7 +1231,15 @@ export default function AdminDashboard({ session }: { session: Session }) {
           >
             📥 Master List
           </button>
+
+          
+          <button onClick={() => setActiveMainTab('reports')} 
+          className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 
+          ${activeMainTab === 'reports' ? 'bg-[#800000] text-white shadow-md' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>📊 Reports</button>
         </div>
+
+
+        
 
         {/* ======================================================== */}
         {/* TAB 1: OVERVIEW */}
@@ -2682,6 +2691,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
             </Card>
           </div>
         )}
+        {activeMainTab === 'reports' && <ReportsPanel />}
       </main>
 
       {/* ========================================================== */}
