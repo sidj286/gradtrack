@@ -230,17 +230,15 @@ export default function Register({ onSuccess }: RegisterProps) {
         console.log('Auth user created:', authData.user.id);
 
         // STEP 4: Create users table entry
-        // STEP 4: Create users table entry
-setLoadingStep('Setting up your profile...');
+// ONLY include: id, email, role, and admin
 const { error: userInsertError } = await supabase
   .from('users')
   .insert({
     id: authData.user.id,
     email: formData.email,
     role: 'Alumni',
-    admin: false // Add this line to match your table schema
+    admin: false 
   });
-  
 if (userInsertError) {
   console.error('Error creating users entry:', userInsertError);
   setError('Registration failed at user initialization.');
@@ -254,8 +252,8 @@ const { error: profileError } = await supabase
   .from('alumni_profiles')
   .insert({
     user_id: authData.user.id,
-    student_id: formData.studentId, // This is now safe to use
-    full_name: formData.fullName,
+    student_id: formData.studentId, // Move student_id here
+    full_name: formData.fullName,   // Move full_name here
     course: formData.course,
     batch_year: parseInt(formData.batchYear),
     employment_status: 'Unemployed',
