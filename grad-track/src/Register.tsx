@@ -230,15 +230,17 @@ export default function Register({ onSuccess }: RegisterProps) {
         console.log('Auth user created:', authData.user.id);
 
         // STEP 4: Create users table entry
-        setLoadingStep('Setting up your profile...');
+        // STEP 4: Create users table entry
+setLoadingStep('Setting up your profile...');
 const { error: userInsertError } = await supabase
   .from('users')
   .insert({
     id: authData.user.id,
     email: formData.email,
-    role: 'Alumni' 
+    role: 'Alumni',
+    admin: false // Add this line to match your table schema
   });
-
+  
 if (userInsertError) {
   console.error('Error creating users entry:', userInsertError);
   setError('Registration failed at user initialization.');
