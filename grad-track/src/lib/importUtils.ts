@@ -6,6 +6,7 @@ export interface MasterListRecord {
   email: string;
   course: string;
   batch_year: number;
+  department: string;
   verified: boolean;
 }
 
@@ -18,7 +19,7 @@ export interface ImportResult {
 }
 
 // ALL columns are required
-export const REQUIRED_COLUMNS = ['student_id', 'full_name', 'email', 'course', 'batch_year'];
+export const REQUIRED_COLUMNS = ['student_id', 'full_name', 'email', 'course', 'batch_year', 'department'];
 
 // Parse CSV file only
 export const parseCSV = (file: File): Promise<{ data: any[]; headers: string[] }> => {
@@ -111,6 +112,14 @@ export const validateAndTransformData = (rawData: any[]): { valid: MasterListRec
       errors.push(`Row ${rowNum}: Invalid batch_year (must be between 1900-2100)`);
       return;
     }
+
+    // Validate department is valid
+const validDepartments = ['CCS', 'CTE', 'CCJE', 'CBE', 'PSY'];
+const deptValue = row.department.toString().toUpperCase().trim();
+if (!validDepartments.includes(deptValue)) {
+  errors.push(`Row ${rowNum}: Invalid department "${deptValue}". Must be one of: CCS, CTE, CCJE, CBE, PSY`);
+  return;
+}
     
     valid.push({
       student_id: row.student_id.toString().trim(),
@@ -118,6 +127,7 @@ export const validateAndTransformData = (rawData: any[]): { valid: MasterListRec
       email: emailValue,
       course: row.course.toString().trim(),
       batch_year: batchYearValue,
+      department: row.department.toString().toUpperCase().trim(), // <-- ADD THIS
       verified: true,
     });
   });

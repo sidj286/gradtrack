@@ -228,11 +228,11 @@ export default function ImportMasterListModal({ isOpen, onClose, onImportComplet
             <input id="file-input" type="file" accept=".csv,.xlsx,.xls" onChange={handleFileSelect} className="hidden" />
             <div className="text-5xl mb-3">📁</div>
             <p className="text-gray-700 dark:text-gray-300 font-medium">{file ? file.name : 'Drag & drop or click to upload CSV or Excel file'}</p>
-            <p className="text-xs text-gray-400 mt-2">Supported formats: CSV, Excel (.xlsx, .xls) | Required columns: student_id, full_name, email, course, batch_year</p>
+            <p className="text-xs text-gray-400 mt-2">Supported formats: CSV, Excel (.xlsx, .xls) | Required columns: student_id, full_name, email, course, batch_year, department</p>
           </div>
 
           <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3">
-            <p className="text-sm text-blue-800 dark:text-blue-300">📋 <span className="font-semibold">Required columns:</span> student_id, full_name, email, course, batch_year</p>
+            <p className="text-sm text-blue-800 dark:text-blue-300">📋 <span className="font-semibold">Required columns:</span> student_id, full_name, email, course, batch_year, department</p>
             <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">All columns are required. Email must be valid format. Batch year must be a number between 1900-2100.</p>
             <p className="text-xs text-green-600 dark:text-green-400 mt-2">✅ Data will be inserted into "graduates_master" table with verified = TRUE</p>
           </div>

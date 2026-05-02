@@ -278,6 +278,17 @@ export default function AdminDashboard({ session }: { session: Session }) {
     latestBatch: null as number | null,
   });
 
+  const [showManualAddModal, setShowManualAddModal] = useState(false);
+const [manualForm, setManualForm] = useState({
+  student_id: '',
+  full_name: '',
+  email: '',
+  course: '',
+  batch_year: '',
+  department: ''
+});
+const [manualSubmitting, setManualSubmitting] = useState(false);
+
   // ✅ NEW: State for View Profile Modal
   const [selectedAlumni, setSelectedAlumni] = useState<AlumniProfile | null>(null);
   const [showProfileViewModal, setShowProfileViewModal] = useState(false);
@@ -586,6 +597,77 @@ export default function AdminDashboard({ session }: { session: Session }) {
     if (masterListFilterCourse && record.course !== masterListFilterCourse) return false;
     return true;
   });
+
+  const handleManualAdd = async () => {
+  // Validate required fields
+  if (!manualForm.student_id || !manualForm.full_name || !manualForm.email || !manualForm.course || !manualForm.batch_year || !manualForm.department) {
+    showSettingsToast('All fields are required', 'error');
+    return;
+  }
+
+  // Validate email format
+  if (!manualForm.email.includes('@')) {
+    showSettingsToast('Invalid email format', 'error');
+    return;
+  }
+
+  // Validate batch year
+  const batchYear = parseInt(manualForm.batch_year);
+  if (isNaN(batchYear) || batchYear < 1900 || batchYear > 2100) {
+    showSettingsToast('Invalid batch year (must be 1900-2100)', 'error');
+    return;
+  }
+
+  // Validate department
+  const validDepts = ['CCS', 'CTE', 'CCJE', 'CBE', 'PSY'];
+  if (!validDepts.includes(manualForm.department.toUpperCase())) {
+    showSettingsToast('Invalid department. Must be: CCS, CTE, CCJE, CBE, PSY', 'error');
+    return;
+  }
+
+  setManualSubmitting(true);
+
+  try {
+    // Check if student_id already exists
+    const { data: existing } = await supabase
+      .from('graduates_master')
+      .select('student_id')
+      .eq('student_id', manualForm.student_id)
+      .maybeSingle();
+
+    if (existing) {
+      showSettingsToast(`Student ID ${manualForm.student_id} already exists in master list`, 'error');
+      setManualSubmitting(false);
+      return;
+    }
+
+    // Insert new record
+    const { error } = await supabase
+      .from('graduates_master')
+      .insert({
+        student_id: manualForm.student_id.trim(),
+        full_name: manualForm.full_name.trim(),
+        email: manualForm.email.trim().toLowerCase(),
+        course: manualForm.course.trim(),
+        batch_year: batchYear,
+        department: manualForm.department.toUpperCase(),
+        verified: true
+      });
+
+    if (error) throw error;
+
+    showSettingsToast(`✅ Added ${manualForm.full_name} to master list`, 'success');
+    setShowManualAddModal(false);
+    setManualForm({ student_id: '', full_name: '', email: '', course: '', batch_year: '', department: '' });
+    fetchMasterList(); // Refresh the table
+
+  } catch (error) {
+    console.error('Manual add error:', error);
+    showSettingsToast('Failed to add record', 'error');
+  } finally {
+    setManualSubmitting(false);
+  }
+};
 
   // ============================================================
   // SECTION 4: DATA FETCHING FUNCTIONS
@@ -2391,6 +2473,19 @@ export default function AdminDashboard({ session }: { session: Session }) {
               </Button>
             </div>
 
+
+            <Button 
+  variant="secondary" 
+  size="sm" 
+  onClick={() => setShowManualAddModal(true)}
+  className="flex items-center gap-2"
+>
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+  </svg>
+  Manual Add
+</Button>
+
             {/* Stats Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-gradient-to-r from-blue-50 to-white dark:from-blue-900/20 dark:to-gray-800 rounded-xl p-5 border border-blue-100 dark:border-blue-800">
@@ -2543,15 +2638,16 @@ export default function AdminDashboard({ session }: { session: Session }) {
               <div className="overflow-x-auto">
                 
                 {/* Header */}
-                <div className="hidden md:grid grid-cols-7 gap-4 px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-t-lg text-sm font-semibold text-gray-600 dark:text-gray-300">
-                  <div>Student ID</div>
-                  <div>Full Name</div>
-                  <div>Email</div>
-                  <div>Course</div>
-                  <div>Batch Year</div>
-                  <div>Status</div>
-                  <div>Actions</div>
-                </div>
+                <div className="hidden md:grid grid-cols-8 gap-4 px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-t-lg text-sm font-semibold text-gray-600 dark:text-gray-300">
+  <div>Student ID</div>
+  <div>Full Name</div>
+  <div>Email</div>
+  <div>Course</div>
+  <div>Department</div>
+  <div>Batch Year</div>
+  <div>Status</div>
+  <div>Actions</div>
+</div>
                 
                 {/* Rows */}
                 <div className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -2571,9 +2667,9 @@ export default function AdminDashboard({ session }: { session: Session }) {
                   ) : (
                     paginatedMasterList.map((record: any) => (
                       <div 
-                        key={record.id} 
-                        className="grid grid-cols-1 md:grid-cols-7 gap-2 md:gap-4 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
-                      >
+  key={record.id} 
+  className="grid grid-cols-1 md:grid-cols-8 gap-2 md:gap-4 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
+>
                         <div className="flex justify-between md:block">
                           <span className="md:hidden font-semibold text-gray-500 text-xs">
                             Student ID
@@ -2606,6 +2702,22 @@ export default function AdminDashboard({ session }: { session: Session }) {
                             {record.course || '-'}
                           </span>
                         </div>
+                        {/* ✅ ADD DEPARTMENT COLUMN HERE */}
+<div className="flex justify-between md:block">
+  <span className="md:hidden font-semibold text-gray-500 text-xs">
+    Department
+  </span>
+  <span className={`inline-block px-2 py-1 text-xs rounded-full ${
+    record.department === 'CCS' ? 'bg-blue-100 text-blue-700' :
+    record.department === 'CTE' ? 'bg-emerald-100 text-emerald-700' :
+    record.department === 'CCJE' ? 'bg-red-100 text-red-700' :
+    record.department === 'CBE' ? 'bg-amber-100 text-amber-700' :
+    record.department === 'PSY' ? 'bg-purple-100 text-purple-700' :
+    'bg-gray-100 text-gray-700'
+  }`}>
+    {record.department || '—'}
+  </span>
+</div>
                         <div className="flex justify-between md:block">
                           <span className="md:hidden font-semibold text-gray-500 text-xs">
                             Batch Year
@@ -3499,6 +3611,113 @@ export default function AdminDashboard({ session }: { session: Session }) {
       </div>
     </div>
   )}
+</Modal>
+
+
+<Modal isOpen={showManualAddModal} onClose={() => setShowManualAddModal(false)} title="➕ Manual Add Graduate" size="md">
+  <div className="space-y-4">
+    
+    <div>
+      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+        Student ID <span className="text-red-500">*</span>
+      </label>
+      <input
+        type="text"
+        value={manualForm.student_id}
+        onChange={(e) => setManualForm({ ...manualForm, student_id: e.target.value })}
+        className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+        placeholder="e.g., 202301839"
+      />
+    </div>
+
+    <div>
+      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+        Full Name <span className="text-red-500">*</span>
+      </label>
+      <input
+        type="text"
+        value={manualForm.full_name}
+        onChange={(e) => setManualForm({ ...manualForm, full_name: e.target.value })}
+        className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+        placeholder="e.g., Juan Dela Cruz"
+      />
+    </div>
+
+    <div>
+      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+        Email <span className="text-red-500">*</span>
+      </label>
+      <input
+        type="email"
+        value={manualForm.email}
+        onChange={(e) => setManualForm({ ...manualForm, email: e.target.value })}
+        className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+        placeholder="student@email.com"
+      />
+    </div>
+
+    <div>
+      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+        Course <span className="text-red-500">*</span>
+      </label>
+      <input
+        type="text"
+        value={manualForm.course}
+        onChange={(e) => setManualForm({ ...manualForm, course: e.target.value })}
+        className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+        placeholder="e.g., BS Information Technology"
+      />
+    </div>
+
+    <div className="grid grid-cols-2 gap-4">
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+          Batch Year <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="number"
+          value={manualForm.batch_year}
+          onChange={(e) => setManualForm({ ...manualForm, batch_year: e.target.value })}
+          className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+          placeholder="2027"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+          Department <span className="text-red-500">*</span>
+        </label>
+        <select
+          value={manualForm.department}
+          onChange={(e) => setManualForm({ ...manualForm, department: e.target.value })}
+          className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+        >
+          <option value="">Select Department</option>
+          <option value="CCS">CCS - Computer Studies</option>
+          <option value="CTE">CTE - Teacher Education</option>
+          <option value="CCJE">CCJE - Criminal Justice</option>
+          <option value="CBE">CBE - Business Education</option>
+          <option value="PSY">PSY - Psychology</option>
+        </select>
+      </div>
+    </div>
+
+    <div className="bg-amber-50 dark:bg-amber-900/20 p-3 rounded-lg">
+      <p className="text-xs text-amber-700 dark:text-amber-400">
+        ⚠️ This will add the graduate directly to the master list with verified = TRUE.
+      </p>
+    </div>
+
+    <div className="flex gap-3 pt-4">
+      <Button onClick={handleManualAdd} loading={manualSubmitting} className="flex-1">
+        Add Graduate
+      </Button>
+      <Button variant="secondary" onClick={() => setShowManualAddModal(false)} className="flex-1">
+        Cancel
+      </Button>
+    </div>
+
+  </div>
 </Modal>
 
       {/* Import Master List Modal */}
