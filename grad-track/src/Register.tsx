@@ -230,20 +230,21 @@ export default function Register({ onSuccess }: RegisterProps) {
         console.log('Auth user created:', authData.user.id);
 
         // STEP 4: Create users table entry
-// ONLY include: id, email, role, and admin
+// STEP 4: Create/Sync users table entry
 const { error: userInsertError } = await supabase
   .from('users')
-  .insert({
+  .upsert({ // Changed from .insert to .upsert
     id: authData.user.id,
     email: formData.email,
     role: 'Alumni',
     admin: false 
-  });
+  }, { onConflict: 'id' }); // This tells the code: "If user exists, it's okay, keep going."
+
 if (userInsertError) {
   console.error('Error creating users entry:', userInsertError);
   setError('Registration failed at user initialization.');
   setLoading(false);
-  return; 
+  return;
 }
      // STEP 5: Create alumni profile
 // Now that student_id exists in your DB, this will work!
