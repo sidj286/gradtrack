@@ -231,37 +231,35 @@ export default function Register({ onSuccess }: RegisterProps) {
 
         // STEP 4: Create users table entry
         setLoadingStep('Setting up your profile...');
-        console.log('Creating users table entry...');
-        const { error: userInsertError } = await supabase
-          .from('users')
-          .insert({
-            id: authData.user.id,
-            email: formData.email,
-            full_name: formData.fullName,
-            admin: false,
-            created_at: new Date().toISOString()
-          });
+const { error: userInsertError } = await supabase
+  .from('users')
+  .insert({
+    id: authData.user.id,
+    email: formData.email,
+    role: 'Alumni' 
+  });
 
-        if (userInsertError) {
-          console.error('Error creating users entry:', userInsertError);
-          console.warn('Users table entry failed but continuing...');
-        }
-
-        // STEP 5: Create alumni profile
-        setLoadingStep('Finalizing registration...');
-        console.log('Creating alumni profile...');
-        const { error: profileError } = await supabase
-          .from('alumni_profiles')
-          .insert({
-            user_id: authData.user.id,
-            student_id: formData.studentId,
-            full_name: formData.fullName,
-            course: formData.course,
-            batch_year: parseInt(formData.batchYear),
-            employment_status: 'Unemployed',
-            profile_completion: 50,
-            career_alignment_status: 'Pending',
-          });
+if (userInsertError) {
+  console.error('Error creating users entry:', userInsertError);
+  setError('Registration failed at user initialization.');
+  setLoading(false);
+  return; 
+}
+     // STEP 5: Create alumni profile
+// Now that student_id exists in your DB, this will work!
+setLoadingStep('Finalizing registration...');
+const { error: profileError } = await supabase
+  .from('alumni_profiles')
+  .insert({
+    user_id: authData.user.id,
+    student_id: formData.studentId, // This is now safe to use
+    full_name: formData.fullName,
+    course: formData.course,
+    batch_year: parseInt(formData.batchYear),
+    employment_status: 'Unemployed',
+    profile_completion: 50,
+    career_alignment_status: 'Pending'
+  });
 
         if (profileError) {
           console.error('Profile creation error:', profileError);
