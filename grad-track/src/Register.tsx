@@ -176,6 +176,13 @@ export default function Register({ onSuccess }: RegisterProps) {
         document.getElementById('error-message')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
       }
+      // STEP 1.5: Capture official student details from the master list
+// This ensures 'masterData' is available for Step 5 later on.
+const { data: masterData } = await supabase
+  .from('graduates_master')
+  .select('department')
+  .eq('student_id', formData.studentId)
+  .single();
 
       // STEP 2: Double-check with a more precise query
       setLoadingStep('Verifying account details...');
@@ -257,6 +264,7 @@ const { error: profileError } = await supabase
     full_name: formData.fullName,   // Move full_name here
     course: formData.course,
     batch_year: parseInt(formData.batchYear),
+    department: masterData?.department || 'N/A',
     employment_status: 'Unemployed',
     profile_completion: 50,
     career_alignment_status: 'Pending'
