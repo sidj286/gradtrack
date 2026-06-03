@@ -21,7 +21,7 @@ interface AlumniProfile {
   location: string | null;
   employment_status: string | null;
   linkedin_url: string | null;
-  career_alignment_bool: boolean | null;
+  career_alignment_status: string | null;
   ai_confidence_score: number | null;
   profile_completion: number;
   avatar_url: string | null; 
@@ -768,8 +768,8 @@ const [manualSubmitting, setManualSubmitting] = useState(false);
     const employed = alumniData.filter(a => a.employment_status === 'Employed').length;
     const unemployed = alumniData.filter(a => a.employment_status === 'Unemployed').length;
     
-    const inField = alumniData.filter(a => a.career_alignment_bool === true).length;
-    const outOfField = alumniData.filter(a => a.career_alignment_bool === false).length;
+    const inField = alumniData.filter(a => a.career_alignment_status === 'In-Field').length;
+    const outOfField = alumniData.filter(a => a.career_alignment_status === 'Out-of-Field').length;
     
     setStats({ total, employed, unemployed, inField, outOfField });
     setEmploymentChartData([
@@ -790,7 +790,7 @@ const [manualSubmitting, setManualSubmitting] = useState(false);
     const courseStatsData = uniqueCourses.map(course => {
       const courseAlumni = alumniData.filter(a => a.course === course);
       const total = courseAlumni.length;
-      const inFieldCount = courseAlumni.filter(a => a.career_alignment_bool === true).length;
+      const inFieldCount = courseAlumni.filter(a => a.career_alignment_status === 'In-Field').length;
       const rate = total > 0 ? (inFieldCount / total) * 100 : 0;
       return { course: course || 'Unknown', total, inField: inFieldCount, rate };
     });
@@ -804,9 +804,9 @@ const [manualSubmitting, setManualSubmitting] = useState(false);
       const employed = deptAlumni.filter(a => a.employment_status === 'Employed').length;
       const unemployed = deptAlumni.filter(a => a.employment_status === 'Unemployed').length;
       
-      const inField = deptAlumni.filter(a => a.career_alignment_bool === true).length;
-      const outOfField = deptAlumni.filter(a => a.career_alignment_bool === false).length;
-      const pending = deptAlumni.filter(a => a.career_alignment_bool === null || a.career_alignment_bool === undefined).length;
+      const inField = deptAlumni.filter(a => a.career_alignment_status === 'In-Field').length;
+      const outOfField = deptAlumni.filter(a => a.career_alignment_status === 'Out-of-Field').length;
+      const pending = deptAlumni.filter(a => a.career_alignment_status === null || a.career_alignment_status === undefined).length;
       
       return {
         department: dept.code,
@@ -833,7 +833,7 @@ const [manualSubmitting, setManualSubmitting] = useState(false);
     const batchData = batchYearsGroup.map(batch => {
       const batchAlumni = deptAlumni.filter(a => a.batch_year === batch);
       const total = batchAlumni.length;
-      const inField = batchAlumni.filter(a => a.career_alignment_bool === true).length;
+      const inField = batchAlumni.filter(a => a.career_alignment_status === 'In-Field').length;
       const rate = total > 0 ? (inField / total) * 100 : 0;
       return { batch: batch || 0, total, inField, rate };
     });
@@ -1756,11 +1756,11 @@ const [manualSubmitting, setManualSubmitting] = useState(false);
                           Alignment
                         </span>
                         <div>
-                          {alum.career_alignment_bool === true ? (
+                          {alum.career_alignment_status === 'In-Field' ? (
                             <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700">
                               ✅ In-Field
                             </span>
-                          ) : alum.career_alignment_bool === false ? (
+                          ) : alum.career_alignment_status === 'Out-of-Field' ? (
                             <span className="px-2 py-1 text-xs rounded-full bg-amber-100 text-amber-700">
                               ⚠️ Out-of-Field
                             </span>
@@ -2195,20 +2195,20 @@ const [manualSubmitting, setManualSubmitting] = useState(false);
                     className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
                   >
                     <option value="all">All Alumni</option>
-                    <option value="course">Send by Course</option>
+                    <option value="course">Send by Program</option>
                     <option value="batch_year">Send by Batch Year</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                    {announcementFilterType === 'all' ? 'Course (Optional)' : announcementFilterType === 'course' ? 'Specific Course' : 'Course Filter'}
+                    {announcementFilterType === 'all' ? 'Program (Optional)' : announcementFilterType === 'course' ? 'Specific Program' : 'Program Filter'}
                   </label>
                   <select 
                     value={announcementFilterCourse} 
                     onChange={(e) => setAnnouncementFilterCourse(e.target.value)} 
                     className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
                   >
-                    <option value="">All Courses</option>
+                    <option value="">All Programs</option>
                     {courses.map(course => (
                       <option key={course} value={course}>
                         {course}
@@ -3151,7 +3151,7 @@ const [manualSubmitting, setManualSubmitting] = useState(false);
             <option value="seminars">📚 Seminars</option>
             <option value="career_opportunities">🎯 Career Opportunities</option>
           </select>
-          <select 
+          {/* <select 
             value={newAnnouncement.target_type} 
             onChange={e => setNewAnnouncement({ ...newAnnouncement, target_type: e.target.value, target_course: '', target_batch_year: '' })} 
             className="w-full px-4 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
@@ -3159,7 +3159,7 @@ const [manualSubmitting, setManualSubmitting] = useState(false);
             <option value="all">Send to All Alumni</option>
             <option value="course">Send by Course</option>
             <option value="batch_year">Send by Batch Year</option>
-          </select>
+          </select> */}
 
           {newAnnouncement.target_type === 'course' && (
             <div className="space-y-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
@@ -3255,14 +3255,14 @@ const [manualSubmitting, setManualSubmitting] = useState(false);
               </p>
               <div>
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Filter by Course (Optional)
+                  Filter by Program (Optional)
                 </label>
                 <select 
                   value={newAnnouncement.target_course} 
                   onChange={e => setNewAnnouncement({ ...newAnnouncement, target_course: e.target.value })} 
                   className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
                 >
-                  <option value="">All Courses</option>
+                  <option value="">All Programs</option>
                   {courses.map(course => (
                     <option key={course} value={course}>{course}</option>
                   ))}
@@ -3350,11 +3350,11 @@ const [manualSubmitting, setManualSubmitting] = useState(false);
           <p className="text-sm text-gray-500 dark:text-gray-400">
             User ID: {selectedAlumni.user_id?.slice(0, 8)}...
           </p>
-          {selectedAlumni.career_alignment_bool === true ? (
+          {selectedAlumni.career_alignment_status === 'In-Field' ? (
             <span className="inline-block mt-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-700">
               ✓ Career Aligned (In-Field)
             </span>
-          ) : selectedAlumni.career_alignment_bool === false ? (
+          ) : selectedAlumni.career_alignment_status === 'Out-of-Field' ? (
             <span className="inline-block mt-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-700">
               ⚠️ Not Aligned (Out-of-Field)
             </span>
@@ -3461,14 +3461,6 @@ const [manualSubmitting, setManualSubmitting] = useState(false);
             </div>
             <div>
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Company
-              </label>
-              <p className="text-sm text-gray-900 dark:text-white mt-1">
-                {selectedAlumni.company || 'Not specified'}
-              </p>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                 Industry
               </label>
               <p className="text-sm text-gray-900 dark:text-white mt-1">
@@ -3477,12 +3469,21 @@ const [manualSubmitting, setManualSubmitting] = useState(false);
             </div>
             <div>
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                Company
+              </label>
+              <p className="text-sm text-gray-900 dark:text-white mt-1">
+                {selectedAlumni.company || 'Not specified'}
+              </p>
+            </div>
+             
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                 Location
               </label>
               <p className="text-sm text-gray-900 dark:text-white mt-1">
                 {selectedAlumni.location || 'Not specified'}
               </p>
-            </div>
+            </div> 
             <div>
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                 LinkedIn Profile
@@ -3525,9 +3526,9 @@ const [manualSubmitting, setManualSubmitting] = useState(false);
               Career Alignment
             </label>
             <p className="text-sm font-medium mt-1">
-              {selectedAlumni.career_alignment_bool === true ? (
+              {selectedAlumni.career_alignment_status === 'In-Field' ? (
                 <span className="text-green-600">In-Field ✓</span>
-              ) : selectedAlumni.career_alignment_bool === false ? (
+              ) : selectedAlumni.career_alignment_status === 'Out-of-Field' ? (
                 <span className="text-amber-600">Out-of-Field ⚠️</span>
               ) : (
                 <span className="text-gray-500">Pending Classification ⏳</span>
@@ -3554,7 +3555,7 @@ const [manualSubmitting, setManualSubmitting] = useState(false);
         <div className="mt-3 p-2 bg-white/50 dark:bg-gray-800/50 rounded-lg">
           <p className="text-xs text-gray-500 dark:text-gray-400">
             🤖 <span className="font-semibold">How it works:</span> AI analyzes job title against degree to determine career alignment.
-            {selectedAlumni.career_alignment_bool === null && ' Update job title to trigger AI classification.'}
+            {selectedAlumni.career_alignment_status === null && ' Update job title to trigger AI classification.'}
           </p>
         </div>
       </div>
@@ -3657,17 +3658,31 @@ const [manualSubmitting, setManualSubmitting] = useState(false);
     </div>
 
     <div>
-      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-        Course <span className="text-red-500">*</span>
-      </label>
-      <input
-        type="text"
-        value={manualForm.course}
-        onChange={(e) => setManualForm({ ...manualForm, course: e.target.value })}
-        className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
-        placeholder="e.g., BS Information Technology"
-      />
-    </div>
+  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+    Program <span className="text-red-500">*</span>
+  </label>
+  <select
+    value={manualForm.course}
+    onChange={(e) => setManualForm({ ...manualForm, course: e.target.value })}
+    className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+    required
+  >
+    <option value="">Select Program</option>
+    <option value="BS Information Technology">BS Information Technology</option>
+    <option value="Bachelor of Elementary Education">Bachelor of Elementary Education (BEED)</option>
+    <option value="Bachelor of Secondary Education - English">Bachelor of Secondary Education - English</option>
+    <option value="Bachelor of Secondary Education - Math">Bachelor of Secondary Education - Math</option>
+    <option value="Bachelor of Secondary Education - Science">Bachelor of Secondary Education - Science</option>
+    <option value="Bachelor of Secondary Education - Social Studies">Bachelor of Secondary Education - Social Studies</option>
+    <option value="Bachelor of Secondary Education - Filipino">Bachelor of Secondary Education - Filipino</option>
+    <option value="BS Criminology">BS Criminology</option>
+    <option value="BS Accountancy">BS Accountancy</option>
+    <option value="BSBA Financial Management">BSBA Financial Management</option>
+    <option value="BS Hospitality Management">BS Hospitality Management (BSHM)</option>
+    <option value="BS Tourism Management">BS Tourism Management (BSTM)</option>
+    <option value="BS Psychology">BS Psychology</option>
+  </select>
+</div>
 
     <div className="grid grid-cols-2 gap-4">
       <div>
@@ -3702,11 +3717,11 @@ const [manualSubmitting, setManualSubmitting] = useState(false);
       </div>
     </div>
 
-    <div className="bg-amber-50 dark:bg-amber-900/20 p-3 rounded-lg">
+    {/* <div className="bg-amber-50 dark:bg-amber-900/20 p-3 rounded-lg">
       <p className="text-xs text-amber-700 dark:text-amber-400">
         ⚠️ This will add the graduate directly to the master list with verified = TRUE.
       </p>
-    </div>
+    </div> */}
 
     <div className="flex gap-3 pt-4">
       <Button onClick={handleManualAdd} loading={manualSubmitting} className="flex-1">

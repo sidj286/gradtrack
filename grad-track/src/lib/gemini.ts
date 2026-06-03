@@ -259,3 +259,54 @@ function getDepartmentName(code: string): string {
   };
   return names[code] || code;
 }
+// Add this at the bottom of your gemini.ts file
+
+// ============================================================
+// EXPORT FOR CAREER CLASSIFIER
+// ============================================================
+export async function callGeminiForClassification(prompt: string): Promise<string | null> {
+  if (isRateLimited && Date.now() < rateLimitResetTime) {
+    console.log('Still rate limited');
+    return null;
+  }
+  
+  if (isRateLimited && Date.now() >= rateLimitResetTime) {
+    isRateLimited = false;
+  }
+  
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`;
+  
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }]
+      })
+    });
+    
+    if (response.status === 429) {
+      isRateLimited = true;
+      rateLimitResetTime = Date.now() + 60000;
+      console.log('Rate limit hit');
+      return null;
+    }
+    
+    if (!response.ok) {
+      console.error('API Error:', response.status);
+      return null;
+    }
+    
+    const data = await response.json();
+    const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    if (!generatedText || generatedText.length < 10) {
+      return null;
+    }
+    
+    return generatedText;
+  } catch (error) {
+    console.error('Gemini API error:', error);
+    return null;
+  }
+}

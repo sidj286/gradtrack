@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import { classifyCareerAlignment } from './lib/careerClassifier';
+import phAddress from 'latest-ph-address-thanks-to-anehan';
 
 // ==================== TYPES ====================
 interface Profile {
@@ -19,7 +20,7 @@ interface Profile {
   linkedin_url: string | null;
   auto_sync_enabled: boolean;
   last_synced_at: string | null;
-  career_alignment_bool: boolean | null;  // TRUE = In-Field, FALSE = Out-of-Field, NULL = Pending
+  career_alignment_status: string | null;
   ai_confidence_score: number | null;
   profile_completion: number;
   avatar_url: string | null;
@@ -213,7 +214,7 @@ const Modal: React.FC<{
             ×
           </button>
         </div>
-        <div className="p-4 sm:p-6">{children}</div>
+        <div className="p-4 sm:p-6 overflow-y-auto max-h-[70vh]">{children}</div>
       </div>
     </div>
   );
@@ -578,6 +579,17 @@ export default function AlumniDashboard({ session }: { session: Session }) {
   const [showNotificationDropdown, setShowNotificationDropdown] = useState(false);
   const [signOutLoading, setSignOutLoading] = useState(false);
   
+  // Address state variables
+  const [regions, setRegions] = useState<any[]>([]);
+  const [provinces, setProvinces] = useState<any[]>([]);
+  const [cities, setCities] = useState<any[]>([]);
+  const [barangays, setBarangays] = useState<any[]>([]);
+  const [selectedRegion, setSelectedRegion] = useState<string>('');
+  const [selectedProvince, setSelectedProvince] = useState<string>('');
+  const [selectedCity, setSelectedCity] = useState<string>('');
+  const [selectedBarangay, setSelectedBarangay] = useState<string>('');
+  const [street, setStreet] = useState<string>('');
+  
   const [employmentForm, setEmploymentForm] = useState({ 
     job_title: '', 
     company: '', 
@@ -636,30 +648,140 @@ export default function AlumniDashboard({ session }: { session: Session }) {
     return () => clearTimeout(timeoutId);
   }, [session.user.id]);
 
-  // Add this useEffect in your AlumniDashboard component
-useEffect(() => {
-  const channel = supabase
-    .channel('alumni-announcements')
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT', // Only listen for new announcements
-        schema: 'public',
-        table: 'announcements',
-        filter: `published=eq.true` // Only get published ones
-      },
-      (payload) => {
-        console.log('New announcement!', payload);
-        // Add to existing announcements or refresh list
-        fetchAnnouncements(); // Your existing function
-      }
-    )
-    .subscribe();
+  // Announcement Realtime Subscription
+  useEffect(() => {
+    const channel = supabase
+      .channel('alumni-announcements')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'announcements',
+          filter: 'published=eq.true'
+        },
+        (payload) => {
+          console.log('New announcement!', payload);
+          fetchAnnouncements();
+        }
+      )
+      .subscribe();
 
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, []);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Load regions when modal opens
+  useEffect(() => {
+    if (showEmploymentModal) {
+      try {
+        const regionList = phAddress.getRegions();
+        if (Array.isArray(regionList)) {
+          setRegions(regionList);
+        } else {
+          console.error('Regions API returned non-array:', regionList);
+          setRegions([]);
+        }
+      } catch (error) {
+        console.error('Error loading regions:', error);
+        setRegions([]);
+      }
+    }
+  }, [showEmploymentModal]);
+
+  // Load provinces when region changes
+  useEffect(() => {
+    if (selectedRegion) {
+      try {
+        const provinceList = phAddress.getProvincesByRegion(selectedRegion);
+        if (Array.isArray(provinceList)) {
+          setProvinces(provinceList);
+        } else {
+          console.error('Provinces API returned non-array:', provinceList);
+          setProvinces([]);
+        }
+        setSelectedProvince('');
+        setSelectedCity('');
+        setSelectedBarangay('');
+        setStreet('');
+      } catch (error) {
+        console.error('Error loading provinces:', error);
+        setProvinces([]);
+      }
+    } else {
+      setProvinces([]);
+    }
+  }, [selectedRegion]);
+
+  // Load cities when province changes
+  useEffect(() => {
+    if (selectedProvince) {
+      try {
+        const cityList = phAddress.getCitiesAndMunsByProvince(selectedProvince);
+        if (Array.isArray(cityList)) {
+          setCities(cityList);
+        } else {
+          console.error('Cities API returned non-array:', cityList);
+          setCities([]);
+        }
+        setSelectedCity('');
+        setSelectedBarangay('');
+        setStreet('');
+      } catch (error) {
+        console.error('Error loading cities:', error);
+        setCities([]);
+      }
+    } else {
+      setCities([]);
+    }
+  }, [selectedProvince]);
+
+  // Load barangays when city changes
+  useEffect(() => {
+    if (selectedCity) {
+      try {
+        const barangayList = phAddress.getBarangaysByCityOrMun(selectedCity);
+        if (Array.isArray(barangayList)) {
+          setBarangays(barangayList);
+        } else {
+          console.error('Barangays API returned non-array:', barangayList);
+          setBarangays([]);
+        }
+        setSelectedBarangay('');
+        setStreet('');
+      } catch (error) {
+        console.error('Error loading barangays:', error);
+        setBarangays([]);
+      }
+    } else {
+      setBarangays([]);
+    }
+  }, [selectedCity]);
+
+  // Combine full address whenever address components change
+  useEffect(() => {
+    if (selectedCity && selectedProvince && selectedBarangay) {
+      const regionObj = Array.isArray(regions) ? regions.find((r: any) => r?.psgc === selectedRegion) : null;
+      const provinceObj = Array.isArray(provinces) ? provinces.find((p: any) => p?.psgc === selectedProvince) : null;
+      const cityObj = Array.isArray(cities) ? cities.find((c: any) => c?.psgc === selectedCity) : null;
+      const barangayObj = Array.isArray(barangays) ? barangays.find((b: any) => b?.psgc === selectedBarangay) : null;
+      
+      const regionName = regionObj?.name || '';
+      const provinceName = provinceObj?.name || '';
+      const cityName = cityObj?.name || '';
+      const barangayName = barangayObj?.name || '';
+      
+      let fullAddress = '';
+      if (street) fullAddress += `${street}, `;
+      if (barangayName) fullAddress += `${barangayName}, `;
+      if (cityName) fullAddress += `${cityName}, `;
+      if (provinceName) fullAddress += `${provinceName}, `;
+      if (regionName) fullAddress += `${regionName}`;
+      
+      setEmploymentForm(prev => ({ ...prev, location: fullAddress }));
+    }
+  }, [selectedRegion, selectedProvince, selectedCity, selectedBarangay, street, regions, provinces, cities, barangays]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info') => {
     setToast({ message, type });
@@ -729,6 +851,7 @@ useEffect(() => {
           location: data.location || '',
           linkedin_url: data.linkedin_url || '',
         });
+        
         console.log('Profile loaded');
       }
     } catch (err) {
@@ -811,7 +934,7 @@ useEffect(() => {
         ann.id === announcementId ? { ...ann, viewed: true } : ann
       ));
       
-      await addActivity('announcement_view', `Read announcement`);
+      await addActivity('announcement_view', 'Read announcement');
     } catch (error) {
       console.error('Error marking as read:', error);
     }
@@ -889,7 +1012,6 @@ useEffect(() => {
     return Math.min(score, 100);
   };
 
-  // ==================== UPDATED HANDLE SAVE EMPLOYMENT ====================
   const handleSaveEmployment = async () => {
     setSaveLoading(true);
     const completionScore = calculateCompletion(employmentForm);
@@ -901,6 +1023,7 @@ useEffect(() => {
       industry: profile?.industry || '',
       location: profile?.location || '',
       linkedin_url: profile?.linkedin_url || '',
+      
     };
     
     const updateData: Record<string, unknown> = {
@@ -915,24 +1038,32 @@ useEffect(() => {
     if (employmentForm.location !== undefined) updateData.location = employmentForm.location || null;
     if (employmentForm.linkedin_url !== undefined) updateData.linkedin_url = employmentForm.linkedin_url || null;
     
-    // ============================================================
-    // CLASSIFICATION: Save boolean directly to career_alignment_bool
-    // ============================================================
-    let classificationResult = null;
-    if (employmentForm.job_title !== oldValues.job_title && employmentForm.job_title) {
-      classificationResult = await classifyCareerAlignment(
-        profile?.course || '',
-        employmentForm.job_title,
-        ''
-      );
-      
-      // ✅ NEW CODE: Save the boolean value directly
-      if (classificationResult) {
-        updateData.career_alignment_bool = classificationResult.isAligned;
-        updateData.ai_confidence_score = classificationResult.confidence_score;
-      }
-    }
-    
+   // ============================================================
+// CLASSIFICATION: Run on EVERY SAVE (force classification)
+// ============================================================
+let classificationResult = null;
+
+// Always run classification if job title is not empty
+// This ensures all alumni get classified even if job title didn't change
+if (employmentForm.job_title && employmentForm.job_title.trim() !== '') {
+  console.log('=== CLASSIFICATION TRIGGERED ===');
+  console.log('Course:', profile?.course);
+  console.log('Job Title:', employmentForm.job_title);
+  
+  classificationResult = await classifyCareerAlignment(
+    profile?.course || '',
+    employmentForm.job_title,
+    ''
+  );
+  
+  console.log('Classification Result:', classificationResult);
+  
+  if (classificationResult) {
+  updateData.career_alignment_status = classificationResult.alignment_status;
+  updateData.ai_confidence_score = classificationResult.confidence_score;
+}
+
+}
     const { error } = await supabase
       .from('alumni_profiles')
       .update(updateData)
@@ -959,24 +1090,22 @@ useEffect(() => {
         activityDescription += `changed employment status from "${oldVal}" to "${newVal}". `;
       }
       
-      if (classificationResult && classificationResult.isAligned !== null) {
-        const alignmentText = classificationResult.isAligned ? 'In-Field' : 'Out-of-Field';
-        activityDescription += ` AI classified as ${alignmentText} (${Math.round(classificationResult.confidence_score * 100)}% confidence).`;
-      }
+      if (classificationResult && classificationResult.alignment_status !== 'Pending') {
+    activityDescription += ` AI classified as ${classificationResult.alignment_status} (${Math.round(classificationResult.confidence_score * 100)}% confidence).`;
+}
       
       if (!activityDescription) {
-        activityDescription = `updated career information`;
+        activityDescription = 'updated career information';
       }
       
       await addActivity('employment_update', activityDescription.trim());
       
-      setProfile(prev => prev ? { 
-        ...prev, 
-        ...employmentForm, 
-        profile_completion: completionScore,
-        career_alignment_bool: classificationResult?.isAligned !== undefined ? classificationResult.isAligned : prev.career_alignment_bool,
-        ai_confidence_score: classificationResult?.confidence_score || prev.ai_confidence_score
-      } : null);
+      setProfile(prev => prev ? {
+    ...prev,
+    ...employmentForm,
+    career_alignment_status: classificationResult?.alignment_status || prev.career_alignment_status,
+    ai_confidence_score: classificationResult?.confidence_score || prev.ai_confidence_score
+} : null);
       
       setShowEmploymentModal(false);
       showToast('Career information updated successfully!', 'success');
@@ -1174,7 +1303,8 @@ useEffect(() => {
 
             {/* Stats Grid */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
-              <Card className="p-3 sm:p-6 cursor-pointer hover:border-[#800000]/30 transition-all group" onClick={() => setShowEmploymentModal(true)}>
+              <Card 
+              className="p-3 sm:p-6 cursor-pointer hover:border-[#800000]/30 transition-all group"  >
                 <div className="w-8 h-8 sm:w-12 sm:h-12 bg-blue-100 rounded-lg sm:rounded-xl flex items-center justify-center text-lg sm:text-2xl mb-2 sm:mb-4 group-hover:scale-110 transition-transform">
                   💼
                 </div>
@@ -1183,7 +1313,7 @@ useEffect(() => {
                 <p className="text-[10px] sm:text-sm text-gray-500 mt-0.5 sm:mt-1 truncate">{profile?.company || 'Click to add'}</p>
               </Card>
 
-              <Card className="p-3 sm:p-6 cursor-pointer hover:border-[#800000]/30 transition-all group" onClick={() => setShowEmploymentModal(true)}>
+              <Card className="p-3 sm:p-6 cursor-pointer hover:border-[#800000]/30 transition-all group"  >
                 <div className="w-8 h-8 sm:w-12 sm:h-12 bg-emerald-100 rounded-lg sm:rounded-xl flex items-center justify-center text-lg sm:text-2xl mb-2 sm:mb-4 group-hover:scale-110 transition-transform">
                   📊
                 </div>
@@ -1198,9 +1328,9 @@ useEffect(() => {
                 </div>
                 <h3 className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider mb-0.5 sm:mb-1">Alignment</h3>
                 <div className="flex items-center gap-2">
-                  {profile?.career_alignment_bool === true ? (
+                  {profile?.career_alignment_status === 'In-Field' ? (
                     <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-full bg-green-100 text-green-700">✓ In-Field</span>
-                  ) : profile?.career_alignment_bool === false ? (
+                  ) : profile?.career_alignment_status === 'Out-of-Field' ? (
                     <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-full bg-amber-100 text-amber-700">⚠️ Out-of-Field</span>
                   ) : (
                     <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-full bg-gray-100 text-gray-500">⏳ Pending</span>
@@ -1367,7 +1497,7 @@ useEffect(() => {
         </div>
       </footer>
 
-      {/* Career Information Modal */}
+      {/* Career Information Modal WITH ADDRESS SELECTOR */}
       <Modal isOpen={showEmploymentModal} onClose={() => setShowEmploymentModal(false)} title="Update Career Information" size="lg">
         <div className="space-y-3 sm:space-y-4">
           <div className="bg-amber-50 border border-amber-200 rounded-lg sm:rounded-xl p-3 sm:p-4">
@@ -1399,28 +1529,137 @@ useEffect(() => {
                 onChange={e => setEmploymentForm({ ...employmentForm, employment_status: e.target.value })}
                 className="w-full px-3 py-2 sm:px-4 sm:py-2.5 bg-white border border-gray-200 rounded-xl focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none transition-all text-gray-900 text-sm sm:text-base"
               >
-                <option value="Employed">Employed - Full Time</option>
-                <option value="Employed Part Time">Employed - Part Time</option>
+                <option value="Employed">Full Time</option>
+                <option value="Employed Part Time">Part Time</option>
                 <option value="Self-Employed">Self-Employed</option>
-                <option value="Freelancer">Freelancer</option>
-                <option value="Unemployed">Unemployed</option>
-                <option value="Further Studies">Further Studies</option>
+                <option value="Freelancer">Independent Contractor</option>
+                <option value="Unemployed">Seasonal Worker</option>
+                <option value="Further Studies">Unemployed</option>
               </select>
             </div>
-            <Input
-              label="Industry"
-              value={employmentForm.industry}
-              onChange={e => setEmploymentForm({ ...employmentForm, industry: e.target.value })}
-              placeholder="e.g., Technology, Education"
-              icon="🏭"
-            />
-            <Input
-              label="Location"
-              value={employmentForm.location}
-              onChange={e => setEmploymentForm({ ...employmentForm, location: e.target.value })}
-              placeholder="City, Country"
-              icon="📍"
-            />
+            
+            {/* Industry Dropdown */}
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                Industry
+              </label>
+              <select
+                value={employmentForm.industry}
+                onChange={e => setEmploymentForm({ ...employmentForm, industry: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+              >
+                <option value="">Select Industry</option>
+                <option value="Information Technology (IT) / BPO">Information Technology (IT) / BPO</option>
+                <option value="Education">Education</option>
+                <option value="Healthcare">Healthcare</option>
+                <option value="Government / Public Sector">Government / Public Sector</option>
+                <option value="Business / Finance / Banking">Business / Finance / Banking</option>
+                <option value="Retail / Sales / E-commerce">Retail / Sales / E-commerce</option>
+                <option value="Manufacturing">Manufacturing</option>
+                <option value="Construction / Engineering">Construction / Engineering</option>
+                <option value="Hospitality / Tourism / Food Service">Hospitality / Tourism / Food Service</option>
+                <option value="Agriculture / Fisheries">Agriculture / Fisheries</option>
+                <option value="Telecommunications">Telecommunications</option>
+                <option value="Transportation / Logistics">Transportation / Logistics</option>
+                <option value="Media / Entertainment">Media / Entertainment</option>
+                <option value="Real Estate / Property">Real Estate / Property</option>
+                <option value="Legal / Law Firm">Legal / Law Firm</option>
+                <option value="Non-Profit / NGO">Non-Profit / NGO</option>
+                <option value="Energy / Utilities">Energy / Utilities</option>
+                <option value="Mining / Oil / Gas">Mining / Oil / Gas</option>
+                <option value="Pharmaceutical / Biotech">Pharmaceutical / Biotech</option>
+                <option value="Insurance">Insurance</option>
+                <option value="Consulting / Professional Services">Consulting / Professional Services</option>
+                <option value="Research & Development">Research & Development</option>
+                <option value="Arts / Design / Creative">Arts / Design / Creative</option>
+                <option value="Sports / Recreation">Sports / Recreation</option>
+                <option value="Military / Defense">Military / Defense</option>
+                <option value="Religious / Faith-Based Organizations">Religious / Faith-Based Organizations</option>
+              </select>
+            </div>
+
+            {/* PHILIPPINE ADDRESS SELECTOR */}
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                Work Location
+              </label>
+              
+              {/* Region Dropdown */}
+              <select
+                value={selectedRegion}
+                onChange={(e) => setSelectedRegion(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white mb-2"
+              >
+                <option value="">Select Region</option>
+                {Array.isArray(regions) && regions.map((region: any) => (
+                  <option key={region?.psgc || Math.random()} value={region?.psgc || ''}>
+                    {region?.name || 'Unknown Region'}
+                  </option>
+                ))}
+              </select>
+
+              {/* Province Dropdown */}
+              {selectedRegion && Array.isArray(provinces) && provinces.length > 0 && (
+                <select
+                  value={selectedProvince}
+                  onChange={(e) => setSelectedProvince(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white mb-2"
+                >
+                  <option value="">Select Province</option>
+                  {provinces.map((province: any) => (
+                    <option key={province?.psgc || Math.random()} value={province?.psgc || ''}>
+                      {province?.name || 'Unknown Province'}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {/* City/Municipality Dropdown */}
+              {selectedProvince && Array.isArray(cities) && cities.length > 0 && (
+                <select
+                  value={selectedCity}
+                  onChange={(e) => setSelectedCity(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white mb-2"
+                >
+                  <option value="">Select City/Municipality</option>
+                  {cities.map((city: any) => (
+                    <option key={city?.psgc || Math.random()} value={city?.psgc || ''}>
+                      {city?.name || 'Unknown City'}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {/* Barangay Dropdown */}
+              {selectedCity && Array.isArray(barangays) && barangays.length > 0 && (
+                <select
+                  value={selectedBarangay}
+                  onChange={(e) => setSelectedBarangay(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white mb-2"
+                >
+                  <option value="">Select Barangay</option>
+                  {barangays.map((barangay: any) => (
+                    <option key={barangay?.psgc || Math.random()} value={barangay?.psgc || ''}>
+                      {barangay?.name || 'Unknown Barangay'}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {/* Street/Sitio/Purok Input */}
+              <input
+                type="text"
+                value={street}
+                onChange={(e) => setStreet(e.target.value)}
+                placeholder="Street / Sitio / Purok / Subdivision (optional)"
+                className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+              />
+              
+              <p className="text-xs text-gray-400 mt-1">
+                Select region, province, city/municipality, and barangay. Add street if applicable.
+              </p>
+            </div>
+
             <div className="sm:col-span-2">
               <Input
                 label="LinkedIn Profile URL"
