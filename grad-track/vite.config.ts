@@ -13,7 +13,8 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         cleanupOutdatedCaches: true,
         clientsClaim: true,
-        skipWaiting: true
+        skipWaiting: true,
+        maximumFileSizeToCacheInBytes: 15 * 1024 * 1024 // 15 MB limit (increased from 2 MB)
       },
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg', 'gt-favicon.svg'],
       manifest: {
@@ -46,5 +47,23 @@ export default defineConfig({
   ],
   build: {
     chunkSizeWarningLimit: 1600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Split React into its own chunk
+          'react-vendor': ['react', 'react-dom'],
+          // Split Supabase into its own chunk
+          'supabase-vendor': ['@supabase/supabase-js'],
+          // Split charts into its own chunk
+          'charts-vendor': ['recharts'],
+          // Split PDF generation into its own chunk
+          'pdf-vendor': ['jspdf', 'jspdf-autotable'],
+          // Split Excel generation into its own chunk
+          'excel-vendor': ['xlsx'],
+          // Split PWA plugin
+          'pwa-vendor': ['vite-plugin-pwa']
+        }
+      }
+    }
   }
 });
