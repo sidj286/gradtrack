@@ -288,7 +288,7 @@ const [manualForm, setManualForm] = useState({
   department: ''
 });
 const [manualSubmitting, setManualSubmitting] = useState(false);
-
+const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
   // ✅ NEW: State for View Profile Modal
   const [selectedAlumni, setSelectedAlumni] = useState<AlumniProfile | null>(null);
   const [showProfileViewModal, setShowProfileViewModal] = useState(false);
@@ -925,6 +925,12 @@ const [manualSubmitting, setManualSubmitting] = useState(false);
     if (filterCourse) filtered = filtered.filter(a => a.course === filterCourse);
     if (filterBatch) filtered = filtered.filter(a => a.batch_year === parseInt(filterBatch));
     if (filterStatus) filtered = filtered.filter(a => a.employment_status === filterStatus);
+    if (alumniSearchTerm) {
+    const searchLower = alumniSearchTerm.toLowerCase();
+    filtered = filtered.filter(a => 
+      a.full_name?.toLowerCase().includes(searchLower)
+    );
+  }
     return filtered;
   };
 
@@ -1593,10 +1599,14 @@ const [manualSubmitting, setManualSubmitting] = useState(false);
             <Card>
               <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
                 Alumni Directory
+                
               </h3>
               
+              
               {/* Filters Row */}
+              
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
+                
                 <select 
                   value={filterDepartment} 
                   onChange={e => setFilterDepartment(e.target.value)} 
@@ -1615,7 +1625,7 @@ const [manualSubmitting, setManualSubmitting] = useState(false);
                   onChange={e => setFilterCourse(e.target.value)} 
                   className="px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
                 >
-                  <option value="">All Courses</option>
+                  <option value="">All Programs</option>
                   {courses.map(course => (
                     <option key={course} value={course}>
                       {course}
@@ -1635,20 +1645,30 @@ const [manualSubmitting, setManualSubmitting] = useState(false);
                     </option>
                   ))}
                 </select>
-                
-                <select 
-                  value={filterStatus} 
-                  onChange={e => setFilterStatus(e.target.value)} 
-                  className="px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
-                >
-                  <option value="">All Employment Status</option>
-                  <option value="Employed">Employed</option>
-                  <option value="Unemployed">Unemployed</option>
-                  <option value="Self-Employed">Self-Employed</option>
-                  <option value="Freelancer">Freelancer</option>
-                </select>
+               <select
+  value={filterStatus}
+  onChange={e => setFilterStatus(e.target.value)}
+  className="px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+>
+  <option value="">All Employment Status</option>
+  <option value="Full Time">Full Time</option>
+  <option value="Part Time">Part Time</option>
+  <option value="Self-Employed">Self-Employed</option>
+  <option value="Independent Contractor">Independent Contractor</option>
+  <option value="Seasonal Worker">Seasonal Worker</option>
+  <option value="Unemployed">Unemployed</option>
+</select>
+                 
               </div>
-              
+               <div className="sm:col-span-1">
+      <input
+        type="text"
+        placeholder=" Search by name..."
+        value={alumniSearchTerm}
+        onChange={(e) => setAlumniSearchTerm(e.target.value)}
+        className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:border-[#800000] focus:ring-1 focus:ring-[#800000] outline-none"
+      />
+    </div>
               {/* Table using column-style divs for easier debugging */}
               <div className="overflow-x-auto">
                 
@@ -2181,7 +2201,7 @@ const [manualSubmitting, setManualSubmitting] = useState(false);
                 Filter Announcements
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
+                {/* <div>
                   <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
                     Target Type
                   </label>
@@ -2198,7 +2218,7 @@ const [manualSubmitting, setManualSubmitting] = useState(false);
                     <option value="course">Send by Program</option>
                     <option value="batch_year">Send by Batch Year</option>
                   </select>
-                </div>
+                </div> */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
                     {announcementFilterType === 'all' ? 'Program (Optional)' : announcementFilterType === 'course' ? 'Specific Program' : 'Program Filter'}
