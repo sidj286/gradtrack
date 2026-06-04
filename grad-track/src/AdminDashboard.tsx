@@ -2606,7 +2606,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                     onChange={(e) => setMasterListFilterCourse(e.target.value)} 
                     className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:border-[#800000] focus:ring-1 focus:ring-[#800000] outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
                   >
-                    <option value="">All Courses</option>
+                    <option value="">All Programs</option>
                     {masterListStats.byCourse.map(c => (
                       <option key={c} value={c}>{c}</option>
                     ))}
@@ -2658,11 +2658,11 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
               <div className="overflow-x-auto">
                 
                 {/* Header */}
-                <div className="hidden md:grid grid-cols-8 gap-4 px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-t-lg text-sm font-semibold text-gray-600 dark:text-gray-300">
+                <div className="hidden md:grid grid-cols-8 gap-6 px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-t-lg text-sm font-semibold text-gray-600 dark:text-gray-300">
   <div>Student ID</div>
   <div>Full Name</div>
   <div>Email</div>
-  <div>Course</div>
+  <div>Program</div>
   <div>Department</div>
   <div>Batch Year</div>
   <div>Status</div>
@@ -2688,7 +2688,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                     paginatedMasterList.map((record: any) => (
                       <div 
   key={record.id} 
-  className="grid grid-cols-1 md:grid-cols-8 gap-2 md:gap-4 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
+  className="grid grid-cols-1 md:grid-cols-8 gap-6 md:gap-4 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
 >
                         <div className="flex justify-between md:block">
                           <span className="md:hidden font-semibold text-gray-500 text-xs">
@@ -2710,9 +2710,9 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                           <span className="md:hidden font-semibold text-gray-500 text-xs">
                             Email
                           </span>
-                          <span className="text-sm text-gray-600 dark:text-gray-400">
-                            {record.email || '-'}
-                          </span>
+                          <span className="text-sm text-gray-600 dark:text-gray-400 break-words whitespace-normal">
+  {record.email || ''}
+</span>
                         </div>
                         <div className="flex justify-between md:block">
                           <span className="md:hidden font-semibold text-gray-500 text-xs">
