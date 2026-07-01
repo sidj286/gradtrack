@@ -6,6 +6,8 @@ import { PieChart, Pie, BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveCo
 import { getProgramPromotionRecommendations, getProgramStrengthAnalysis, getInstitutionalSummary } from './lib/gemini';
 import ImportMasterListModal from './ImportMasterListModal';
 import ReportsPanel from './ReportsPanel';
+import AnnouncementComments from './AnnouncementComments';
+import NotificationBell from './NotificationBell';
 
 // ==================== TYPES ====================
 interface AlumniProfile {
@@ -61,6 +63,22 @@ interface DepartmentStat {
   pending_count: number;
   employment_rate: number;
   alignment_rate: number;
+}
+
+// ============================================================
+// ANNOUNCEMENT COMMENT TYPES
+// ============================================================
+interface AnnouncementComment {
+  id: string;
+  announcement_id: string;
+  user_id: string;
+  content: string;
+  parent_comment_id: string | null;
+  created_at: string;
+  full_name?: string;
+  role?: string;
+  replies?: AnnouncementComment[];
+  showReplyInput?: boolean;
 }
 
 // ==================== DEPARTMENT CONFIGURATION ====================
@@ -294,6 +312,19 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
   const [showProfileViewModal, setShowProfileViewModal] = useState(false);
 
   // ============================================================
+  // ANNOUNCEMENT COMMENTS STATE
+  // ============================================================
+  const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState({ title: '', content: '', category: '', target_type: '', target_course: '', target_batch_year: '' });
+  const [comments, setComments] = useState<Record<string, AnnouncementComment[]>>({});
+  const [commentLoading, setCommentLoading] = useState<Record<string, boolean>>({});
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const [allCommentsLoading, setAllCommentsLoading] = useState(false);
+  const [allCommentsFetched, setAllCommentsFetched] = useState(false);
+  const [showComments, setShowComments] = useState<Record<string, boolean>>({});
+
+  // ============================================================
   // SECTION 2: useEffect HOOKS
   // ============================================================
   
@@ -361,6 +392,13 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
     supabase.removeChannel(channel);
   };
 }, []); // The empty dependency array means this runs once when the component loads
+
+  // Prefetch all comments for announcements when announcements tab becomes active
+  useEffect(() => {
+    if (activeMainTab === 'announcements' && announcements.length > 0 && !allCommentsFetched) {
+      fetchAllComments();
+    }
+  }, [activeMainTab, announcements]);
 
   // ============================================================
   // SECTION 3: HELPER FUNCTIONS
@@ -915,6 +953,274 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
     }
   };
 
+  
+
+  // ============================================================
+  // COMMENT FUNCTIONS
+  // ============================================================
+
+  // Fetch comments for an announcement
+  const fetchComments = async (announcementId: string) => {
+    setCommentLoading(prev => ({ ...prev, [announcementId]: true }));
+    
+    try {
+      const { data: allCommentsData, error } = await supabase
+        .from('announcement_comments')
+        .select('*')
+        .eq('announcement_id', announcementId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      const allComments = (allCommentsData as AnnouncementComment[] | null) || [];
+
+      if (allComments.length === 0) {
+        setComments(prev => ({ ...prev, [announcementId]: [] }));
+        return;
+      }
+
+      const userIds = [...new Set(allComments.map(comment => comment.user_id))];
+      let userMap: Record<string, { id: string; role?: string }> = {};
+      let nameMap: Record<string, string> = {};
+
+      if (userIds.length > 0) {
+        const { data: users } = await supabase
+          .from('users')
+          .select('id, role')
+          .in('id', userIds);
+
+        userMap = users?.reduce((acc, user) => ({ ...acc, [user.id]: user }), {}) || {};
+
+        const { data: alumni } = await supabase
+          .from('alumni_profiles')
+          .select('user_id, full_name')
+          .in('user_id', userIds);
+
+        nameMap = alumni?.reduce((acc, profile) => ({ ...acc, [profile.user_id]: profile.full_name }), {}) || {};
+      }
+
+      const commentMap: Record<string, AnnouncementComment & { replies: AnnouncementComment[]; showReplyInput: boolean }> = {};
+      const rootComments: (AnnouncementComment & { replies: AnnouncementComment[]; showReplyInput: boolean })[] = [];
+
+      allComments.forEach(comment => {
+        commentMap[comment.id] = {
+          ...comment,
+          full_name: nameMap[comment.user_id] || 'Unknown Alumni',
+          role: userMap[comment.user_id]?.role || 'alumni',
+          replies: [],
+          showReplyInput: false
+        };
+      });
+
+      allComments.forEach(comment => {
+        if (comment.parent_comment_id) {
+          const parentComment = commentMap[comment.parent_comment_id];
+          if (parentComment) {
+            parentComment.replies.push(commentMap[comment.id]);
+          }
+        } else {
+          rootComments.push(commentMap[comment.id]);
+        }
+      });
+
+      setComments(prev => ({ ...prev, [announcementId]: rootComments }));
+      setCommentCounts(prev => ({ ...prev, [announcementId]: allComments.length }));
+    } catch (error) {
+      console.error('Error fetching comments:', error);
+    } finally {
+      setCommentLoading(prev => ({ ...prev, [announcementId]: false }));
+    }
+  };
+
+    // Fetch all comments for all announcements in one batched query
+    const fetchAllComments = async () => {
+      if (!announcements || announcements.length === 0) return;
+      const announcementIds = announcements.map(a => a.id);
+      setAllCommentsLoading(true);
+      // mark all as loading
+      setCommentLoading(prev => {
+        const copy = { ...prev };
+        announcementIds.forEach(id => (copy[id] = true));
+        return copy;
+      });
+
+      try {
+        const { data: allCommentsData, error } = await supabase
+          .from('announcement_comments')
+          .select('*')
+          .in('announcement_id', announcementIds)
+          .order('created_at', { ascending: true });
+
+        if (error) throw error;
+
+        const allComments = (allCommentsData as AnnouncementComment[] | null) || [];
+
+        // build user maps
+        const userIds = [...new Set(allComments.map(c => c.user_id))];
+        let userMap: Record<string, { id: string; role?: string }> = {};
+        let nameMap: Record<string, string> = {};
+
+        if (userIds.length > 0) {
+          const { data: users } = await supabase
+            .from('users')
+            .select('id, role')
+            .in('id', userIds);
+
+          userMap = users?.reduce((acc, user) => ({ ...acc, [user.id]: user }), {}) || {};
+
+          const { data: alumni } = await supabase
+            .from('alumni_profiles')
+            .select('user_id, full_name')
+            .in('user_id', userIds);
+
+          nameMap = alumni?.reduce((acc, profile) => ({ ...acc, [profile.user_id]: profile.full_name }), {}) || {};
+        }
+
+        // group comments by announcement and build threaded roots
+        const grouped: Record<string, (AnnouncementComment & { replies: AnnouncementComment[]; showReplyInput?: boolean })[]> = {};
+        const counts: Record<string, number> = {};
+
+        announcementIds.forEach(id => {
+          grouped[id] = [];
+          counts[id] = 0;
+        });
+
+        const commentMapsByAnn: Record<string, Record<string, AnnouncementComment & { replies: AnnouncementComment[]; showReplyInput?: boolean }>> = {};
+
+        allComments.forEach(comment => {
+          counts[comment.announcement_id] = (counts[comment.announcement_id] || 0) + 1;
+          if (!commentMapsByAnn[comment.announcement_id]) commentMapsByAnn[comment.announcement_id] = {};
+          commentMapsByAnn[comment.announcement_id][comment.id] = {
+            ...comment,
+            full_name: nameMap[comment.user_id] || 'Unknown Alumni',
+            role: userMap[comment.user_id]?.role || 'alumni',
+            replies: [],
+            showReplyInput: false
+          };
+        });
+
+        // assemble roots per announcement
+        Object.keys(commentMapsByAnn).forEach(annId => {
+          const map = commentMapsByAnn[annId];
+          Object.values(map).forEach(c => {
+            if (c.parent_comment_id) {
+              const parent = map[c.parent_comment_id];
+              if (parent) parent.replies.push(c);
+            } else {
+              grouped[annId].push(c);
+            }
+          });
+        });
+
+        setComments(prev => ({ ...prev, ...grouped }));
+        setCommentCounts(prev => ({ ...prev, ...counts }));
+        setAllCommentsFetched(true);
+      } catch (err) {
+        console.error('Error fetching all comments:', err);
+        showSettingsToast('Failed to load comments', 'error');
+      } finally {
+        setAllCommentsLoading(false);
+        // clear per-ann loading
+        setCommentLoading(prev => {
+          const copy = { ...prev };
+          announcements.forEach(a => (copy[a.id] = false));
+          return copy;
+        });
+      }
+    };
+
+  // Add a comment
+  const addComment = async (announcementId: string, content: string, parentCommentId: string | null = null) => {
+    if (!content.trim()) return;
+
+    try {
+      const { error } = await supabase
+        .from('announcement_comments')
+        .insert({
+          announcement_id: announcementId,
+          user_id: session.user.id,
+          content: content.trim(),
+          parent_comment_id: parentCommentId
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Refresh comments
+      await fetchComments(announcementId);
+      
+      // Clear input
+        // Update announcement views (optional: log activity)
+      await supabase.from('alumni_activities').insert({
+        user_id: session.user.id,
+        activity_type: 'announcement_comment',
+        description: `Commented on announcement: ${content.substring(0, 50)}...`,
+        metadata: { announcement_id: announcementId }
+      });
+
+      showSettingsToast('Comment added successfully!', 'success');
+    } catch (error) {
+      console.error('Error adding comment:', error);
+      showSettingsToast('Failed to add comment', 'error');
+    }
+  };
+
+  // Delete a comment (admin can delete any, users can delete their own)
+  const deleteComment = async (commentId: string, announcementId: string) => {
+    if (!confirm('Are you sure you want to delete this comment?')) return;
+
+    try {
+      // First delete any replies
+      await supabase
+        .from('announcement_comments')
+        .delete()
+        .eq('parent_comment_id', commentId);
+
+      // Then delete the comment itself
+      const { error } = await supabase
+        .from('announcement_comments')
+        .delete()
+        .eq('id', commentId);
+
+      if (error) throw error;
+
+      await fetchComments(announcementId);
+      showSettingsToast('Comment deleted successfully!', 'success');
+    } catch (error) {
+      console.error('Error deleting comment:', error);
+      showSettingsToast('Failed to delete comment', 'error');
+    }
+  };
+
+  // Edit Announcement
+  const handleEditAnnouncement = async () => {
+    if (!editingAnnouncement) return;
+
+    const { error } = await supabase
+      .from('announcements')
+      .update({
+        title: editForm.title,
+        content: editForm.content,
+        category: editForm.category,
+        target_type: editForm.target_type,
+        target_course: editForm.target_course || null,
+        target_batch_year: editForm.target_batch_year ? parseInt(editForm.target_batch_year) : null,
+      })
+      .eq('id', editingAnnouncement.id);
+
+    if (!error) {
+      setShowEditModal(false);
+      setEditingAnnouncement(null);
+      fetchData();
+      showSettingsToast('Announcement updated successfully!', 'success');
+    } else {
+      showSettingsToast('Failed to update announcement', 'error');
+    }
+  };
+
+
+
   // ============================================================
   // SECTION 6: FILTER FUNCTIONS
   // ============================================================
@@ -1106,6 +1412,15 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                   {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </span>
               </div>
+
+              <NotificationBell
+                userId={session.user.id}
+                onNotificationClick={(notification) => {
+                  if (notification.link) {
+                    console.log('Navigate to:', notification.link);
+                  }
+                }}
+              />
 
               {/* Profile Dropdown */}
               <div className="relative">
@@ -2184,11 +2499,22 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
         {/* ======================================================== */}
         {/* TAB 3: ANNOUNCEMENTS */}
         {/* ======================================================== */}
+        {/* ======================================================== */}
+        {/* TAB 3: ANNOUNCEMENTS */}
+        {/* ======================================================== */}
         {activeMainTab === 'announcements' && (
           <>
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-3">
                 Announcements
+                {allCommentsLoading && (
+                  <span className="flex items-center text-xs text-gray-500">
+                    <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                    </svg>
+                  </span>
+                )}
               </h3>
               <Button onClick={() => setShowCreateModal(true)}>
                 + Create Announcement
@@ -2201,24 +2527,6 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                 Filter Announcements
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {/* <div>
-                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                    Target Type
-                  </label>
-                  <select 
-                    value={announcementFilterType} 
-                    onChange={(e) => { 
-                      setAnnouncementFilterType(e.target.value as 'all' | 'course' | 'batch_year'); 
-                      setAnnouncementFilterCourse(''); 
-                      setAnnouncementFilterBatchYear(''); 
-                    }} 
-                    className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
-                  >
-                    <option value="all">All Alumni</option>
-                    <option value="course">Send by Program</option>
-                    <option value="batch_year">Send by Batch Year</option>
-                  </select>
-                </div> */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
                     {announcementFilterType === 'all' ? 'Program (Optional)' : announcementFilterType === 'course' ? 'Specific Program' : 'Program Filter'}
@@ -2273,10 +2581,8 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
             {/* Announcements List */}
             <div className="space-y-4">
               {filteredAnnouncements.length === 0 ? (
-                <div className="text-center py-8">
-                  <div className="text-4xl mb-2">
-                    📭
-                  </div>
+                <div className="text-center py-8 rounded-2xl border border-dashed border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+                  <div className="text-4xl mb-2">📭</div>
                   <p className="text-gray-500 dark:text-gray-400">
                     No announcements match your filters
                   </p>
@@ -2292,53 +2598,103 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                   </button>
                 </div>
               ) : (
-                filteredAnnouncements.map(ann => (
-                  <div 
-                    key={ann.id} 
-                    className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
-                  >
-                    <div className="flex items-start justify-between flex-wrap gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap gap-2 mb-2">
-                          <span className="px-2 py-1 text-xs font-semibold rounded-lg bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
-                            {getCategoryLabel(ann.category)}
-                          </span>
-                          <span className="px-2 py-1 text-xs font-semibold rounded-lg bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-300">
-                            Target: {getTargetLabel(ann)}
-                          </span>
-                          {!ann.published && (
-                            <span className="px-2 py-1 text-xs font-semibold rounded-lg bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300">
-                              Draft
+                filteredAnnouncements.map(ann => {
+                  const isExpanded = showComments[ann.id] || false;
+                  
+                  return (
+                    <article
+                      key={ann.id}
+                      className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition-all duration-300 hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
+                    >
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2 mb-3">
+                            <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
+                              {getCategoryLabel(ann.category)}
                             </span>
-                          )}
+                            <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                              Target: {getTargetLabel(ann)}
+                            </span>
+                            {!ann.published && (
+                              <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300">
+                                Draft
+                              </span>
+                            )}
+                            <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">
+                              {new Date(ann.created_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <h4 className="text-lg font-bold text-gray-900 dark:text-white mb-2 break-words">
+                            {ann.title}
+                          </h4>
+                          <p className="text-sm leading-relaxed text-gray-600 whitespace-pre-line dark:text-gray-400">
+                            {ann.content}
+                          </p>
                         </div>
-                        <h4 className="text-lg font-bold text-gray-900 dark:text-white mb-1 break-words">
-                          {ann.title}
-                        </h4>
-                        <p className="text-gray-600 dark:text-gray-400 mb-2 break-words">
-                          {ann.content}
-                        </p>
-                        <p className="text-xs text-gray-400 dark:text-gray-500">
-                          {new Date(ann.created_at).toLocaleDateString()}
-                        </p>
+                        <div className="flex flex-wrap gap-2 lg:flex-col lg:items-stretch">
+                          <button 
+                            onClick={() => {
+                              setEditingAnnouncement(ann);
+                              setEditForm({
+                                title: ann.title,
+                                content: ann.content,
+                                category: ann.category,
+                                target_type: ann.target_type,
+                                target_course: ann.target_course || '',
+                                target_batch_year: ann.target_batch_year?.toString() || '',
+                              });
+                              setShowEditModal(true);
+                            }}
+                            className="px-3 py-2 text-sm font-medium bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 dark:bg-blue-900/50 dark:text-blue-300 dark:hover:bg-blue-900"
+                          >
+                            Edit
+                          </button>
+                          <button 
+                            onClick={() => toggleAnnouncementStatus(ann.id, ann.published)} 
+                            className="px-3 py-2 text-sm font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+                          >
+                            {ann.published ? 'Unpublish' : 'Publish'}
+                          </button>
+                          <button 
+                            onClick={() => deleteAnnouncement(ann.id)} 
+                            className="px-3 py-2 text-sm font-medium bg-red-100 text-red-700 rounded-lg hover:bg-red-200 dark:bg-red-900/50 dark:text-red-300 dark:hover:bg-red-900"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex gap-2 flex-shrink-0">
-                        <button 
-                          onClick={() => toggleAnnouncementStatus(ann.id, ann.published)} 
-                          className="px-3 py-1 text-sm bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-500"
+
+                      {/* Comments Section */}
+                      <div className="mt-4 border-t border-gray-100 pt-4 dark:border-gray-700">
+                        <button
+                          onClick={() => {
+                            const newState = !isExpanded;
+                            setShowComments(prev => ({ ...prev, [ann.id]: newState }));
+                            if (newState && !comments[ann.id] && !allCommentsFetched) {
+                              fetchComments(ann.id);
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 text-sm font-medium text-[#800000] hover:underline"
                         >
-                          {ann.published ? 'Unpublish' : 'Publish'}
+                          💬 {(commentCounts[ann.id] ?? comments[ann.id]?.length) || 0} comment{(commentCounts[ann.id] ?? comments[ann.id]?.length) !== 1 ? 's' : ''}
+                          <span className="text-xs">{isExpanded ? '▲' : '▼'}</span>
                         </button>
-                        <button 
-                          onClick={() => deleteAnnouncement(ann.id)} 
-                          className="px-3 py-1 text-sm bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 rounded-lg hover:bg-red-200 dark:hover:bg-red-800"
-                        >
-                          Delete
-                        </button>
+                        {isExpanded && (
+                          <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50/80 p-3 dark:border-gray-700 dark:bg-gray-900/40">
+                            <AnnouncementComments
+                              announcementId={ann.id}
+                              comments={comments[ann.id] || []}
+                              loading={commentLoading[ann.id] || false}
+                              session={session}
+                              onAddComment={addComment}
+                              onDeleteComment={deleteComment}
+                            />
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  </div>
-                ))
+                    </article>
+                  );
+                })
               )}
             </div>
           </>
@@ -3742,6 +4098,155 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
 
   </div>
 </Modal>
+
+      {/* Edit Announcement Modal */}
+      <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="Edit Announcement" size="lg">
+        <div className="space-y-4">
+          <input
+            type="text"
+            value={editForm.title}
+            onChange={e => setEditForm({ ...editForm, title: e.target.value })}
+            placeholder="Announcement Title"
+            className="w-full px-4 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+          />
+          <textarea
+            value={editForm.content}
+            onChange={e => setEditForm({ ...editForm, content: e.target.value })}
+            placeholder="Announcement Content"
+            rows={4}
+            className="w-full px-4 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+          />
+          <select
+            value={editForm.category}
+            onChange={e => setEditForm({ ...editForm, category: e.target.value })}
+            className="w-full px-4 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+          >
+            <option value="alumni_events">🎉 Alumni Events</option>
+            <option value="job_fairs">💼 Job Fairs</option>
+            <option value="seminars">📚 Seminars</option>
+            <option value="career_opportunities">🎯 Career Opportunities</option>
+          </select>
+          <select
+            value={editForm.target_type}
+            onChange={e => setEditForm({ ...editForm, target_type: e.target.value, target_course: '', target_batch_year: '' })}
+            className="w-full px-4 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+          >
+            <option value="all">Send to All Alumni</option>
+            <option value="course">Send by Program</option>
+            <option value="batch_year">Send by Batch Year</option>
+          </select>
+
+          {editForm.target_type === 'course' && (
+            <div className="space-y-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Advanced Targeting Options</p>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Select Program *</label>
+                <select
+                  value={editForm.target_course}
+                  onChange={e => setEditForm({ ...editForm, target_course: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
+                  required
+                >
+                  <option value="">Select a program</option>
+                  {courses.map(course => (
+                    <option key={course} value={course}>{course}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Batch Year (Optional)</label>
+                <select
+                  value={editForm.target_batch_year}
+                  onChange={e => setEditForm({ ...editForm, target_batch_year: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
+                >
+                  <option value="">All Batch Years</option>
+                  {batchYears.map(year => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-400 mt-1">Leave empty to send to all batch years of this program</p>
+              </div>
+            </div>
+          )}
+
+          {editForm.target_type === 'batch_year' && (
+            <div className="space-y-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Advanced Targeting Options</p>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Select Batch Year *</label>
+                <select
+                  value={editForm.target_batch_year}
+                  onChange={e => setEditForm({ ...editForm, target_batch_year: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
+                  required
+                >
+                  <option value="">Select a batch year</option>
+                  {batchYears.map(year => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Program (Optional)</label>
+                <select
+                  value={editForm.target_course}
+                  onChange={e => setEditForm({ ...editForm, target_course: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
+                >
+                  <option value="">All Programs</option>
+                  {courses.map(course => (
+                    <option key={course} value={course}>{course}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-400 mt-1">Leave empty to send to all programs of this batch year</p>
+              </div>
+            </div>
+          )}
+
+          {editForm.target_type === 'all' && (
+            <div className="space-y-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Advanced Filtering (Optional)</p>
+              <p className="text-xs text-gray-400 mb-2">Leave both empty to send to ALL alumni</p>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Filter by Program (Optional)</label>
+                <select
+                  value={editForm.target_course}
+                  onChange={e => setEditForm({ ...editForm, target_course: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
+                >
+                  <option value="">All Programs</option>
+                  {courses.map(course => (
+                    <option key={course} value={course}>{course}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Filter by Batch Year (Optional)</label>
+                <select
+                  value={editForm.target_batch_year}
+                  onChange={e => setEditForm({ ...editForm, target_batch_year: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
+                >
+                  <option value="">All Batch Years</option>
+                  {batchYears.map(year => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-3 pt-4">
+            <Button onClick={handleEditAnnouncement} className="flex-1" disabled={!editForm.title || !editForm.content}>
+              Update Announcement
+            </Button>
+            <Button variant="secondary" onClick={() => setShowEditModal(false)} className="flex-1">
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Import Master List Modal */}
       <ImportMasterListModal 

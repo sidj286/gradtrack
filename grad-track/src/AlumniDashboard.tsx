@@ -4,6 +4,7 @@ import { supabase } from './lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import { classifyCareerAlignment } from './lib/careerClassifier';
 import phAddress from 'latest-ph-address-thanks-to-anehan';
+import AnnouncementComments from './AnnouncementComments';
 
 // ==================== TYPES ====================
 interface Profile {
@@ -40,6 +41,18 @@ interface Activity {
   activity_type: string;
   description: string;
   created_at: string;
+}
+
+interface AnnouncementComment {
+  id: string;
+  announcement_id: string;
+  user_id: string;
+  content: string;
+  parent_comment_id: string | null;
+  created_at: string;
+  full_name?: string;
+  role?: string;
+  replies?: AnnouncementComment[];
 }
 
 // ==================== REUSABLE COMPONENTS ====================
@@ -462,7 +475,13 @@ const AnnouncementPage: React.FC<{
   announcements: Announcement[];
   loading: boolean;
   onMarkAsRead: (id: string) => void;
-}> = ({ announcements, loading, onMarkAsRead }) => {
+  commentsByAnnouncement: Record<string, AnnouncementComment[]>;
+  commentLoading: Record<string, boolean>;
+  session: Session;
+  isAdmin: boolean;
+  onAddComment: (announcementId: string, content: string, parentCommentId: string | null) => Promise<void>;
+  onDeleteComment: (commentId: string, announcementId: string) => Promise<void>;
+}> = ({ announcements, loading, onMarkAsRead, commentsByAnnouncement, commentLoading, session, isAdmin, onAddComment, onDeleteComment }) => {
   const getCategoryBadge = (category: string) => {
     const badges: Record<string, string> = {
       alumni_events: 'bg-purple-100 text-purple-700',
@@ -508,15 +527,15 @@ const AnnouncementPage: React.FC<{
   }
 
   return (
-    <div className="divide-y divide-gray-100">
+    <div className="space-y-4">
       {announcements.map(ann => (
-        <div 
-          key={ann.id} 
-          className={`p-4 sm:p-6 hover:bg-gray-50 transition-all duration-300 ${!ann.viewed ? 'bg-gradient-to-r from-blue-50/50 to-transparent' : ''}`}
+        <article
+          key={ann.id}
+          className={`rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition-all duration-300 hover:shadow-md sm:p-6 ${!ann.viewed ? 'bg-gradient-to-r from-blue-50/70 to-white' : ''}`}
         >
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-2 sm:mb-3 gap-2">
-            <div className="flex gap-2 flex-wrap">
-              <span className={`px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-lg ${getCategoryBadge(ann.category)}`}>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-3">
+            <div className="flex flex-wrap gap-2">
+              <span className={`px-2.5 py-1 text-[10px] sm:text-xs font-semibold rounded-full ${getCategoryBadge(ann.category)}`}>
                 {getCategoryLabel(ann.category)}
               </span>
               {!ann.viewed && (
@@ -531,7 +550,7 @@ const AnnouncementPage: React.FC<{
             <span className="text-[10px] sm:text-xs text-gray-400">{new Date(ann.created_at).toLocaleDateString()}</span>
           </div>
           <h3 className="text-base sm:text-xl font-bold text-gray-900 mb-2">{ann.title}</h3>
-          <p className="text-sm sm:text-base text-gray-600 leading-relaxed">{ann.content}</p>
+          <p className="text-sm sm:text-base text-gray-600 leading-relaxed whitespace-pre-line">{ann.content}</p>
           {!ann.viewed && (
             <button
               onClick={() => onMarkAsRead(ann.id)}
@@ -541,7 +560,21 @@ const AnnouncementPage: React.FC<{
               <span className="group-hover:translate-x-1 transition-transform">→</span>
             </button>
           )}
-        </div>
+
+          <div className="mt-4 border-t border-gray-100 pt-4">
+            <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3 sm:p-4">
+              <AnnouncementComments
+                announcementId={ann.id}
+                comments={commentsByAnnouncement[ann.id] || []}
+                loading={commentLoading[ann.id] || false}
+                session={session}
+                isAdmin={isAdmin}
+                onAddComment={onAddComment}
+                onDeleteComment={onDeleteComment}
+              />
+            </div>
+          </div>
+        </article>
       ))}
     </div>
   );
@@ -601,6 +634,9 @@ export default function AlumniDashboard({ session }: { session: Session }) {
   
   const [saveLoading, setSaveLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [commentsByAnnouncement, setCommentsByAnnouncement] = useState<Record<string, AnnouncementComment[]>>({});
+  const [commentLoading, setCommentLoading] = useState<Record<string, boolean>>({});
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const handleSignOut = async () => {
     setSignOutLoading(true);
@@ -854,11 +890,82 @@ export default function AlumniDashboard({ session }: { session: Session }) {
         
         console.log('Profile loaded');
       }
+
+      const { data: roleData } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', session.user.id)
+        .maybeSingle();
+
+      setIsAdmin(roleData?.role === 'Admin');
     } catch (err) {
       console.error('Unexpected error in fetchProfile:', err);
     } finally {
       setLoading(false);
       console.log('fetchProfile finished, loading set to false');
+    }
+  };
+
+  const fetchCommentsForAnnouncement = async (announcementId: string) => {
+    setCommentLoading(prev => ({ ...prev, [announcementId]: true }));
+    try {
+      const { data, error } = await supabase
+        .from('announcement_comments')
+        .select('*')
+        .eq('announcement_id', announcementId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      const comments = (data as AnnouncementComment[] | null) || [];
+      const userIds = [...new Set(comments.map(comment => comment.user_id))];
+      let userMap: Record<string, { role?: string }> = {};
+      let nameMap: Record<string, string> = {};
+
+      if (userIds.length > 0) {
+        const { data: usersData } = await supabase
+          .from('users')
+          .select('id, role')
+          .in('id', userIds);
+
+        userMap = usersData?.reduce((acc, user) => ({ ...acc, [user.id]: user }), {}) || {};
+
+        const { data: alumniData } = await supabase
+          .from('alumni_profiles')
+          .select('user_id, full_name')
+          .in('user_id', userIds);
+
+        nameMap = alumniData?.reduce((acc, profile) => ({ ...acc, [profile.user_id]: profile.full_name || 'Unknown Alumni' }), {}) || {};
+      }
+
+      const commentMap: Record<string, AnnouncementComment & { replies: AnnouncementComment[] }> = {};
+      const rootComments: (AnnouncementComment & { replies: AnnouncementComment[] })[] = [];
+
+      comments.forEach(comment => {
+        commentMap[comment.id] = {
+          ...comment,
+          full_name: nameMap[comment.user_id] || 'Unknown Alumni',
+          role: userMap[comment.user_id]?.role || 'alumni',
+          replies: [],
+        };
+      });
+
+      comments.forEach(comment => {
+        if (comment.parent_comment_id) {
+          const parent = commentMap[comment.parent_comment_id];
+          if (parent) {
+            parent.replies.push(commentMap[comment.id]);
+          }
+        } else {
+          rootComments.push(commentMap[comment.id]);
+        }
+      });
+
+      setCommentsByAnnouncement(prev => ({ ...prev, [announcementId]: rootComments }));
+    } catch (error) {
+      console.error('Error fetching comments:', error);
+    } finally {
+      setCommentLoading(prev => ({ ...prev, [announcementId]: false }));
     }
   };
 
@@ -879,10 +986,15 @@ export default function AlumniDashboard({ session }: { session: Session }) {
 
         const viewedIds = new Set(viewsData?.map(v => v.announcement_id) || []);
         
-        setAnnouncements(announcementsData.map(ann => ({
+        const nextAnnouncements = announcementsData.map(ann => ({
           ...ann,
           viewed: viewedIds.has(ann.id),
-        })));
+        }));
+
+        setAnnouncements(nextAnnouncements);
+        nextAnnouncements.forEach(ann => {
+          fetchCommentsForAnnouncement(ann.id);
+        });
       }
     } catch (error) {
       console.error('Error fetching announcements:', error);
@@ -906,6 +1018,44 @@ export default function AlumniDashboard({ session }: { session: Session }) {
       console.error('Error fetching activities:', error);
     } finally {
       setActivitiesLoading(false);
+    }
+  };
+
+  const addComment = async (announcementId: string, content: string, parentCommentId: string | null = null) => {
+    if (!content.trim()) return;
+
+    try {
+      const { error } = await supabase
+        .from('announcement_comments')
+        .insert({
+          announcement_id: announcementId,
+          user_id: session.user.id,
+          content: content.trim(),
+          parent_comment_id: parentCommentId,
+        });
+
+      if (error) throw error;
+      await fetchCommentsForAnnouncement(announcementId);
+      showToast('Comment posted successfully.', 'success');
+    } catch (error) {
+      console.error('Error adding comment:', error);
+      showToast('Unable to post comment right now.', 'error');
+    }
+  };
+
+  const deleteComment = async (commentId: string, announcementId: string) => {
+    if (!window.confirm('Delete this comment?')) return;
+
+    try {
+      await supabase.from('announcement_comments').delete().eq('parent_comment_id', commentId);
+      const { error } = await supabase.from('announcement_comments').delete().eq('id', commentId);
+
+      if (error) throw error;
+      await fetchCommentsForAnnouncement(announcementId);
+      showToast('Comment deleted.', 'success');
+    } catch (error) {
+      console.error('Error deleting comment:', error);
+      showToast('Unable to delete comment.', 'error');
     }
   };
 
@@ -1475,10 +1625,16 @@ if (employmentForm.job_title && employmentForm.job_title.trim() !== '') {
               )}
             </div>
             <Card>
-              <AnnouncementPage 
+              <AnnouncementPage
                 announcements={announcements} 
                 loading={announcementsLoading} 
                 onMarkAsRead={markAnnouncementAsRead}
+                commentsByAnnouncement={commentsByAnnouncement}
+                commentLoading={commentLoading}
+                session={session}
+                isAdmin={isAdmin}
+                onAddComment={addComment}
+                onDeleteComment={deleteComment}
               />
             </Card>
           </div>
