@@ -1310,7 +1310,7 @@ if (employmentForm.job_title && employmentForm.job_title.trim() !== '') {
                 </div>
                 <h3 className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider mb-0.5 sm:mb-1">Current Role</h3>
                 <p className="text-sm sm:text-lg font-bold text-gray-900 truncate">{profile?.job_title || 'Not Set'}</p>
-                <p className="text-[10px] sm:text-sm text-gray-500 mt-0.5 sm:mt-1 truncate">{profile?.company || 'Click to add'}</p>
+                <p className="text-[10px] sm:text-sm text-gray-500 mt-0.5 sm:mt-1 truncate">{profile?.company || 'Company not set'}</p>
               </Card>
 
               <Card className="p-3 sm:p-6 cursor-pointer hover:border-[#800000]/30 transition-all group"  >
@@ -1499,200 +1499,238 @@ if (employmentForm.job_title && employmentForm.job_title.trim() !== '') {
 
       {/* Career Information Modal WITH ADDRESS SELECTOR */}
       <Modal isOpen={showEmploymentModal} onClose={() => setShowEmploymentModal(false)} title="Update Career Information" size="lg">
-        <div className="space-y-3 sm:space-y-4">
-          <div className="bg-amber-50 border border-amber-200 rounded-lg sm:rounded-xl p-3 sm:p-4">
-            <p className="text-xs sm:text-sm text-amber-800 flex items-start gap-2">
-              <span>🔒</span>
-              <span><strong>Full Name, Course, and Batch Year</strong> are locked from the master list. Only career information can be updated.</span>
-            </p>
+  <div className="space-y-3 sm:space-y-4">
+    
+    {/* Locked Info Banner */}
+    <div className="bg-amber-50 border border-amber-200 rounded-lg sm:rounded-xl p-3 sm:p-4">
+      <p className="text-xs sm:text-sm text-amber-800 flex items-start gap-2">
+        <span>🔒</span>
+        <span><strong>Full Name, Course, and Batch Year</strong> are locked from the master list. Only career information can be updated.</span>
+      </p>
+    </div>
+
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+      
+      {/* ============================================================ */}
+      {/* EMPLOYMENT STATUS - Comes FIRST */}
+      {/* ============================================================ */}
+      <div className="sm:col-span-2">
+        <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
+          Employment Status <span className="text-red-500">*</span>
+        </label>
+        <select
+          value={employmentForm.employment_status}
+          onChange={e => setEmploymentForm({ ...employmentForm, employment_status: e.target.value })}
+          className="w-full px-3 py-2 sm:px-4 sm:py-2.5 bg-white border border-gray-200 rounded-xl focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none transition-all text-gray-900 text-sm sm:text-base"
+        >
+          <option value="Employed">Full Time</option>
+          <option value="Employed Part Time">Part Time</option>
+          <option value="Self-Employed">Self-Employed</option>
+          <option value="Freelancer">Independent Contractor</option>
+          <option value="Unemployed">Unemployed</option>
+          <option value="Further Studies">Further Studies</option>
+          <option value="Seasonal Worker">Seasonal Worker</option>
+        </select>
+      </div>
+
+      {/* ============================================================ */}
+      {/* CAREER FIELDS - Only show if NOT Unemployed/Further Studies/Seasonal Worker */}
+      {/* ============================================================ */}
+      {employmentForm.employment_status !== 'Unemployed' && 
+       employmentForm.employment_status !== 'Further Studies' && 
+       employmentForm.employment_status !== 'Seasonal Worker' && (
+        <>
+          <Input
+            label="Job Title"
+            value={employmentForm.job_title}
+            onChange={e => setEmploymentForm({ ...employmentForm, job_title: e.target.value })}
+            placeholder="e.g., Software Engineer"
+            icon="💼"
+          />
+          
+          <Input
+            label="Company"
+            value={employmentForm.company}
+            onChange={e => setEmploymentForm({ ...employmentForm, company: e.target.value })}
+            placeholder="Company name"
+            icon="🏢"
+          />
+
+          {/* Industry Dropdown */}
+          <div className="sm:col-span-2">
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+              Industry
+            </label>
+            <select
+              value={employmentForm.industry}
+              onChange={e => setEmploymentForm({ ...employmentForm, industry: e.target.value })}
+              className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+            >
+              <option value="">Select Industry</option>
+              <option value="Information Technology (IT) / BPO">Information Technology (IT) / BPO</option>
+              <option value="Education">Education</option>
+              <option value="Healthcare">Healthcare</option>
+              <option value="Government / Public Sector">Government / Public Sector</option>
+              <option value="Business / Finance / Banking">Business / Finance / Banking</option>
+              <option value="Retail / Sales / E-commerce">Retail / Sales / E-commerce</option>
+              <option value="Manufacturing">Manufacturing</option>
+              <option value="Construction / Engineering">Construction / Engineering</option>
+              <option value="Hospitality / Tourism / Food Service">Hospitality / Tourism / Food Service</option>
+              <option value="Agriculture / Fisheries">Agriculture / Fisheries</option>
+              <option value="Telecommunications">Telecommunications</option>
+              <option value="Transportation / Logistics">Transportation / Logistics</option>
+              <option value="Media / Entertainment">Media / Entertainment</option>
+              <option value="Real Estate / Property">Real Estate / Property</option>
+              <option value="Legal / Law Firm">Legal / Law Firm</option>
+              <option value="Non-Profit / NGO">Non-Profit / NGO</option>
+              <option value="Energy / Utilities">Energy / Utilities</option>
+              <option value="Mining / Oil / Gas">Mining / Oil / Gas</option>
+              <option value="Pharmaceutical / Biotech">Pharmaceutical / Biotech</option>
+              <option value="Insurance">Insurance</option>
+              <option value="Consulting / Professional Services">Consulting / Professional Services</option>
+              <option value="Research & Development">Research & Development</option>
+              <option value="Arts / Design / Creative">Arts / Design / Creative</option>
+              <option value="Sports / Recreation">Sports / Recreation</option>
+              <option value="Military / Defense">Military / Defense</option>
+              <option value="Religious / Faith-Based Organizations">Religious / Faith-Based Organizations</option>
+            </select>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-            <Input
-              label="Job Title"
-              value={employmentForm.job_title}
-              onChange={e => setEmploymentForm({ ...employmentForm, job_title: e.target.value })}
-              placeholder="e.g., Software Engineer"
-              icon="💼"
-            />
-            <Input
-              label="Company"
-              value={employmentForm.company}
-              onChange={e => setEmploymentForm({ ...employmentForm, company: e.target.value })}
-              placeholder="Company name"
-              icon="🏢"
-            />
-            <div className="sm:col-span-2">
-              <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">Employment Status</label>
-              <select
-                value={employmentForm.employment_status}
-                onChange={e => setEmploymentForm({ ...employmentForm, employment_status: e.target.value })}
-                className="w-full px-3 py-2 sm:px-4 sm:py-2.5 bg-white border border-gray-200 rounded-xl focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none transition-all text-gray-900 text-sm sm:text-base"
-              >
-                <option value="Employed">Full Time</option>
-                <option value="Employed Part Time">Part Time</option>
-                <option value="Self-Employed">Self-Employed</option>
-                <option value="Freelancer">Independent Contractor</option>
-                <option value="Unemployed">Seasonal Worker</option>
-                <option value="Further Studies">Unemployed</option>
-              </select>
-            </div>
+          {/* PHILIPPINE ADDRESS SELECTOR */}
+          <div className="sm:col-span-2">
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+              Work Location
+            </label>
             
-            {/* Industry Dropdown */}
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                Industry
-              </label>
-              <select
-                value={employmentForm.industry}
-                onChange={e => setEmploymentForm({ ...employmentForm, industry: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
-              >
-                <option value="">Select Industry</option>
-                <option value="Information Technology (IT) / BPO">Information Technology (IT) / BPO</option>
-                <option value="Education">Education</option>
-                <option value="Healthcare">Healthcare</option>
-                <option value="Government / Public Sector">Government / Public Sector</option>
-                <option value="Business / Finance / Banking">Business / Finance / Banking</option>
-                <option value="Retail / Sales / E-commerce">Retail / Sales / E-commerce</option>
-                <option value="Manufacturing">Manufacturing</option>
-                <option value="Construction / Engineering">Construction / Engineering</option>
-                <option value="Hospitality / Tourism / Food Service">Hospitality / Tourism / Food Service</option>
-                <option value="Agriculture / Fisheries">Agriculture / Fisheries</option>
-                <option value="Telecommunications">Telecommunications</option>
-                <option value="Transportation / Logistics">Transportation / Logistics</option>
-                <option value="Media / Entertainment">Media / Entertainment</option>
-                <option value="Real Estate / Property">Real Estate / Property</option>
-                <option value="Legal / Law Firm">Legal / Law Firm</option>
-                <option value="Non-Profit / NGO">Non-Profit / NGO</option>
-                <option value="Energy / Utilities">Energy / Utilities</option>
-                <option value="Mining / Oil / Gas">Mining / Oil / Gas</option>
-                <option value="Pharmaceutical / Biotech">Pharmaceutical / Biotech</option>
-                <option value="Insurance">Insurance</option>
-                <option value="Consulting / Professional Services">Consulting / Professional Services</option>
-                <option value="Research & Development">Research & Development</option>
-                <option value="Arts / Design / Creative">Arts / Design / Creative</option>
-                <option value="Sports / Recreation">Sports / Recreation</option>
-                <option value="Military / Defense">Military / Defense</option>
-                <option value="Religious / Faith-Based Organizations">Religious / Faith-Based Organizations</option>
-              </select>
-            </div>
+            {/* Region Dropdown */}
+            <select
+              value={selectedRegion}
+              onChange={(e) => setSelectedRegion(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white mb-2"
+            >
+              <option value="">Select Region</option>
+              {Array.isArray(regions) && regions.map((region: any) => (
+                <option key={region?.psgc || Math.random()} value={region?.psgc || ''}>
+                  {region?.name || 'Unknown Region'}
+                </option>
+              ))}
+            </select>
 
-            {/* PHILIPPINE ADDRESS SELECTOR */}
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                Work Location
-              </label>
-              
-              {/* Region Dropdown */}
+            {/* Province Dropdown */}
+            {selectedRegion && Array.isArray(provinces) && provinces.length > 0 && (
               <select
-                value={selectedRegion}
-                onChange={(e) => setSelectedRegion(e.target.value)}
+                value={selectedProvince}
+                onChange={(e) => setSelectedProvince(e.target.value)}
                 className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white mb-2"
               >
-                <option value="">Select Region</option>
-                {Array.isArray(regions) && regions.map((region: any) => (
-                  <option key={region?.psgc || Math.random()} value={region?.psgc || ''}>
-                    {region?.name || 'Unknown Region'}
+                <option value="">Select Province</option>
+                {provinces.map((province: any) => (
+                  <option key={province?.psgc || Math.random()} value={province?.psgc || ''}>
+                    {province?.name || 'Unknown Province'}
                   </option>
                 ))}
               </select>
+            )}
 
-              {/* Province Dropdown */}
-              {selectedRegion && Array.isArray(provinces) && provinces.length > 0 && (
-                <select
-                  value={selectedProvince}
-                  onChange={(e) => setSelectedProvince(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white mb-2"
-                >
-                  <option value="">Select Province</option>
-                  {provinces.map((province: any) => (
-                    <option key={province?.psgc || Math.random()} value={province?.psgc || ''}>
-                      {province?.name || 'Unknown Province'}
-                    </option>
-                  ))}
-                </select>
-              )}
+            {/* City/Municipality Dropdown */}
+            {selectedProvince && Array.isArray(cities) && cities.length > 0 && (
+              <select
+                value={selectedCity}
+                onChange={(e) => setSelectedCity(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white mb-2"
+              >
+                <option value="">Select City/Municipality</option>
+                {cities.map((city: any) => (
+                  <option key={city?.psgc || Math.random()} value={city?.psgc || ''}>
+                    {city?.name || 'Unknown City'}
+                  </option>
+                ))}
+              </select>
+            )}
 
-              {/* City/Municipality Dropdown */}
-              {selectedProvince && Array.isArray(cities) && cities.length > 0 && (
-                <select
-                  value={selectedCity}
-                  onChange={(e) => setSelectedCity(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white mb-2"
-                >
-                  <option value="">Select City/Municipality</option>
-                  {cities.map((city: any) => (
-                    <option key={city?.psgc || Math.random()} value={city?.psgc || ''}>
-                      {city?.name || 'Unknown City'}
-                    </option>
-                  ))}
-                </select>
-              )}
+            {/* Barangay Dropdown */}
+            {selectedCity && Array.isArray(barangays) && barangays.length > 0 && (
+              <select
+                value={selectedBarangay}
+                onChange={(e) => setSelectedBarangay(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white mb-2"
+              >
+                <option value="">Select Barangay</option>
+                {barangays.map((barangay: any) => (
+                  <option key={barangay?.psgc || Math.random()} value={barangay?.psgc || ''}>
+                    {barangay?.name || 'Unknown Barangay'}
+                  </option>
+                ))}
+              </select>
+            )}
 
-              {/* Barangay Dropdown */}
-              {selectedCity && Array.isArray(barangays) && barangays.length > 0 && (
-                <select
-                  value={selectedBarangay}
-                  onChange={(e) => setSelectedBarangay(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white mb-2"
-                >
-                  <option value="">Select Barangay</option>
-                  {barangays.map((barangay: any) => (
-                    <option key={barangay?.psgc || Math.random()} value={barangay?.psgc || ''}>
-                      {barangay?.name || 'Unknown Barangay'}
-                    </option>
-                  ))}
-                </select>
-              )}
-
-              {/* Street/Sitio/Purok Input */}
-              <input
-                type="text"
-                value={street}
-                onChange={(e) => setStreet(e.target.value)}
-                placeholder="Street / Sitio / Purok / Subdivision (optional)"
-                className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
-              />
-              
-              <p className="text-xs text-gray-400 mt-1">
-                Select region, province, city/municipality, and barangay. Add street if applicable.
-              </p>
-            </div>
-
-            <div className="sm:col-span-2">
-              <Input
-                label="LinkedIn Profile URL"
-                value={employmentForm.linkedin_url}
-                onChange={e => setEmploymentForm({ ...employmentForm, linkedin_url: e.target.value })}
-                placeholder="https://linkedin.com/in/yourusername"
-                icon="🔗"
-              />
-              {employmentForm.linkedin_url && (
-                <div className="mt-2">
-                  <a
-                    href={employmentForm.linkedin_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs sm:text-sm text-[#800000] hover:underline inline-flex items-center gap-1"
-                  >
-                    <span>🔗</span> View your LinkedIn profile →
-                  </a>
-                </div>
-              )}
-            </div>
+            {/* Street/Sitio/Purok Input */}
+            <input
+              type="text"
+              value={street}
+              onChange={(e) => setStreet(e.target.value)}
+              placeholder="Street / Sitio / Purok / Subdivision (optional)"
+              className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+            />
+            
+            <p className="text-xs text-gray-400 mt-1">
+              Select region, province, city/municipality, and barangay. Add street if applicable.
+            </p>
           </div>
-          
-          <div className="flex flex-col sm:flex-row gap-3 pt-3 sm:pt-4">
-            <Button onClick={handleSaveEmployment} loading={saveLoading} className="flex-1">
-              Save Career Info
-            </Button>
-            <Button variant="secondary" onClick={() => setShowEmploymentModal(false)} className="flex-1">
-              Cancel
-            </Button>
-          </div>
+        </>
+      )}
+
+      {/* ============================================================ */}
+      {/* MESSAGE FOR UNEMPLOYED / FURTHER STUDIES / SEASONAL WORKER */}
+      {/* ============================================================ */}
+      {(employmentForm.employment_status === 'Unemployed' || 
+        employmentForm.employment_status === 'Further Studies' || 
+        employmentForm.employment_status === 'Seasonal Worker') && (
+        <div className="sm:col-span-2 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="text-sm text-blue-700">
+            ℹ️ Since you are currently <strong>{employmentForm.employment_status}</strong>, you don't need to fill in career details.
+            You can update this later when your status changes.
+          </p>
         </div>
-      </Modal>
+      )}
+
+      {/* ============================================================ */}
+      {/* LINKEDIN - Always Visible */}
+      {/* ============================================================ */}
+      <div className="sm:col-span-2">
+        <Input
+          label="LinkedIn Profile URL"
+          value={employmentForm.linkedin_url}
+          onChange={e => setEmploymentForm({ ...employmentForm, linkedin_url: e.target.value })}
+          placeholder="https://linkedin.com/in/yourusername"
+          icon="🔗"
+        />
+        {employmentForm.linkedin_url && (
+          <div className="mt-2">
+            <a
+              href={employmentForm.linkedin_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs sm:text-sm text-[#800000] hover:underline inline-flex items-center gap-1"
+            >
+              <span>🔗</span> View your LinkedIn profile →
+            </a>
+          </div>
+        )}
+      </div>
+    </div>
+    
+    {/* Save/Cancel Buttons */}
+    <div className="flex flex-col sm:flex-row gap-3 pt-3 sm:pt-4">
+      <Button onClick={handleSaveEmployment} loading={saveLoading} className="flex-1">
+        Save Career Info
+      </Button>
+      <Button variant="secondary" onClick={() => setShowEmploymentModal(false)} className="flex-1">
+        Cancel
+      </Button>
+    </div>
+  </div>
+</Modal>
 
       {/* Toast Notification */}
       {toast && (

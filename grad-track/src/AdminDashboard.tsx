@@ -514,41 +514,41 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
     showSettingsToast('Master list refreshed', 'success');
   };
 
-  const deleteMasterListRecord = async (id: string, fullName: string) => {
-    if (!confirm(`Are you sure you want to delete "${fullName}" from the master list?`)) return;
+  // const deleteMasterListRecord = async (id: string, fullName: string) => {
+  //   if (!confirm(`Are you sure you want to delete "${fullName}" from the master list?`)) return;
     
-    try {
-      const { error } = await supabase
-        .from('graduates_master')
-        .delete()
-        .eq('id', id);
+  //   try {
+  //     const { error } = await supabase
+  //       .from('graduates_master')
+  //       .delete()
+  //       .eq('id', id);
       
-      if (error) throw error;
+  //     if (error) throw error;
       
-      showSettingsToast(`Deleted ${fullName} from master list`, 'success');
-      fetchMasterList();
-    } catch (error) {
-      console.error('Error deleting record:', error);
-      showSettingsToast('Failed to delete record', 'error');
-    }
-  };
+  //     showSettingsToast(`Deleted ${fullName} from master list`, 'success');
+  //     fetchMasterList();
+  //   } catch (error) {
+  //     console.error('Error deleting record:', error);
+  //     showSettingsToast('Failed to delete record', 'error');
+  //   }
+  // };
 
-  const toggleRecordVerification = async (id: string, newStatus: boolean) => {
-    try {
-      const { error } = await supabase
-        .from('graduates_master')
-        .update({ verified: newStatus })
-        .eq('id', id);
+  // const toggleRecordVerification = async (id: string, newStatus: boolean) => {
+  //   try {
+  //     const { error } = await supabase
+  //       .from('graduates_master')
+  //       .update({ verified: newStatus })
+  //       .eq('id', id);
       
-      if (error) throw error;
+  //     if (error) throw error;
       
-      showSettingsToast(`Record ${newStatus ? 'verified' : 'unverified'}`, 'success');
-      fetchMasterList();
-    } catch (error) {
-      console.error('Error updating verification:', error);
-      showSettingsToast('Failed to update verification status', 'error');
-    }
-  };
+  //     showSettingsToast(`Record ${newStatus ? 'verified' : 'unverified'}`, 'success');
+  //     fetchMasterList();
+  //   } catch (error) {
+  //     console.error('Error updating verification:', error);
+  //     showSettingsToast('Failed to update verification status', 'error');
+  //   }
+  // };
 
   const exportMasterListToCSV = () => {
     if (masterListData.length === 0) {
@@ -2494,18 +2494,6 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
             </div>
 
 
-            <Button 
-  variant="secondary" 
-  size="sm" 
-  onClick={() => setShowManualAddModal(true)}
-  className="flex items-center gap-2"
->
-  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-  </svg>
-  Manual Add
-</Button>
-
             {/* Stats Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-gradient-to-r from-blue-50 to-white dark:from-blue-900/20 dark:to-gray-800 rounded-xl p-5 border border-blue-100 dark:border-blue-800">
@@ -2658,7 +2646,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
               <div className="overflow-x-auto">
                 
                 {/* Header */}
-                <div className="hidden md:grid grid-cols-8 gap-6 px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-t-lg text-sm font-semibold text-gray-600 dark:text-gray-300">
+                <div className="hidden md:grid grid-cols-7 gap-6 px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-t-lg text-sm font-semibold text-gray-600 dark:text-gray-300">
   <div>Student ID</div>
   <div>Full Name</div>
   <div>Email</div>
@@ -2666,7 +2654,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
   <div>Department</div>
   <div>Batch Year</div>
   <div>Status</div>
-  <div>Actions</div>
+  {/* <div>Actions</div> */}
 </div>
                 
                 {/* Rows */}
@@ -2688,7 +2676,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                     paginatedMasterList.map((record: any) => (
                       <div 
   key={record.id} 
-  className="grid grid-cols-1 md:grid-cols-8 gap-6 md:gap-4 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
+  className="grid grid-cols-1 md:grid-cols-7 gap-6 md:gap-4 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
 >
                         <div className="flex justify-between md:block">
                           <span className="md:hidden font-semibold text-gray-500 text-xs">
@@ -2758,7 +2746,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                             {record.verified ? 'Verified' : 'Pending'}
                           </span>
                         </div>
-                        <div className="flex justify-between md:block">
+                        {/* <div className="flex justify-between md:block">
                           <span className="md:hidden font-semibold text-gray-500 text-xs">
                             Actions
                           </span>
@@ -2786,7 +2774,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                               </svg>
                             </button>
                           </div>
-                        </div>
+                        </div> */}
                       </div>
                     ))
                   )}
