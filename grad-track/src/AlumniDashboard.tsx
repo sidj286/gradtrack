@@ -1527,9 +1527,10 @@ if (employmentForm.job_title && employmentForm.job_title.trim() !== '') {
           <option value="Employed Part Time">Part Time</option>
           <option value="Self-Employed">Self-Employed</option>
           <option value="Freelancer">Independent Contractor</option>
-          <option value="Unemployed">Unemployed</option>
-          <option value="Further Studies">Further Studies</option>
+          {/* <option value="Unemployed">Unemployed</option> */}
+          {/* <option value="Further Studies">Further Studies</option> */}
           <option value="Seasonal Worker">Seasonal Worker</option>
+          <option value="Unemployed">Unemployed</option>
         </select>
       </div>
 
@@ -1537,8 +1538,8 @@ if (employmentForm.job_title && employmentForm.job_title.trim() !== '') {
       {/* CAREER FIELDS - Only show if NOT Unemployed/Further Studies/Seasonal Worker */}
       {/* ============================================================ */}
       {employmentForm.employment_status !== 'Unemployed' && 
-       employmentForm.employment_status !== 'Further Studies' && 
-       employmentForm.employment_status !== 'Seasonal Worker' && (
+        
+        (
         <>
           <Input
             label="Job Title"
