@@ -1,10 +1,17 @@
 // src/AlumniDashboard.tsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import { classifyCareerAlignment } from './lib/careerClassifier';
 import phAddress from 'latest-ph-address-thanks-to-anehan';
 import AnnouncementComments from './AnnouncementComments';
+import {
+  notifyCareerUpdated,
+  notifyProfileUpdated,
+  notifyNewRegistration,
+  notifyEmploymentStatusChanged,
+} from './lib/notificationUtils';
+import NotificationBell from './NotificationBell';
 
 // ==================== TYPES ====================
 interface Profile {
@@ -56,12 +63,12 @@ interface AnnouncementComment {
 }
 
 // ==================== REUSABLE COMPONENTS ====================
-const Card: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void }> = ({ 
-  children, 
-  className = '', 
-  onClick 
+const Card: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void }> = ({
+  children,
+  className = '',
+  onClick
 }) => (
-  <div 
+  <div
     onClick={onClick}
     className={`
       bg-white rounded-xl sm:rounded-2xl shadow-lg border border-gray-100 
@@ -90,13 +97,13 @@ const Button: React.FC<{
     danger: 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md',
     success: 'bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white shadow-md',
   };
-  
+
   const sizes = {
     sm: 'px-3 py-1.5 text-xs sm:px-4 sm:py-2 sm:text-sm',
     md: 'px-4 py-2 text-sm sm:px-6 sm:py-2.5',
     lg: 'px-6 py-2.5 text-base sm:px-8 sm:py-3.5',
   };
-  
+
   return (
     <button
       onClick={onClick}
@@ -164,9 +171,9 @@ const Input: React.FC<{
   </div>
 );
 
-const Badge: React.FC<{ children: React.ReactNode; variant?: 'success' | 'warning' | 'info' | 'danger' | 'default' }> = ({ 
-  children, 
-  variant = 'default' 
+const Badge: React.FC<{ children: React.ReactNode; variant?: 'success' | 'warning' | 'info' | 'danger' | 'default' }> = ({
+  children,
+  variant = 'default'
 }) => {
   const variants = {
     success: 'bg-emerald-100 text-emerald-700',
@@ -175,7 +182,7 @@ const Badge: React.FC<{ children: React.ReactNode; variant?: 'success' | 'warnin
     danger: 'bg-red-100 text-red-700',
     default: 'bg-gray-100 text-gray-700',
   };
-  
+
   return (
     <span className={`px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-lg ${variants[variant]}`}>
       {children}
@@ -183,10 +190,10 @@ const Badge: React.FC<{ children: React.ReactNode; variant?: 'success' | 'warnin
   );
 };
 
-const ProgressBar: React.FC<{ value: number; label?: string; showPercentage?: boolean }> = ({ 
-  value, 
-  label, 
-  showPercentage = true 
+const ProgressBar: React.FC<{ value: number; label?: string; showPercentage?: boolean }> = ({
+  value,
+  label,
+  showPercentage = true
 }) => (
   <div className="space-y-2">
     {(label || showPercentage) && (
@@ -196,7 +203,7 @@ const ProgressBar: React.FC<{ value: number; label?: string; showPercentage?: bo
       </div>
     )}
     <div className="h-1.5 sm:h-2 bg-gray-100 rounded-full overflow-hidden">
-      <div 
+      <div
         className="h-full bg-gradient-to-r from-[#800000] to-[#a10000] rounded-full transition-all duration-500"
         style={{ width: `${Math.min(100, value)}%` }}
       />
@@ -212,9 +219,9 @@ const Modal: React.FC<{
   size?: 'sm' | 'md' | 'lg';
 }> = ({ isOpen, onClose, title, children, size = 'md' }) => {
   if (!isOpen) return null;
-  
+
   const sizes = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-2xl' };
-  
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className={`${sizes[size]} w-full bg-white rounded-xl sm:rounded-2xl shadow-2xl mx-4 sm:mx-0`}>
@@ -233,149 +240,24 @@ const Modal: React.FC<{
   );
 };
 
-// ==================== NOTIFICATION BELL COMPONENT ====================
-const NotificationBell: React.FC<{ 
-  unreadCount: number; 
-  onClick: () => void;
-  isOpen: boolean;
-}> = ({ unreadCount, onClick, isOpen }) => {
-  return (
-    <div className="relative">
-      <button
-        onClick={onClick}
-        className={`
-          relative p-1.5 sm:p-2 rounded-xl transition-all duration-300
-          ${isOpen ? 'bg-[#800000]/10 text-[#800000]' : 'text-gray-600 hover:bg-gray-100'}
-        `}
-      >
-        <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-        </svg>
-        {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-red-500 text-white text-[10px] sm:text-xs rounded-full flex items-center justify-center animate-pulse ring-2 ring-white">
-            {unreadCount > 9 ? '9+' : unreadCount}
-          </span>
-        )}
-      </button>
-    </div>
-  );
-};
-
-// ==================== NOTIFICATION DROPDOWN COMPONENT ====================
-const NotificationDropdown: React.FC<{
-  announcements: Announcement[];
-  loading: boolean;
-  onMarkAsRead: (id: string) => void;
-  onViewAll: () => void;
-  onClose: () => void;
-}> = ({ announcements, loading, onMarkAsRead, onViewAll, onClose }) => {
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const unreadAnnouncements = announcements.filter(a => !a.viewed);
-  const recentAnnouncements = announcements.slice(0, 5);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        onClose();
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [onClose]);
-
-  const getCategoryIcon = (category: string) => {
-    const icons: Record<string, string> = {
-      alumni_events: '🎉',
-      job_fairs: '💼',
-      seminars: '📚',
-      career_opportunities: '🎯',
-    };
-    return icons[category] || '📢';
-  };
-
-  if (loading) {
-    return (
-      <div 
-        ref={dropdownRef} 
-        className="fixed md:absolute md:right-0 md:mt-2 left-1/2 -translate-x-1/2 md:left-auto md:translate-x-0 top-14 sm:top-16 md:top-auto w-[calc(100%-2rem)] sm:w-96 md:w-96 bg-white rounded-xl sm:rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50"
-      >
-        <div className="p-6 sm:p-8 text-center">
-          <div className="w-6 h-6 sm:w-8 sm:h-8 border-2 border-[#800000]/20 border-t-[#800000] rounded-full animate-spin mx-auto mb-2" />
-          <p className="text-xs sm:text-sm text-gray-500">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div 
-      ref={dropdownRef}
-      className="fixed md:absolute md:right-0 md:mt-2 left-1/2 -translate-x-1/2 md:left-auto md:translate-x-0 top-14 sm:top-16 md:top-auto w-[calc(100%-2rem)] sm:w-96 md:w-96 bg-white rounded-xl sm:rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50"
-    >
-      <div className="p-3 sm:p-4 border-b border-gray-100 bg-gradient-to-r from-[#800000]/5 to-transparent">
-        <div className="flex items-center justify-between">
-          <h3 className="font-bold text-sm sm:text-base text-gray-900">Notifications</h3>
-          {unreadAnnouncements.length > 0 && (
-            <button
-              onClick={() => unreadAnnouncements.forEach(a => onMarkAsRead(a.id))}
-              className="text-[10px] sm:text-xs text-[#800000] font-semibold hover:underline"
-            >
-              Mark all as read
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="max-h-80 sm:max-h-96 overflow-y-auto">
-        {recentAnnouncements.length === 0 ? (
-          <div className="p-6 sm:p-8 text-center">
-            <div className="text-3xl sm:text-4xl mb-2">🔔</div>
-            <p className="text-gray-500 font-medium text-sm sm:text-base">No notifications</p>
-            <p className="text-xs text-gray-400 mt-1">You're all caught up!</p>
-          </div>
-        ) : (
-          recentAnnouncements.map(ann => (
-            <div
-              key={ann.id}
-              className={`
-                p-3 sm:p-4 border-b border-gray-50 hover:bg-gray-50 transition-all cursor-pointer
-                ${!ann.viewed ? 'bg-gradient-to-r from-blue-50/50 to-transparent' : ''}
-              `}
-              onClick={() => {
-                if (!ann.viewed) onMarkAsRead(ann.id);
-              }}
-            >
-              <div className="flex items-start gap-2 sm:gap-3">
-                <div className="text-xl sm:text-2xl">{getCategoryIcon(ann.category)}</div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <p className="text-xs sm:text-sm font-semibold text-gray-900 truncate">{ann.title}</p>
-                    {!ann.viewed && (
-                      <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-blue-500 rounded-full animate-pulse flex-shrink-0" />
-                    )}
-                  </div>
-                  <p className="text-[11px] sm:text-xs text-gray-500 line-clamp-2">{ann.content}</p>
-                  <p className="text-[10px] sm:text-xs text-gray-400 mt-1">
-                    {new Date(ann.created_at).toLocaleDateString()}
-                  </p>
-                </div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-
-      <div className="p-2 sm:p-3 border-t border-gray-100 bg-gray-50">
-        <button
-          onClick={onViewAll}
-          className="w-full text-center text-xs sm:text-sm text-[#800000] font-semibold hover:underline py-1"
-        >
-          View all announcements →
-        </button>
+// ==================== INFO BOX COMPONENT ====================
+const InfoBox: React.FC<{ title: string; value: string | number | null | undefined; icon: string; hint?: string }> = ({
+  title,
+  value,
+  icon,
+  hint
+}) => (
+  <div className="bg-gradient-to-r from-gray-50 to-white rounded-lg sm:rounded-xl p-3 sm:p-4 border border-gray-100">
+    <div className="flex items-start gap-2 sm:gap-3">
+      <div className="text-xl sm:text-2xl">{icon}</div>
+      <div className="flex-1">
+        <p className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider">{title}</p>
+        <p className="text-base sm:text-lg font-bold text-gray-900 mt-1">{value || 'Not set'}</p>
+        {hint && <p className="text-[10px] sm:text-xs text-amber-600 mt-2 flex items-center gap-1">🔒 {hint}</p>}
       </div>
     </div>
-  );
-};
+  </div>
+);
 
 // ==================== ACTIVITY TIMELINE COMPONENT ====================
 const ActivityTimeline: React.FC<{ activities: Activity[]; loading: boolean }> = ({ activities, loading }) => {
@@ -411,7 +293,7 @@ const ActivityTimeline: React.FC<{ activities: Activity[]; loading: boolean }> =
     const date = new Date(dateString);
     const now = new Date();
     const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-    
+
     if (seconds < 60) return 'just now';
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return `${minutes} min ago`;
@@ -580,25 +462,6 @@ const AnnouncementPage: React.FC<{
   );
 };
 
-// ==================== INFO BOX COMPONENT ====================
-const InfoBox: React.FC<{ title: string; value: string | number | null | undefined; icon: string; hint?: string }> = ({ 
-  title, 
-  value, 
-  icon, 
-  hint 
-}) => (
-  <div className="bg-gradient-to-r from-gray-50 to-white rounded-lg sm:rounded-xl p-3 sm:p-4 border border-gray-100">
-    <div className="flex items-start gap-2 sm:gap-3">
-      <div className="text-xl sm:text-2xl">{icon}</div>
-      <div className="flex-1">
-        <p className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider">{title}</p>
-        <p className="text-base sm:text-lg font-bold text-gray-900 mt-1">{value || 'Not set'}</p>
-        {hint && <p className="text-[10px] sm:text-xs text-amber-600 mt-2 flex items-center gap-1">🔒 {hint}</p>}
-      </div>
-    </div>
-  </div>
-);
-
 // ==================== MAIN DASHBOARD COMPONENT ====================
 export default function AlumniDashboard({ session }: { session: Session }) {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -609,9 +472,8 @@ export default function AlumniDashboard({ session }: { session: Session }) {
   const [activitiesLoading, setActivitiesLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'announcements'>('overview');
   const [showEmploymentModal, setShowEmploymentModal] = useState(false);
-  const [showNotificationDropdown, setShowNotificationDropdown] = useState(false);
   const [signOutLoading, setSignOutLoading] = useState(false);
-  
+
   // Address state variables
   const [regions, setRegions] = useState<any[]>([]);
   const [provinces, setProvinces] = useState<any[]>([]);
@@ -622,16 +484,16 @@ export default function AlumniDashboard({ session }: { session: Session }) {
   const [selectedCity, setSelectedCity] = useState<string>('');
   const [selectedBarangay, setSelectedBarangay] = useState<string>('');
   const [street, setStreet] = useState<string>('');
-  
-  const [employmentForm, setEmploymentForm] = useState({ 
-    job_title: '', 
-    company: '', 
+
+  const [employmentForm, setEmploymentForm] = useState({
+    job_title: '',
+    company: '',
     employment_status: '',
     industry: '',
     location: '',
     linkedin_url: '',
   });
-  
+
   const [saveLoading, setSaveLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [commentsByAnnouncement, setCommentsByAnnouncement] = useState<Record<string, AnnouncementComment[]>>({});
@@ -647,11 +509,11 @@ export default function AlumniDashboard({ session }: { session: Session }) {
         description: 'Signed out',
         metadata: { timestamp: new Date().toISOString() }
       });
-      
+
       if (activityError) {
         console.error('Error logging logout activity:', activityError);
       }
-      
+
       const { error } = await supabase.auth.signOut();
       if (error) {
         console.error('Sign out error:', error);
@@ -802,19 +664,19 @@ export default function AlumniDashboard({ session }: { session: Session }) {
       const provinceObj = Array.isArray(provinces) ? provinces.find((p: any) => p?.psgc === selectedProvince) : null;
       const cityObj = Array.isArray(cities) ? cities.find((c: any) => c?.psgc === selectedCity) : null;
       const barangayObj = Array.isArray(barangays) ? barangays.find((b: any) => b?.psgc === selectedBarangay) : null;
-      
+
       const regionName = regionObj?.name || '';
       const provinceName = provinceObj?.name || '';
       const cityName = cityObj?.name || '';
       const barangayName = barangayObj?.name || '';
-      
+
       let fullAddress = '';
       if (street) fullAddress += `${street}, `;
       if (barangayName) fullAddress += `${barangayName}, `;
       if (cityName) fullAddress += `${cityName}, `;
       if (provinceName) fullAddress += `${provinceName}, `;
       if (regionName) fullAddress += `${regionName}`;
-      
+
       setEmploymentForm(prev => ({ ...prev, location: fullAddress }));
     }
   }, [selectedRegion, selectedProvince, selectedCity, selectedBarangay, street, regions, provinces, cities, barangays]);
@@ -863,11 +725,20 @@ export default function AlumniDashboard({ session }: { session: Session }) {
           .insert(newProfile)
           .select()
           .single();
+
         if (insertError) {
           console.error('Error creating profile:', insertError);
           setLoading(false);
           return;
         }
+
+        // ✅ #5 NEW REGISTRATION - Notify all admins when a new alumni registers
+        await notifyNewRegistration(
+          created.full_name || 'New Alumni',
+          created.course || 'Course not set',
+          created.user_id
+        );
+
         setProfile(created);
         console.log('Profile created successfully');
       } else {
@@ -887,7 +758,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
           location: data.location || '',
           linkedin_url: data.linkedin_url || '',
         });
-        
+
         console.log('Profile loaded');
       }
 
@@ -985,7 +856,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
           .eq('user_id', session.user.id);
 
         const viewedIds = new Set(viewsData?.map(v => v.announcement_id) || []);
-        
+
         const nextAnnouncements = announcementsData.map(ann => ({
           ...ann,
           viewed: viewedIds.has(ann.id),
@@ -1012,7 +883,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
         .eq('user_id', session.user.id)
         .order('created_at', { ascending: false })
         .limit(10);
-      
+
       if (data) setActivities(data);
     } catch (error) {
       console.error('Error fetching activities:', error);
@@ -1079,11 +950,11 @@ export default function AlumniDashboard({ session }: { session: Session }) {
         announcement_id: announcementId,
         user_id: session.user.id,
       });
-      
-      setAnnouncements(prev => prev.map(ann => 
+
+      setAnnouncements(prev => prev.map(ann =>
         ann.id === announcementId ? { ...ann, viewed: true } : ann
       ));
-      
+
       await addActivity('announcement_view', 'Read announcement');
     } catch (error) {
       console.error('Error marking as read:', error);
@@ -1115,7 +986,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
         .from('profile-pictures')
         .getPublicUrl(filePath);
       const publicUrl = publicUrlData.publicUrl;
-      
+
       const { error: updateError } = await supabase
         .from('alumni_profiles')
         .update({ avatar_url: filePath })
@@ -1123,6 +994,14 @@ export default function AlumniDashboard({ session }: { session: Session }) {
       if (updateError) throw updateError;
 
       setProfile(prev => prev ? { ...prev, avatar_url: publicUrl } : null);
+
+      // ✅ #4 PROFILE UPDATED - Notify admins when profile picture is updated
+      await notifyProfileUpdated(
+        profile?.full_name || 'An alumni',
+        session.user.id,
+        'profile picture'
+      );
+
       await addActivity('avatar_upload', 'Updated profile picture');
       showToast('Profile picture updated successfully!', 'success');
     } catch (error) {
@@ -1133,14 +1012,22 @@ export default function AlumniDashboard({ session }: { session: Session }) {
 
   const removeAvatar = async () => {
     if (!profile?.avatar_url) return;
-    
+
     try {
-      const filePath = profile.avatar_url.includes('profile-pictures') 
-        ? profile.avatar_url.split('/profile-pictures/')[1] 
+      const filePath = profile.avatar_url.includes('profile-pictures')
+        ? profile.avatar_url.split('/profile-pictures/')[1]
         : profile.avatar_url;
       await supabase.storage.from('profile-pictures').remove([filePath]);
       await supabase.from('alumni_profiles').update({ avatar_url: null }).eq('user_id', session.user.id);
       setProfile(prev => prev ? { ...prev, avatar_url: null } : null);
+
+      // ✅ #4 PROFILE UPDATED - Notify admins when profile picture is removed
+      await notifyProfileUpdated(
+        profile?.full_name || 'An alumni',
+        session.user.id,
+        'profile picture (removed)'
+      );
+
       await addActivity('avatar_upload', 'Removed profile picture');
       showToast('Profile picture removed', 'success');
     } catch (error) {
@@ -1165,7 +1052,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
   const handleSaveEmployment = async () => {
     setSaveLoading(true);
     const completionScore = calculateCompletion(employmentForm);
-    
+
     const oldValues = {
       job_title: profile?.job_title || '',
       company: profile?.company || '',
@@ -1173,47 +1060,42 @@ export default function AlumniDashboard({ session }: { session: Session }) {
       industry: profile?.industry || '',
       location: profile?.location || '',
       linkedin_url: profile?.linkedin_url || '',
-      
     };
-    
+
     const updateData: Record<string, unknown> = {
       last_synced_at: new Date().toISOString(),
       profile_completion: completionScore,
     };
-    
+
     if (employmentForm.job_title !== undefined) updateData.job_title = employmentForm.job_title || null;
     if (employmentForm.company !== undefined) updateData.company = employmentForm.company || null;
     if (employmentForm.employment_status !== undefined) updateData.employment_status = employmentForm.employment_status || null;
     if (employmentForm.industry !== undefined) updateData.industry = employmentForm.industry || null;
     if (employmentForm.location !== undefined) updateData.location = employmentForm.location || null;
     if (employmentForm.linkedin_url !== undefined) updateData.linkedin_url = employmentForm.linkedin_url || null;
-    
-   // ============================================================
-// CLASSIFICATION: Run on EVERY SAVE (force classification)
-// ============================================================
-let classificationResult = null;
 
-// Always run classification if job title is not empty
-// This ensures all alumni get classified even if job title didn't change
-if (employmentForm.job_title && employmentForm.job_title.trim() !== '') {
-  console.log('=== CLASSIFICATION TRIGGERED ===');
-  console.log('Course:', profile?.course);
-  console.log('Job Title:', employmentForm.job_title);
-  
-  classificationResult = await classifyCareerAlignment(
-    profile?.course || '',
-    employmentForm.job_title,
-    ''
-  );
-  
-  console.log('Classification Result:', classificationResult);
-  
-  if (classificationResult) {
-  updateData.career_alignment_status = classificationResult.alignment_status;
-  updateData.ai_confidence_score = classificationResult.confidence_score;
-}
+    let classificationResult = null;
 
-}
+    // Always run classification if job title is not empty
+    if (employmentForm.job_title && employmentForm.job_title.trim() !== '') {
+      console.log('=== CLASSIFICATION TRIGGERED ===');
+      console.log('Course:', profile?.course);
+      console.log('Job Title:', employmentForm.job_title);
+
+      classificationResult = await classifyCareerAlignment(
+        profile?.course || '',
+        employmentForm.job_title,
+        ''
+      );
+
+      console.log('Classification Result:', classificationResult);
+
+      if (classificationResult) {
+        updateData.career_alignment_status = classificationResult.alignment_status;
+        updateData.ai_confidence_score = classificationResult.confidence_score;
+      }
+    }
+
     const { error } = await supabase
       .from('alumni_profiles')
       .update(updateData)
@@ -1221,48 +1103,105 @@ if (employmentForm.job_title && employmentForm.job_title.trim() !== '') {
 
     if (!error) {
       let activityDescription = '';
-      
-      if (employmentForm.job_title !== oldValues.job_title) {
+
+      // Check what changed for notification purposes
+      const jobTitleChanged = employmentForm.job_title !== oldValues.job_title;
+      const companyChanged = employmentForm.company !== oldValues.company;
+      const statusChanged = employmentForm.employment_status !== oldValues.employment_status;
+
+      if (jobTitleChanged) {
         const oldVal = oldValues.job_title || 'not set';
         const newVal = employmentForm.job_title || 'not set';
         activityDescription += `changed job title from "${oldVal}" to "${newVal}". `;
       }
-      
-      if (employmentForm.company !== oldValues.company) {
+
+      if (companyChanged) {
         const oldVal = oldValues.company || 'not set';
         const newVal = employmentForm.company || 'not set';
         activityDescription += `changed company from "${oldVal}" to "${newVal}". `;
       }
-      
-      if (employmentForm.employment_status !== oldValues.employment_status) {
+
+      if (statusChanged) {
         const oldVal = oldValues.employment_status || 'not set';
         const newVal = employmentForm.employment_status;
         activityDescription += `changed employment status from "${oldVal}" to "${newVal}". `;
       }
-      
+
       if (classificationResult && classificationResult.alignment_status !== 'Pending') {
-    activityDescription += ` AI classified as ${classificationResult.alignment_status} (${Math.round(classificationResult.confidence_score * 100)}% confidence).`;
-}
-      
+        activityDescription += ` AI classified as ${classificationResult.alignment_status} (${Math.round(classificationResult.confidence_score * 100)}% confidence).`;
+      }
+
       if (!activityDescription) {
         activityDescription = 'updated career information';
       }
-      
+
+      // ✅ #3 CAREER UPDATED - Notify admins when job title or company changes
+      if (jobTitleChanged || companyChanged) {
+        await notifyCareerUpdated(
+          profile?.full_name || 'An alumni',
+          employmentForm.job_title || 'Not specified',
+          employmentForm.company || 'Not specified',
+          session.user.id
+        );
+      }
+
+      // ✅ #7 EMPLOYMENT STATUS CHANGED - Notify admins when employment status changes
+      if (statusChanged) {
+        await notifyEmploymentStatusChanged(
+          profile?.full_name || 'An alumni',
+          employmentForm.employment_status || 'Unemployed',
+          employmentForm.company || '',
+          employmentForm.job_title || '',
+          session.user.id
+        );
+      }
+
+      // ✅ #4 PROFILE UPDATED - Notify admins for any other profile updates
+      if (!jobTitleChanged && !companyChanged && !statusChanged) {
+        await notifyProfileUpdated(
+          profile?.full_name || 'An alumni',
+          session.user.id,
+          'career information'
+        );
+      }
+
       await addActivity('employment_update', activityDescription.trim());
-      
+
       setProfile(prev => prev ? {
-    ...prev,
-    ...employmentForm,
-    career_alignment_status: classificationResult?.alignment_status || prev.career_alignment_status,
-    ai_confidence_score: classificationResult?.confidence_score || prev.ai_confidence_score
-} : null);
-      
+        ...prev,
+        ...employmentForm,
+        career_alignment_status: classificationResult?.alignment_status || prev.career_alignment_status,
+        ai_confidence_score: classificationResult?.confidence_score || prev.ai_confidence_score
+      } : null);
+
       setShowEmploymentModal(false);
       showToast('Career information updated successfully!', 'success');
     } else {
       showToast('Error updating career information', 'error');
     }
     setSaveLoading(false);
+  };
+
+  // ✅ TEST NOTIFICATION FUNCTION - ADDED HERE
+  const testNotification = async () => {
+    console.log('🧪 TEST: Sending career notification...');
+    try {
+      const result = await notifyCareerUpdated(
+        profile?.full_name || 'Test Alumni',
+        'Software Engineer',
+        'Google',
+        session.user.id
+      );
+      console.log('✅ Result:', result);
+      if (result) {
+        showToast('✅ Test notification sent! Check admin bell.', 'success');
+      } else {
+        showToast('❌ Notification failed - check console.', 'error');
+      }
+    } catch (error) {
+      console.error('❌ Test failed:', error);
+      showToast('❌ Error: ', 'error');
+    }
   };
 
   const getFirstName = (name: string | null | undefined) => name?.split(' ')[0] || 'Alumni';
@@ -1298,27 +1237,25 @@ if (employmentForm.job_title && employmentForm.job_title.trim() !== '') {
                 <p className="text-[10px] sm:text-xs text-gray-500">Alumni Portal</p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-1.5 sm:gap-4">
               <div className="flex md:hidden bg-gray-100 rounded-xl p-0.5 sm:p-1">
                 <button
                   onClick={() => setActiveTab('overview')}
-                  className={`flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg font-medium text-[11px] sm:text-xs transition-all duration-200 ${
-                    activeTab === 'overview' 
-                      ? 'bg-white text-[#800000] shadow-sm' 
+                  className={`flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg font-medium text-[11px] sm:text-xs transition-all duration-200 ${activeTab === 'overview'
+                      ? 'bg-white text-[#800000] shadow-sm'
                       : 'text-gray-600 hover:text-gray-800'
-                  }`}
+                    }`}
                 >
                   <span className="text-sm sm:text-base">📊</span>
                   <span className="hidden xs:inline">Overview</span>
                 </button>
                 <button
                   onClick={() => setActiveTab('announcements')}
-                  className={`flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg font-medium text-[11px] sm:text-xs transition-all duration-200 ${
-                    activeTab === 'announcements' 
-                      ? 'bg-white text-[#800000] shadow-sm' 
+                  className={`flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg font-medium text-[11px] sm:text-xs transition-all duration-200 ${activeTab === 'announcements'
+                      ? 'bg-white text-[#800000] shadow-sm'
                       : 'text-gray-600 hover:text-gray-800'
-                  }`}
+                    }`}
                 >
                   <span className="text-sm sm:text-base">📢</span>
                   <span className="hidden xs:inline">Announcements</span>
@@ -1328,49 +1265,47 @@ if (employmentForm.job_title && employmentForm.job_title.trim() !== '') {
               <div className="hidden md:flex gap-1">
                 <button
                   onClick={() => setActiveTab('overview')}
-                  className={`px-4 py-2 sm:px-5 sm:py-2 rounded-xl font-medium text-sm sm:text-base transition-all duration-200 ${
-                    activeTab === 'overview' 
-                      ? 'bg-[#800000]/10 text-[#800000] shadow-sm' 
+                  className={`px-4 py-2 sm:px-5 sm:py-2 rounded-xl font-medium text-sm sm:text-base transition-all duration-200 ${activeTab === 'overview'
+                      ? 'bg-[#800000]/10 text-[#800000] shadow-sm'
                       : 'text-gray-600 hover:bg-gray-100'
-                  }`}
+                    }`}
                 >
                   Overview
                 </button>
                 <button
                   onClick={() => setActiveTab('announcements')}
-                  className={`px-4 py-2 sm:px-5 sm:py-2 rounded-xl font-medium text-sm sm:text-base transition-all duration-200 ${
-                    activeTab === 'announcements' 
-                      ? 'bg-[#800000]/10 text-[#800000] shadow-sm' 
+                  className={`px-4 py-2 sm:px-5 sm:py-2 rounded-xl font-medium text-sm sm:text-base transition-all duration-200 ${activeTab === 'announcements'
+                      ? 'bg-[#800000]/10 text-[#800000] shadow-sm'
                       : 'text-gray-600 hover:bg-gray-100'
-                  }`}
+                    }`}
                 >
                   Announcements
                 </button>
               </div>
-              
-              <div className="relative">
-                <NotificationBell 
-                  unreadCount={unreadCount}
-                  onClick={() => setShowNotificationDropdown(!showNotificationDropdown)}
-                  isOpen={showNotificationDropdown}
-                />
-                {showNotificationDropdown && (
-                  <NotificationDropdown
-                    announcements={announcements}
-                    loading={announcementsLoading}
-                    onMarkAsRead={markAnnouncementAsRead}
-                    onViewAll={() => {
-                      setActiveTab('announcements');
-                      setShowNotificationDropdown(false);
-                    }}
-                    onClose={() => setShowNotificationDropdown(false)}
-                  />
-                )}
-              </div>
-              
-              <Button 
-                variant="danger" 
-                size="sm" 
+
+              {/* ✅ TEST NOTIFICATION BUTTON */}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={testNotification}
+                className="hidden lg:inline-flex text-xs"
+              >
+                🧪 Test Notif
+              </Button>
+
+              {/* ✅ UPDATED: NotificationBell with proper props */}
+              <NotificationBell
+                userId={session.user.id}
+                onNotificationClick={(notification) => {
+                  if (notification.link) {
+                    console.log('🔔 Navigate to:', notification.link);
+                  }
+                }}
+              />
+
+              <Button
+                variant="danger"
+                size="sm"
                 onClick={handleSignOut}
                 disabled={signOutLoading}
                 className="!px-2 !py-1 sm:!px-3 sm:!py-1.5 text-[11px] sm:text-sm"
@@ -1453,8 +1388,7 @@ if (employmentForm.job_title && employmentForm.job_title.trim() !== '') {
 
             {/* Stats Grid */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
-              <Card 
-              className="p-3 sm:p-6 cursor-pointer hover:border-[#800000]/30 transition-all group"  >
+              <Card className="p-3 sm:p-6 cursor-pointer hover:border-[#800000]/30 transition-all group"  >
                 <div className="w-8 h-8 sm:w-12 sm:h-12 bg-blue-100 rounded-lg sm:rounded-xl flex items-center justify-center text-lg sm:text-2xl mb-2 sm:mb-4 group-hover:scale-110 transition-transform">
                   💼
                 </div>
@@ -1510,23 +1444,23 @@ if (employmentForm.job_title && employmentForm.job_title.trim() !== '') {
                   <p className="text-[10px] sm:text-xs text-gray-500">From Master List - Contact admin for corrections</p>
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-6">
-                <InfoBox 
-                  title="Full Name" 
-                  value={profile?.full_name} 
+                <InfoBox
+                  title="Full Name"
+                  value={profile?.full_name}
                   icon="👤"
                   hint="Official records - Contact admin"
                 />
-                <InfoBox 
-                  title="Course / Program" 
-                  value={profile?.course} 
+                <InfoBox
+                  title="Course / Program"
+                  value={profile?.course}
                   icon="📚"
                   hint="Official records - Contact admin"
                 />
-                <InfoBox 
-                  title="Batch Year" 
-                  value={profile?.batch_year} 
+                <InfoBox
+                  title="Batch Year"
+                  value={profile?.batch_year}
                   icon="🎓"
                   hint="Official records - Contact admin"
                 />
@@ -1547,7 +1481,7 @@ if (employmentForm.job_title && employmentForm.job_title.trim() !== '') {
                   Update Career Info
                 </Button>
               </div>
-              
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6">
                 <div className="space-y-1">
                   <label className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider">Job Title</label>
@@ -1569,14 +1503,14 @@ if (employmentForm.job_title && employmentForm.job_title.trim() !== '') {
                   <label className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider">LinkedIn Profile</label>
                   {profile?.linkedin_url ? (
                     <div className="flex flex-wrap items-center gap-2">
-                      <a 
-                        href={profile.linkedin_url} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
+                      <a
+                        href={profile.linkedin_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="text-[#800000] text-sm sm:text-base font-medium hover:underline inline-flex items-center gap-1 break-all"
                       >
                         <svg className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
+                          <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z" />
                         </svg>
                         <span className="truncate max-w-[200px] sm:max-w-none">{profile.linkedin_url}</span>
                       </a>
@@ -1615,8 +1549,8 @@ if (employmentForm.job_title && employmentForm.job_title.trim() !== '') {
                 </div>
               </div>
               {unreadCount > 0 && (
-                <Button 
-                  variant="secondary" 
+                <Button
+                  variant="secondary"
                   size="sm"
                   onClick={() => announcements.filter(a => !a.viewed).forEach(a => markAnnouncementAsRead(a.id))}
                 >
@@ -1626,8 +1560,8 @@ if (employmentForm.job_title && employmentForm.job_title.trim() !== '') {
             </div>
             <Card>
               <AnnouncementPage
-                announcements={announcements} 
-                loading={announcementsLoading} 
+                announcements={announcements}
+                loading={announcementsLoading}
                 onMarkAsRead={markAnnouncementAsRead}
                 commentsByAnnouncement={commentsByAnnouncement}
                 commentLoading={commentLoading}
@@ -1653,248 +1587,235 @@ if (employmentForm.job_title && employmentForm.job_title.trim() !== '') {
         </div>
       </footer>
 
-      {/* Career Information Modal WITH ADDRESS SELECTOR */}
+      {/* Career Information Modal */}
       <Modal isOpen={showEmploymentModal} onClose={() => setShowEmploymentModal(false)} title="Update Career Information" size="lg">
-  <div className="space-y-3 sm:space-y-4">
-    
-    {/* Locked Info Banner */}
-    <div className="bg-amber-50 border border-amber-200 rounded-lg sm:rounded-xl p-3 sm:p-4">
-      <p className="text-xs sm:text-sm text-amber-800 flex items-start gap-2">
-        <span>🔒</span>
-        <span><strong>Full Name, Course, and Batch Year</strong> are locked from the master list. Only career information can be updated.</span>
-      </p>
-    </div>
+        <div className="space-y-3 sm:space-y-4">
 
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-      
-      {/* ============================================================ */}
-      {/* EMPLOYMENT STATUS - Comes FIRST */}
-      {/* ============================================================ */}
-      <div className="sm:col-span-2">
-        <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-          Employment Status <span className="text-red-500">*</span>
-        </label>
-        <select
-          value={employmentForm.employment_status}
-          onChange={e => setEmploymentForm({ ...employmentForm, employment_status: e.target.value })}
-          className="w-full px-3 py-2 sm:px-4 sm:py-2.5 bg-white border border-gray-200 rounded-xl focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none transition-all text-gray-900 text-sm sm:text-base"
-        >
-          <option value="Employed">Full Time</option>
-          <option value="Employed Part Time">Part Time</option>
-          <option value="Self-Employed">Self-Employed</option>
-          <option value="Freelancer">Independent Contractor</option>
-          {/* <option value="Unemployed">Unemployed</option> */}
-          {/* <option value="Further Studies">Further Studies</option> */}
-          <option value="Seasonal Worker">Seasonal Worker</option>
-          <option value="Unemployed">Unemployed</option>
-        </select>
-      </div>
-
-      {/* ============================================================ */}
-      {/* CAREER FIELDS - Only show if NOT Unemployed/Further Studies/Seasonal Worker */}
-      {/* ============================================================ */}
-      {employmentForm.employment_status !== 'Unemployed' && 
-        
-        (
-        <>
-          <Input
-            label="Job Title"
-            value={employmentForm.job_title}
-            onChange={e => setEmploymentForm({ ...employmentForm, job_title: e.target.value })}
-            placeholder="e.g., Software Engineer"
-            icon="💼"
-          />
-          
-          <Input
-            label="Company"
-            value={employmentForm.company}
-            onChange={e => setEmploymentForm({ ...employmentForm, company: e.target.value })}
-            placeholder="Company name"
-            icon="🏢"
-          />
-
-          {/* Industry Dropdown */}
-          <div className="sm:col-span-2">
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-              Industry
-            </label>
-            <select
-              value={employmentForm.industry}
-              onChange={e => setEmploymentForm({ ...employmentForm, industry: e.target.value })}
-              className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
-            >
-              <option value="">Select Industry</option>
-              <option value="Information Technology (IT) / BPO">Information Technology (IT) / BPO</option>
-              <option value="Education">Education</option>
-              <option value="Healthcare">Healthcare</option>
-              <option value="Government / Public Sector">Government / Public Sector</option>
-              <option value="Business / Finance / Banking">Business / Finance / Banking</option>
-              <option value="Retail / Sales / E-commerce">Retail / Sales / E-commerce</option>
-              <option value="Manufacturing">Manufacturing</option>
-              <option value="Construction / Engineering">Construction / Engineering</option>
-              <option value="Hospitality / Tourism / Food Service">Hospitality / Tourism / Food Service</option>
-              <option value="Agriculture / Fisheries">Agriculture / Fisheries</option>
-              <option value="Telecommunications">Telecommunications</option>
-              <option value="Transportation / Logistics">Transportation / Logistics</option>
-              <option value="Media / Entertainment">Media / Entertainment</option>
-              <option value="Real Estate / Property">Real Estate / Property</option>
-              <option value="Legal / Law Firm">Legal / Law Firm</option>
-              <option value="Non-Profit / NGO">Non-Profit / NGO</option>
-              <option value="Energy / Utilities">Energy / Utilities</option>
-              <option value="Mining / Oil / Gas">Mining / Oil / Gas</option>
-              <option value="Pharmaceutical / Biotech">Pharmaceutical / Biotech</option>
-              <option value="Insurance">Insurance</option>
-              <option value="Consulting / Professional Services">Consulting / Professional Services</option>
-              <option value="Research & Development">Research & Development</option>
-              <option value="Arts / Design / Creative">Arts / Design / Creative</option>
-              <option value="Sports / Recreation">Sports / Recreation</option>
-              <option value="Military / Defense">Military / Defense</option>
-              <option value="Religious / Faith-Based Organizations">Religious / Faith-Based Organizations</option>
-            </select>
-          </div>
-
-          {/* PHILIPPINE ADDRESS SELECTOR */}
-          <div className="sm:col-span-2">
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-              Work Location
-            </label>
-            
-            {/* Region Dropdown */}
-            <select
-              value={selectedRegion}
-              onChange={(e) => setSelectedRegion(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white mb-2"
-            >
-              <option value="">Select Region</option>
-              {Array.isArray(regions) && regions.map((region: any) => (
-                <option key={region?.psgc || Math.random()} value={region?.psgc || ''}>
-                  {region?.name || 'Unknown Region'}
-                </option>
-              ))}
-            </select>
-
-            {/* Province Dropdown */}
-            {selectedRegion && Array.isArray(provinces) && provinces.length > 0 && (
-              <select
-                value={selectedProvince}
-                onChange={(e) => setSelectedProvince(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white mb-2"
-              >
-                <option value="">Select Province</option>
-                {provinces.map((province: any) => (
-                  <option key={province?.psgc || Math.random()} value={province?.psgc || ''}>
-                    {province?.name || 'Unknown Province'}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            {/* City/Municipality Dropdown */}
-            {selectedProvince && Array.isArray(cities) && cities.length > 0 && (
-              <select
-                value={selectedCity}
-                onChange={(e) => setSelectedCity(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white mb-2"
-              >
-                <option value="">Select City/Municipality</option>
-                {cities.map((city: any) => (
-                  <option key={city?.psgc || Math.random()} value={city?.psgc || ''}>
-                    {city?.name || 'Unknown City'}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            {/* Barangay Dropdown */}
-            {selectedCity && Array.isArray(barangays) && barangays.length > 0 && (
-              <select
-                value={selectedBarangay}
-                onChange={(e) => setSelectedBarangay(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white mb-2"
-              >
-                <option value="">Select Barangay</option>
-                {barangays.map((barangay: any) => (
-                  <option key={barangay?.psgc || Math.random()} value={barangay?.psgc || ''}>
-                    {barangay?.name || 'Unknown Barangay'}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            {/* Street/Sitio/Purok Input */}
-            <input
-              type="text"
-              value={street}
-              onChange={(e) => setStreet(e.target.value)}
-              placeholder="Street / Sitio / Purok / Subdivision (optional)"
-              className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
-            />
-            
-            <p className="text-xs text-gray-400 mt-1">
-              Select region, province, city/municipality, and barangay. Add street if applicable.
+          {/* Locked Info Banner */}
+          <div className="bg-amber-50 border border-amber-200 rounded-lg sm:rounded-xl p-3 sm:p-4">
+            <p className="text-xs sm:text-sm text-amber-800 flex items-start gap-2">
+              <span>🔒</span>
+              <span><strong>Full Name, Course, and Batch Year</strong> are locked from the master list. Only career information can be updated.</span>
             </p>
           </div>
-        </>
-      )}
 
-      {/* ============================================================ */}
-      {/* MESSAGE FOR UNEMPLOYED / FURTHER STUDIES / SEASONAL WORKER */}
-      {/* ============================================================ */}
-      {(employmentForm.employment_status === 'Unemployed' || 
-        employmentForm.employment_status === 'Further Studies' || 
-        employmentForm.employment_status === 'Seasonal Worker') && (
-        <div className="sm:col-span-2 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-sm text-blue-700">
-            ℹ️ Since you are currently <strong>{employmentForm.employment_status}</strong>, you don't need to fill in career details.
-            You can update this later when your status changes.
-          </p>
-        </div>
-      )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
 
-      {/* ============================================================ */}
-      {/* LINKEDIN - Always Visible */}
-      {/* ============================================================ */}
-      <div className="sm:col-span-2">
-        <Input
-          label="LinkedIn Profile URL"
-          value={employmentForm.linkedin_url}
-          onChange={e => setEmploymentForm({ ...employmentForm, linkedin_url: e.target.value })}
-          placeholder="https://linkedin.com/in/yourusername"
-          icon="🔗"
-        />
-        {employmentForm.linkedin_url && (
-          <div className="mt-2">
-            <a
-              href={employmentForm.linkedin_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs sm:text-sm text-[#800000] hover:underline inline-flex items-center gap-1"
-            >
-              <span>🔗</span> View your LinkedIn profile →
-            </a>
+            {/* EMPLOYMENT STATUS - Comes FIRST */}
+            <div className="sm:col-span-2">
+              <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
+                Employment Status <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={employmentForm.employment_status}
+                onChange={e => setEmploymentForm({ ...employmentForm, employment_status: e.target.value })}
+                className="w-full px-3 py-2 sm:px-4 sm:py-2.5 bg-white border border-gray-200 rounded-xl focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none transition-all text-gray-900 text-sm sm:text-base"
+              >
+                <option value="Employed">Full Time</option>
+                <option value="Employed Part Time">Part Time</option>
+                <option value="Self-Employed">Self-Employed</option>
+                <option value="Freelancer">Independent Contractor</option>
+                <option value="Seasonal Worker">Seasonal Worker</option>
+                <option value="Unemployed">Unemployed</option>
+              </select>
+            </div>
+
+            {/* CAREER FIELDS - Only show if NOT Unemployed/Seasonal Worker */}
+            {employmentForm.employment_status !== 'Unemployed' &&
+              employmentForm.employment_status !== 'Seasonal Worker' && (
+                <>
+                  <Input
+                    label="Job Title"
+                    value={employmentForm.job_title}
+                    onChange={e => setEmploymentForm({ ...employmentForm, job_title: e.target.value })}
+                    placeholder="e.g., Software Engineer"
+                    icon="💼"
+                  />
+
+                  <Input
+                    label="Company"
+                    value={employmentForm.company}
+                    onChange={e => setEmploymentForm({ ...employmentForm, company: e.target.value })}
+                    placeholder="Company name"
+                    icon="🏢"
+                  />
+
+                  {/* Industry Dropdown */}
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                      Industry
+                    </label>
+                    <select
+                      value={employmentForm.industry}
+                      onChange={e => setEmploymentForm({ ...employmentForm, industry: e.target.value })}
+                      className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+                    >
+                      <option value="">Select Industry</option>
+                      <option value="Information Technology (IT) / BPO">Information Technology (IT) / BPO</option>
+                      <option value="Education">Education</option>
+                      <option value="Healthcare">Healthcare</option>
+                      <option value="Government / Public Sector">Government / Public Sector</option>
+                      <option value="Business / Finance / Banking">Business / Finance / Banking</option>
+                      <option value="Retail / Sales / E-commerce">Retail / Sales / E-commerce</option>
+                      <option value="Manufacturing">Manufacturing</option>
+                      <option value="Construction / Engineering">Construction / Engineering</option>
+                      <option value="Hospitality / Tourism / Food Service">Hospitality / Tourism / Food Service</option>
+                      <option value="Agriculture / Fisheries">Agriculture / Fisheries</option>
+                      <option value="Telecommunications">Telecommunications</option>
+                      <option value="Transportation / Logistics">Transportation / Logistics</option>
+                      <option value="Media / Entertainment">Media / Entertainment</option>
+                      <option value="Real Estate / Property">Real Estate / Property</option>
+                      <option value="Legal / Law Firm">Legal / Law Firm</option>
+                      <option value="Non-Profit / NGO">Non-Profit / NGO</option>
+                      <option value="Energy / Utilities">Energy / Utilities</option>
+                      <option value="Mining / Oil / Gas">Mining / Oil / Gas</option>
+                      <option value="Pharmaceutical / Biotech">Pharmaceutical / Biotech</option>
+                      <option value="Insurance">Insurance</option>
+                      <option value="Consulting / Professional Services">Consulting / Professional Services</option>
+                      <option value="Research & Development">Research & Development</option>
+                      <option value="Arts / Design / Creative">Arts / Design / Creative</option>
+                      <option value="Sports / Recreation">Sports / Recreation</option>
+                      <option value="Military / Defense">Military / Defense</option>
+                      <option value="Religious / Faith-Based Organizations">Religious / Faith-Based Organizations</option>
+                    </select>
+                  </div>
+
+                  {/* PHILIPPINE ADDRESS SELECTOR */}
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                      Work Location
+                    </label>
+
+                    {/* Region Dropdown */}
+                    <select
+                      value={selectedRegion}
+                      onChange={(e) => setSelectedRegion(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white mb-2"
+                    >
+                      <option value="">Select Region</option>
+                      {Array.isArray(regions) && regions.map((region: any) => (
+                        <option key={region?.psgc || Math.random()} value={region?.psgc || ''}>
+                          {region?.name || 'Unknown Region'}
+                        </option>
+                      ))}
+                    </select>
+
+                    {/* Province Dropdown */}
+                    {selectedRegion && Array.isArray(provinces) && provinces.length > 0 && (
+                      <select
+                        value={selectedProvince}
+                        onChange={(e) => setSelectedProvince(e.target.value)}
+                        className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white mb-2"
+                      >
+                        <option value="">Select Province</option>
+                        {provinces.map((province: any) => (
+                          <option key={province?.psgc || Math.random()} value={province?.psgc || ''}>
+                            {province?.name || 'Unknown Province'}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+
+                    {/* City/Municipality Dropdown */}
+                    {selectedProvince && Array.isArray(cities) && cities.length > 0 && (
+                      <select
+                        value={selectedCity}
+                        onChange={(e) => setSelectedCity(e.target.value)}
+                        className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white mb-2"
+                      >
+                        <option value="">Select City/Municipality</option>
+                        {cities.map((city: any) => (
+                          <option key={city?.psgc || Math.random()} value={city?.psgc || ''}>
+                            {city?.name || 'Unknown City'}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+
+                    {/* Barangay Dropdown */}
+                    {selectedCity && Array.isArray(barangays) && barangays.length > 0 && (
+                      <select
+                        value={selectedBarangay}
+                        onChange={(e) => setSelectedBarangay(e.target.value)}
+                        className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white mb-2"
+                      >
+                        <option value="">Select Barangay</option>
+                        {barangays.map((barangay: any) => (
+                          <option key={barangay?.psgc || Math.random()} value={barangay?.psgc || ''}>
+                            {barangay?.name || 'Unknown Barangay'}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+
+                    {/* Street/Sitio/Purok Input */}
+                    <input
+                      type="text"
+                      value={street}
+                      onChange={(e) => setStreet(e.target.value)}
+                      placeholder="Street / Sitio / Purok / Subdivision (optional)"
+                      className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+                    />
+
+                    <p className="text-xs text-gray-400 mt-1">
+                      Select region, province, city/municipality, and barangay. Add street if applicable.
+                    </p>
+                  </div>
+                </>
+            )}
+
+            {/* MESSAGE FOR UNEMPLOYED / SEASONAL WORKER */}
+            {(employmentForm.employment_status === 'Unemployed' ||
+              employmentForm.employment_status === 'Seasonal Worker') && (
+                <div className="sm:col-span-2 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-700">
+                    ℹ️ Since you are currently <strong>{employmentForm.employment_status}</strong>, you don't need to fill in career details.
+                    You can update this later when your status changes.
+                  </p>
+                </div>
+              )}
+
+            {/* LINKEDIN - Always Visible */}
+            <div className="sm:col-span-2">
+              <Input
+                label="LinkedIn Profile URL"
+                value={employmentForm.linkedin_url}
+                onChange={e => setEmploymentForm({ ...employmentForm, linkedin_url: e.target.value })}
+                placeholder="https://linkedin.com/in/yourusername"
+                icon="🔗"
+              />
+              {employmentForm.linkedin_url && (
+                <div className="mt-2">
+                  <a
+                    href={employmentForm.linkedin_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs sm:text-sm text-[#800000] hover:underline inline-flex items-center gap-1"
+                  >
+                    <span>🔗</span> View your LinkedIn profile →
+                  </a>
+                </div>
+              )}
+            </div>
           </div>
-        )}
-      </div>
-    </div>
-    
-    {/* Save/Cancel Buttons */}
-    <div className="flex flex-col sm:flex-row gap-3 pt-3 sm:pt-4">
-      <Button onClick={handleSaveEmployment} loading={saveLoading} className="flex-1">
-        Save Career Info
-      </Button>
-      <Button variant="secondary" onClick={() => setShowEmploymentModal(false)} className="flex-1">
-        Cancel
-      </Button>
-    </div>
-  </div>
-</Modal>
+
+          {/* Save/Cancel Buttons */}
+          <div className="flex flex-col sm:flex-row gap-3 pt-3 sm:pt-4">
+            <Button onClick={handleSaveEmployment} loading={saveLoading} className="flex-1">
+              Save Career Info
+            </Button>
+            <Button variant="secondary" onClick={() => setShowEmploymentModal(false)} className="flex-1">
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Toast Notification */}
       {toast && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 duration-300">
-          <div className={`px-4 py-2 sm:px-6 sm:py-3 rounded-xl shadow-lg flex items-center gap-2 text-white font-medium text-xs sm:text-sm ${
-            toast.type === 'success' ? 'bg-emerald-500' : toast.type === 'error' ? 'bg-red-500' : 'bg-blue-500'
-          }`}>
+          <div className={`px-4 py-2 sm:px-6 sm:py-3 rounded-xl shadow-lg flex items-center gap-2 text-white font-medium text-xs sm:text-sm ${toast.type === 'success' ? 'bg-emerald-500' : toast.type === 'error' ? 'bg-red-500' : 'bg-blue-500'
+            }`}>
             <span>{toast.type === 'success' ? '✅' : toast.type === 'error' ? '❌' : 'ℹ️'}</span>
             <span>{toast.message}</span>
           </div>

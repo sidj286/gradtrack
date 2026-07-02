@@ -8,7 +8,15 @@ import ImportMasterListModal from './ImportMasterListModal';
 import ReportsPanel from './ReportsPanel';
 import AnnouncementComments from './AnnouncementComments';
 import NotificationBell from './NotificationBell';
-
+import {
+  notifyCommentAdded,
+  notifyReplyAdded,
+  notifyNewAnnouncement,
+  notifyAnnouncementEdited,
+  notifyAlumniVerified,
+  // ✅ REMOVED: notifyCareerUpdated, notifyProfileUpdated, notifyNewRegistration, notifyEmploymentStatusChanged, notifyMasterListImported
+  // These are used in AlumniDashboard or ImportMasterListModal, not here
+} from './lib/notificationUtils';
 
 // ==================== TYPES ====================
 interface AlumniProfile {
@@ -27,7 +35,7 @@ interface AlumniProfile {
   career_alignment_status: string | null;
   ai_confidence_score: number | null;
   profile_completion: number;
-  avatar_url: string | null; 
+  avatar_url: string | null;
   registered_at?: string;
   updated_at?: string;
 }
@@ -66,9 +74,6 @@ interface DepartmentStat {
   alignment_rate: number;
 }
 
-// ============================================================
-// ANNOUNCEMENT COMMENT TYPES
-// ============================================================
 interface AnnouncementComment {
   id: string;
   announcement_id: string;
@@ -84,50 +89,50 @@ interface AnnouncementComment {
 
 // ==================== DEPARTMENT CONFIGURATION ====================
 const DEPARTMENTS = [
-  { 
-    code: 'CCS', 
-    name: 'Computer Studies', 
+  {
+    code: 'CCS',
+    name: 'Computer Studies',
     fullName: 'College of Computer Studies',
-    color: '#3b82f6', 
+    color: '#3b82f6',
     icon: '💻',
     programs: ['BS Information Technology']
   },
-  { 
-    code: 'CTE', 
-    name: 'Teacher Education', 
+  {
+    code: 'CTE',
+    name: 'Teacher Education',
     fullName: 'College of Teacher Education',
-    color: '#10b981', 
+    color: '#10b981',
     icon: '📚',
     programs: ['BEEd', 'BSEd English', 'BSEd Math', 'BSEd Science', 'BSEd Social Studies', 'BSEd Filipino']
   },
-  { 
-    code: 'CCJE', 
-    name: 'Criminal Justice', 
+  {
+    code: 'CCJE',
+    name: 'Criminal Justice',
     fullName: 'College of Criminal Justice Education',
-    color: '#ef4444', 
+    color: '#ef4444',
     icon: '⚖️',
     programs: ['BS Criminology']
   },
-  { 
-    code: 'CBE', 
-    name: 'Business Education', 
+  {
+    code: 'CBE',
+    name: 'Business Education',
     fullName: 'College of Business Education',
-    color: '#f59e0b', 
+    color: '#f59e0b',
     icon: '📊',
     programs: ['BS Accountancy', 'BSBA Financial Management', 'BS Hospitality Management', 'BS Tourism Management']
   },
-  { 
-    code: 'PSY', 
-    name: 'Psychology', 
+  {
+    code: 'PSY',
+    name: 'Psychology',
     fullName: 'Department of Psychology',
-    color: '#8b5cf6', 
+    color: '#8b5cf6',
     icon: '🧠',
     programs: ['BS Psychology']
   },
 ];
 
 // ==================== COMPONENTS ====================
-const Card: React.FC<{ children: React.ReactNode; className?: string;onClick?: () => void;  }> = ({ children, className = '' }) => (
+const Card: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void; }> = ({ children, className = '' }) => (
   <div className={`bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 p-6 transition-all duration-300 hover:shadow-xl ${className}`}>
     {children}
   </div>
@@ -148,13 +153,13 @@ const Button: React.FC<{
     danger: 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md',
     success: 'bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white shadow-md',
   };
-  
+
   const sizes = {
     sm: 'px-3 py-1.5 text-sm',
     md: 'px-4 py-2 text-sm',
     lg: 'px-6 py-2.5 text-base',
   };
-  
+
   return (
     <button
       onClick={onClick}
@@ -174,9 +179,9 @@ const Modal: React.FC<{
   size?: 'sm' | 'md' | 'lg';
 }> = ({ isOpen, onClose, title, children, size = 'md' }) => {
   if (!isOpen) return null;
-  
+
   const sizes = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-2xl' };
-  
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className={`${sizes[size]} w-full bg-white dark:bg-gray-800 rounded-2xl shadow-2xl`}>
@@ -199,21 +204,21 @@ export default function AdminDashboard({ session }: { session: Session }) {
   // ============================================================
   // SECTION 1: STATE DECLARATIONS
   // ============================================================
-  
+
   const [alumni, setAlumni] = useState<AlumniProfile[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [departmentStats, setDepartmentStats] = useState<DepartmentStat[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeMainTab, setActiveMainTab] = useState<"overview" | "departments" | "announcements" | "insights" | "masterlist" | "reports">("overview");
-  
+
   const [showImportModal, setShowImportModal] = useState(false);
-  
+
   const [aiPromotionRecs, setAiPromotionRecs] = useState<string>('');
   const [aiStrengthAnalysis, setAiStrengthAnalysis] = useState<string>('');
   const [aiSummary, setAiSummary] = useState<string>('');
   const [aiLoading, setAiLoading] = useState(false);
-  
+
   const [signOutLoading, setSignOutLoading] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
@@ -222,7 +227,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<{ type: 'success' | 'error' | 'info', text: string } | null>(null);
-  
+
   const [newAnnouncement, setNewAnnouncement] = useState({
     title: '',
     content: '',
@@ -231,20 +236,20 @@ export default function AdminDashboard({ session }: { session: Session }) {
     target_course: '',
     target_batch_year: '',
   });
-  
+
   const [filterCourse, setFilterCourse] = useState('');
   const [filterBatch, setFilterBatch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterDepartment, setFilterDepartment] = useState('');
   const [courses, setCourses] = useState<string[]>([]);
   const [batchYears, setBatchYears] = useState<number[]>([]);
-  
+
   const [announcementFilterType, setAnnouncementFilterType] = useState<'all' | 'course' | 'batch_year'>('all');
   const [announcementFilterCourse, setAnnouncementFilterCourse] = useState('');
   const [announcementFilterBatchYear, setAnnouncementFilterBatchYear] = useState('');
-  
+
   const [chartKey, setChartKey] = useState(0);
-  
+
   const [adminProfile, setAdminProfile] = useState({
     full_name: session.user.user_metadata?.full_name || 'Administrator',
     email: session.user.email || '',
@@ -280,7 +285,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
   ]);
   const [_courseStats, setCourseStats] = useState<{ course: string; total: number; inField: number; rate: number }[]>([]);
   const [weeklyActivities, setWeeklyActivities] = useState<{ day: string; count: number }[]>([]);
-  
+
   const [selectedDepartment, setSelectedDepartment] = useState<string>('CCS');
   const [departmentBatchData, setDepartmentBatchData] = useState<{ batch: number; total: number; inField: number; rate: number }[]>([]);
 
@@ -298,17 +303,16 @@ export default function AdminDashboard({ session }: { session: Session }) {
   });
 
   const [showManualAddModal, setShowManualAddModal] = useState(false);
-const [manualForm, setManualForm] = useState({
-  student_id: '',
-  full_name: '',
-  email: '',
-  course: '',
-  batch_year: '',
-  department: ''
-});
-const [manualSubmitting, setManualSubmitting] = useState(false);
-const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
-  // ✅ NEW: State for View Profile Modal
+  const [manualForm, setManualForm] = useState({
+    student_id: '',
+    full_name: '',
+    email: '',
+    course: '',
+    batch_year: '',
+    department: ''
+  });
+  const [manualSubmitting, setManualSubmitting] = useState(false);
+  const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
   const [selectedAlumni, setSelectedAlumni] = useState<AlumniProfile | null>(null);
   const [showProfileViewModal, setShowProfileViewModal] = useState(false);
 
@@ -328,7 +332,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
   // ============================================================
   // SECTION 2: useEffect HOOKS
   // ============================================================
-  
+
   useEffect(() => {
     const savedTheme = localStorage.getItem('adminTheme');
     const isDark = savedTheme === 'dark';
@@ -369,32 +373,27 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
   }, [activeMainTab]);
 
   useEffect(() => {
-  // Subscribe to real-time changes on the alumni_profiles table
-  const channel = supabase
-    .channel('admin-dashboard-changes') // A unique name for this channel
-    .on(
-      'postgres_changes',
-      {
-        event: '*', // Listen to INSERT, UPDATE, and DELETE events
-        schema: 'public',
-        table: 'alumni_profiles', // The exact table name in your database
-      },
-      (payload) => {
-        console.log('Real-time change detected!', payload);
-        // This is the key: call your existing fetchData function
-        // to refresh the admin dashboard automatically.
-        fetchData(); 
-      }
-    )
-    .subscribe();
+    const channel = supabase
+      .channel('admin-dashboard-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'alumni_profiles',
+        },
+        (payload) => {
+          console.log('Real-time change detected!', payload);
+          fetchData();
+        }
+      )
+      .subscribe();
 
-  // Cleanup function: unsubscribe when the component unmounts
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, []); // The empty dependency array means this runs once when the component loads
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
-  // Prefetch all comments for announcements when announcements tab becomes active
   useEffect(() => {
     if (activeMainTab === 'announcements' && announcements.length > 0 && !allCommentsFetched) {
       fetchAllComments();
@@ -404,7 +403,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
   // ============================================================
   // SECTION 3: HELPER FUNCTIONS
   // ============================================================
-  
+
   const showSettingsToast = (message: string, type: 'success' | 'error' | 'info') => {
     setSettingsMessage({ type, text: message });
     setTimeout(() => setSettingsMessage(null), 3000);
@@ -457,7 +456,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
 
     setIsChangingPassword(true);
     showSettingsToast('Verifying current password...', 'info');
-    
+
     try {
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: adminProfile.email,
@@ -468,7 +467,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
         showSettingsToast('Current password is incorrect', 'error');
         return;
       }
-      
+
       const { error: updateError } = await supabase.auth.updateUser({
         password: passwordForm.newPassword
       });
@@ -481,7 +480,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
       setShowChangePassword(false);
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
       showSettingsToast('Password updated successfully!', 'success');
-      
+
     } catch (error) {
       showSettingsToast('An unexpected error occurred', 'error');
     } finally {
@@ -491,23 +490,23 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
 
   const fetchAIInsights = async () => {
     if (departmentStats.length === 0) return;
-    
+
     setAiLoading(true);
-    
+
     try {
       const promotions = await getProgramPromotionRecommendations(departmentStats);
       setAiPromotionRecs(promotions.text);
-      
+
       await new Promise(resolve => setTimeout(resolve, 2000));
-      
+
       const strength = await getProgramStrengthAnalysis(departmentStats);
       setAiStrengthAnalysis(strength.text);
-      
+
       await new Promise(resolve => setTimeout(resolve, 2000));
-      
+
       const summary = await getInstitutionalSummary(departmentStats);
       setAiSummary(summary.text);
-      
+
       if (!promotions.success || !strength.success || !summary.success) {
         console.log('Some insights using fallback (rate limit or API issue)');
       }
@@ -527,13 +526,13 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
         .order('student_id', { ascending: false });
 
       if (error) throw error;
-      
+
       setMasterListData(data || []);
-      
+
       const batches = [...new Set(data?.map((r: any) => r.batch_year).filter(Boolean))] as number[];
       const coursesArr = [...new Set(data?.map((r: any) => r.course).filter(Boolean))] as string[];
       const latestBatch = batches.length > 0 ? Math.max(...batches) : null;
-      
+
       setMasterListStats({
         total: data?.length || 0,
         byBatch: batches.sort((a, b) => b - a),
@@ -553,79 +552,11 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
     showSettingsToast('Master list refreshed', 'success');
   };
 
-  // const deleteMasterListRecord = async (id: string, fullName: string) => {
-  //   if (!confirm(`Are you sure you want to delete "${fullName}" from the master list?`)) return;
-    
-  //   try {
-  //     const { error } = await supabase
-  //       .from('graduates_master')
-  //       .delete()
-  //       .eq('id', id);
-      
-  //     if (error) throw error;
-      
-  //     showSettingsToast(`Deleted ${fullName} from master list`, 'success');
-  //     fetchMasterList();
-  //   } catch (error) {
-  //     console.error('Error deleting record:', error);
-  //     showSettingsToast('Failed to delete record', 'error');
-  //   }
-  // };
-
-  // const toggleRecordVerification = async (id: string, newStatus: boolean) => {
-  //   try {
-  //     const { error } = await supabase
-  //       .from('graduates_master')
-  //       .update({ verified: newStatus })
-  //       .eq('id', id);
-      
-  //     if (error) throw error;
-      
-  //     showSettingsToast(`Record ${newStatus ? 'verified' : 'unverified'}`, 'success');
-  //     fetchMasterList();
-  //   } catch (error) {
-  //     console.error('Error updating verification:', error);
-  //     showSettingsToast('Failed to update verification status', 'error');
-  //   }
-  // };
-
-  const exportMasterListToCSV = () => {
-    if (masterListData.length === 0) {
-      showSettingsToast('No data to export', 'error');
-      return;
-    }
-    
-    const headers = ['student_id', 'full_name', 'email', 'course', 'batch_year', 'verified'];
-    const csvRows = [headers.join(',')];
-    
-    for (const record of masterListData) {
-      const values = headers.map(header => {
-        let value = record[header] !== null ? record[header] : '';
-        if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
-          value = `"${value.replace(/"/g, '""')}"`;
-        }
-        return value;
-      });
-      csvRows.push(values.join(','));
-    }
-    
-    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `master_list_${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    showSettingsToast('Master list exported successfully', 'success');
-  };
 
   const filteredMasterList = masterListData.filter((record: any) => {
     if (masterListSearch) {
       const searchLower = masterListSearch.toLowerCase();
-      const matchesSearch = 
+      const matchesSearch =
         record.student_id?.toLowerCase().includes(searchLower) ||
         record.full_name?.toLowerCase().includes(searchLower) ||
         record.email?.toLowerCase().includes(searchLower) ||
@@ -638,178 +569,173 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
   });
 
   const handleManualAdd = async () => {
-  // Validate required fields
-  if (!manualForm.student_id || !manualForm.full_name || !manualForm.email || !manualForm.course || !manualForm.batch_year || !manualForm.department) {
-    showSettingsToast('All fields are required', 'error');
-    return;
-  }
-
-  // Validate email format
-  if (!manualForm.email.includes('@')) {
-    showSettingsToast('Invalid email format', 'error');
-    return;
-  }
-
-  // Validate batch year
-  const batchYear = parseInt(manualForm.batch_year);
-  if (isNaN(batchYear) || batchYear < 1900 || batchYear > 2100) {
-    showSettingsToast('Invalid batch year (must be 1900-2100)', 'error');
-    return;
-  }
-
-  // Validate department
-  const validDepts = ['CCS', 'CTE', 'CCJE', 'CBE', 'PSY'];
-  if (!validDepts.includes(manualForm.department.toUpperCase())) {
-    showSettingsToast('Invalid department. Must be: CCS, CTE, CCJE, CBE, PSY', 'error');
-    return;
-  }
-
-  setManualSubmitting(true);
-
-  try {
-    // Check if student_id already exists
-    const { data: existing } = await supabase
-      .from('graduates_master')
-      .select('student_id')
-      .eq('student_id', manualForm.student_id)
-      .maybeSingle();
-
-    if (existing) {
-      showSettingsToast(`Student ID ${manualForm.student_id} already exists in master list`, 'error');
-      setManualSubmitting(false);
+    if (!manualForm.student_id || !manualForm.full_name || !manualForm.email || !manualForm.course || !manualForm.batch_year || !manualForm.department) {
+      showSettingsToast('All fields are required', 'error');
       return;
     }
 
-    // Insert new record
-    const { error } = await supabase
-      .from('graduates_master')
-      .insert({
-        student_id: manualForm.student_id.trim(),
-        full_name: manualForm.full_name.trim(),
-        email: manualForm.email.trim().toLowerCase(),
-        course: manualForm.course.trim(),
-        batch_year: batchYear,
-        department: manualForm.department.toUpperCase(),
-        verified: true
-      });
+    if (!manualForm.email.includes('@')) {
+      showSettingsToast('Invalid email format', 'error');
+      return;
+    }
 
-    if (error) throw error;
+    const batchYear = parseInt(manualForm.batch_year);
+    if (isNaN(batchYear) || batchYear < 1900 || batchYear > 2100) {
+      showSettingsToast('Invalid batch year (must be 1900-2100)', 'error');
+      return;
+    }
 
-    showSettingsToast(`✅ Added ${manualForm.full_name} to master list`, 'success');
-    setShowManualAddModal(false);
-    setManualForm({ student_id: '', full_name: '', email: '', course: '', batch_year: '', department: '' });
-    fetchMasterList(); // Refresh the table
+    const validDepts = ['CCS', 'CTE', 'CCJE', 'CBE', 'PSY'];
+    if (!validDepts.includes(manualForm.department.toUpperCase())) {
+      showSettingsToast('Invalid department. Must be: CCS, CTE, CCJE, CBE, PSY', 'error');
+      return;
+    }
 
-  } catch (error) {
-    console.error('Manual add error:', error);
-    showSettingsToast('Failed to add record', 'error');
-  } finally {
-    setManualSubmitting(false);
-  }
-};
+    setManualSubmitting(true);
+
+    try {
+      const { data: existing } = await supabase
+        .from('graduates_master')
+        .select('student_id')
+        .eq('student_id', manualForm.student_id)
+        .maybeSingle();
+
+      if (existing) {
+        showSettingsToast(`Student ID ${manualForm.student_id} already exists in master list`, 'error');
+        setManualSubmitting(false);
+        return;
+      }
+
+      const { error } = await supabase
+        .from('graduates_master')
+        .insert({
+          student_id: manualForm.student_id.trim(),
+          full_name: manualForm.full_name.trim(),
+          email: manualForm.email.trim().toLowerCase(),
+          course: manualForm.course.trim(),
+          batch_year: batchYear,
+          department: manualForm.department.toUpperCase(),
+          verified: true
+        });
+
+      if (error) throw error;
+
+      // ✅ 9. ALUMNI VERIFIED - Notify when manually added (already verified)
+      await notifyAlumniVerified(manualForm.full_name.trim(), '');
+
+      showSettingsToast(`✅ Added ${manualForm.full_name} to master list`, 'success');
+      setShowManualAddModal(false);
+      setManualForm({ student_id: '', full_name: '', email: '', course: '', batch_year: '', department: '' });
+      fetchMasterList();
+
+    } catch (error) {
+      console.error('Manual add error:', error);
+      showSettingsToast('Failed to add record', 'error');
+    } finally {
+      setManualSubmitting(false);
+    }
+  };
 
   // ============================================================
   // SECTION 4: DATA FETCHING FUNCTIONS
   // ============================================================
-  
+
   const fetchData = async () => {
-  setLoading(true);
-  
-  try {
-    // Fetch alumni profiles
-    const { data: alumniData, error: alumniError } = await supabase
-      .from('alumni_profiles')
-      .select('*');
-    
-    if (alumniError) {
-      console.error("❌ Error fetching alumni:", alumniError);
-      setAlumni([]);
-      resetStats();
-    } else if (alumniData && alumniData.length > 0) {
-      // Process each alumni to get public avatar URL
-      const processedAlumni = await Promise.all(alumniData.map(async (alum) => {
-        let avatarUrl = null;
-        if (alum.avatar_url) {
-          // Get public URL from storage
-          const { data: publicUrlData } = supabase.storage
-            .from('profile-pictures')
-            .getPublicUrl(alum.avatar_url);
-          avatarUrl = publicUrlData.publicUrl;
-        }
-        return { ...alum, avatar_url: avatarUrl };
-      }));
-      
-      setAlumni(processedAlumni);
-      processAlumniData(processedAlumni);
-      processDepartmentStats(processedAlumni);
-    } else {
-      setAlumni([]);
-      resetStats();
-    }
-    
-    // Rest of your existing code continues here...
-    const { data: announcementsData, error: announcementsError } = await supabase
-      .from('announcements')
-      .select('*')
-      .order('created_at', { ascending: false });
-    
-    if (!announcementsError && announcementsData) setAnnouncements(announcementsData);
-    
-    const { data: activitiesData, error: activitiesError } = await supabase
-      .from('alumni_activities')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(50);
-    
-    if (activitiesError) {
-      setActivities([]);
-    } else if (activitiesData && activitiesData.length > 0) {
-      const userIds = [...new Set(activitiesData.map((a: any) => a.user_id).filter(Boolean))];
-      if (userIds.length > 0) {
-        const { data: userNames } = await supabase
-          .from('alumni_profiles')
-          .select('user_id, full_name')
-          .in('user_id', userIds);
-        
-        const nameMap = new Map(userNames?.map((u: any) => [u.user_id, u.full_name]) || []);
-        const activitiesWithNames = activitiesData.map((a: any) => ({
-          ...a,
-          full_name: nameMap.get(a.user_id) || 'Someone'
+    setLoading(true);
+
+    try {
+      // Fetch alumni profiles
+      const { data: alumniData, error: alumniError } = await supabase
+        .from('alumni_profiles')
+        .select('*');
+
+      if (alumniError) {
+        console.error("❌ Error fetching alumni:", alumniError);
+        setAlumni([]);
+        resetStats();
+      } else if (alumniData && alumniData.length > 0) {
+        const processedAlumni = await Promise.all(alumniData.map(async (alum) => {
+          let avatarUrl = null;
+          if (alum.avatar_url) {
+            const { data: publicUrlData } = supabase.storage
+              .from('profile-pictures')
+              .getPublicUrl(alum.avatar_url);
+            avatarUrl = publicUrlData.publicUrl;
+          }
+          return { ...alum, avatar_url: avatarUrl };
         }));
-        setActivities(activitiesWithNames);
+
+        setAlumni(processedAlumni);
+        processAlumniData(processedAlumni);
+        processDepartmentStats(processedAlumni);
       } else {
-        setActivities(activitiesData);
+        setAlumni([]);
+        resetStats();
       }
-      
-      const last7Days = Array.from({ length: 7 }, (_, i) => {
-        const date = new Date();
-        date.setDate(date.getDate() - i);
-        return date.toISOString().split('T')[0];
-      }).reverse();
-      
-      const weeklyData = last7Days.map(day => {
-        const count = activitiesData?.filter((a: any) => a.created_at?.startsWith(day)).length || 0;
-        return { day: day.slice(5), count };
-      });
-      setWeeklyActivities(weeklyData);
-    } else {
-      setActivities([]);
+
+      const { data: announcementsData, error: announcementsError } = await supabase
+        .from('announcements')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!announcementsError && announcementsData) setAnnouncements(announcementsData);
+
+      const { data: activitiesData, error: activitiesError } = await supabase
+        .from('alumni_activities')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (activitiesError) {
+        setActivities([]);
+      } else if (activitiesData && activitiesData.length > 0) {
+        const userIds = [...new Set(activitiesData.map((a: any) => a.user_id).filter(Boolean))];
+        if (userIds.length > 0) {
+          const { data: userNames } = await supabase
+            .from('alumni_profiles')
+            .select('user_id, full_name')
+            .in('user_id', userIds);
+
+          const nameMap = new Map(userNames?.map((u: any) => [u.user_id, u.full_name]) || []);
+          const activitiesWithNames = activitiesData.map((a: any) => ({
+            ...a,
+            full_name: nameMap.get(a.user_id) || 'Someone'
+          }));
+          setActivities(activitiesWithNames);
+        } else {
+          setActivities(activitiesData);
+        }
+
+        const last7Days = Array.from({ length: 7 }, (_, i) => {
+          const date = new Date();
+          date.setDate(date.getDate() - i);
+          return date.toISOString().split('T')[0];
+        }).reverse();
+
+        const weeklyData = last7Days.map(day => {
+          const count = activitiesData?.filter((a: any) => a.created_at?.startsWith(day)).length || 0;
+          return { day: day.slice(5), count };
+        });
+        setWeeklyActivities(weeklyData);
+      } else {
+        setActivities([]);
+      }
+
+    } catch (error) {
+      console.error("❌ CRITICAL ERROR in fetchData:", error);
+    } finally {
+      setLoading(false);
     }
-    
-  } catch (error) {
-    console.error("❌ CRITICAL ERROR in fetchData:", error);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
+
   const processAlumniData = (alumniData: AlumniProfile[]) => {
     const total = alumniData.length;
     const employed = alumniData.filter(a => a.employment_status === 'Employed').length;
     const unemployed = alumniData.filter(a => a.employment_status === 'Unemployed').length;
-    
+
     const inField = alumniData.filter(a => a.career_alignment_status === 'In-Field').length;
     const outOfField = alumniData.filter(a => a.career_alignment_status === 'Out-of-Field').length;
-    
+
     setStats({ total, employed, unemployed, inField, outOfField });
     setEmploymentChartData([
       { name: 'Employed', value: employed, color: '#10b981' },
@@ -820,12 +746,12 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
       { name: 'Out-of-Field', value: outOfField, color: '#f59e0b' },
       { name: 'Pending', value: total - inField - outOfField, color: '#6b7280' },
     ]);
-    
+
     const uniqueCourses = [...new Set(alumniData.map(a => a.course).filter(Boolean))] as string[];
     const uniqueBatchYears = [...new Set(alumniData.map(a => a.batch_year).filter(Boolean))] as number[];
     setCourses(uniqueCourses);
     setBatchYears(uniqueBatchYears.sort((a, b) => b - a));
-    
+
     const courseStatsData = uniqueCourses.map(course => {
       const courseAlumni = alumniData.filter(a => a.course === course);
       const total = courseAlumni.length;
@@ -842,11 +768,11 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
       const total = deptAlumni.length;
       const employed = deptAlumni.filter(a => a.employment_status === 'Employed').length;
       const unemployed = deptAlumni.filter(a => a.employment_status === 'Unemployed').length;
-      
+
       const inField = deptAlumni.filter(a => a.career_alignment_status === 'In-Field').length;
       const outOfField = deptAlumni.filter(a => a.career_alignment_status === 'Out-of-Field').length;
       const pending = deptAlumni.filter(a => a.career_alignment_status === null || a.career_alignment_status === undefined).length;
-      
+
       return {
         department: dept.code,
         total_alumni: total,
@@ -860,7 +786,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
       };
     });
     setDepartmentStats(deptStats);
-    
+
     processDepartmentBatchData(alumniData, selectedDepartment);
   };
 
@@ -868,7 +794,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
     const deptAlumni = alumniData.filter(a => a.department === departmentCode);
     const batchYearsGroup = [...new Set(deptAlumni.map(a => a.batch_year).filter(Boolean))] as number[];
     batchYearsGroup.sort((a, b) => b - a);
-    
+
     const batchData = batchYearsGroup.map(batch => {
       const batchAlumni = deptAlumni.filter(a => a.batch_year === batch);
       const total = batchAlumni.length;
@@ -896,13 +822,13 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
   };
 
   // ============================================================
-  // SECTION 5: ANNOUNCEMENT FUNCTIONS
+  // SECTION 5: ANNOUNCEMENT FUNCTIONS (WITH NOTIFICATIONS)
   // ============================================================
-  
+
   const createAnnouncement = async () => {
     let targetCourse = null;
     let targetBatchYear = null;
-    
+
     if (newAnnouncement.target_type === 'course') {
       targetCourse = newAnnouncement.target_course;
       targetBatchYear = newAnnouncement.target_batch_year ? parseInt(newAnnouncement.target_batch_year) : null;
@@ -913,19 +839,47 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
       targetCourse = newAnnouncement.target_course || null;
       targetBatchYear = newAnnouncement.target_batch_year ? parseInt(newAnnouncement.target_batch_year) : null;
     }
-    
-    const { error } = await supabase.from('announcements').insert({
-      title: newAnnouncement.title,
-      content: newAnnouncement.content,
-      category: newAnnouncement.category,
-      target_type: newAnnouncement.target_type,
-      target_course: targetCourse,
-      target_batch_year: targetBatchYear,
-      published: true,
-      created_by: session.user.id,
-    });
-    
-    if (!error) {
+
+    const { data: inserted, error } = await supabase
+      .from('announcements')
+      .insert({
+        title: newAnnouncement.title,
+        content: newAnnouncement.content,
+        category: newAnnouncement.category,
+        target_type: newAnnouncement.target_type,
+        target_course: targetCourse,
+        target_batch_year: targetBatchYear,
+        published: true,
+        created_by: session.user.id,
+      })
+      .select()
+      .single();
+
+    if (!error && inserted) {
+      // ✅ 6. NEW ANNOUNCEMENT - Notify target alumni
+      let query = supabase
+        .from('alumni_profiles')
+        .select('user_id')
+        .not('user_id', 'is', null);
+
+      if (targetCourse) {
+        query = query.eq('course', targetCourse);
+      }
+      if (targetBatchYear) {
+        query = query.eq('batch_year', targetBatchYear);
+      }
+
+      const { data: targetAlumni } = await query;
+
+      if (targetAlumni && targetAlumni.length > 0) {
+        const userIds = targetAlumni.map((a) => a.user_id);
+        await notifyNewAnnouncement(
+          userIds,
+          newAnnouncement.title,
+          inserted.id
+        );
+      }
+
       setShowCreateModal(false);
       setNewAnnouncement({
         title: '',
@@ -936,7 +890,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
         target_batch_year: '',
       });
       fetchData();
-      showSettingsToast('Announcement created successfully!', 'success');
+      showSettingsToast('Announcement created and notifications sent!', 'success');
     } else {
       showSettingsToast('Failed to create announcement', 'error');
     }
@@ -954,16 +908,13 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
     }
   };
 
-  
-
   // ============================================================
-  // COMMENT FUNCTIONS
+  // COMMENT FUNCTIONS (WITH NOTIFICATIONS)
   // ============================================================
 
-  // Fetch comments for an announcement
   const fetchComments = async (announcementId: string) => {
     setCommentLoading(prev => ({ ...prev, [announcementId]: true }));
-    
+
     try {
       const { data: allCommentsData, error } = await supabase
         .from('announcement_comments')
@@ -1033,152 +984,191 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
     }
   };
 
-    // Fetch all comments for all announcements in one batched query
-    const fetchAllComments = async () => {
-      if (!announcements || announcements.length === 0) return;
-      const announcementIds = announcements.map(a => a.id);
-      setAllCommentsLoading(true);
-      // mark all as loading
-      setCommentLoading(prev => {
-        const copy = { ...prev };
-        announcementIds.forEach(id => (copy[id] = true));
-        return copy;
-      });
-
-      try {
-        const { data: allCommentsData, error } = await supabase
-          .from('announcement_comments')
-          .select('*')
-          .in('announcement_id', announcementIds)
-          .order('created_at', { ascending: true });
-
-        if (error) throw error;
-
-        const allComments = (allCommentsData as AnnouncementComment[] | null) || [];
-
-        // build user maps
-        const userIds = [...new Set(allComments.map(c => c.user_id))];
-        let userMap: Record<string, { id: string; role?: string }> = {};
-        let nameMap: Record<string, string> = {};
-
-        if (userIds.length > 0) {
-          const { data: users } = await supabase
-            .from('users')
-            .select('id, role')
-            .in('id', userIds);
-
-          userMap = users?.reduce((acc, user) => ({ ...acc, [user.id]: user }), {}) || {};
-
-          const { data: alumni } = await supabase
-            .from('alumni_profiles')
-            .select('user_id, full_name')
-            .in('user_id', userIds);
-
-          nameMap = alumni?.reduce((acc, profile) => ({ ...acc, [profile.user_id]: profile.full_name }), {}) || {};
-        }
-
-        // group comments by announcement and build threaded roots
-        const grouped: Record<string, (AnnouncementComment & { replies: AnnouncementComment[]; showReplyInput?: boolean })[]> = {};
-        const counts: Record<string, number> = {};
-
-        announcementIds.forEach(id => {
-          grouped[id] = [];
-          counts[id] = 0;
-        });
-
-        const commentMapsByAnn: Record<string, Record<string, AnnouncementComment & { replies: AnnouncementComment[]; showReplyInput?: boolean }>> = {};
-
-        allComments.forEach(comment => {
-          counts[comment.announcement_id] = (counts[comment.announcement_id] || 0) + 1;
-          if (!commentMapsByAnn[comment.announcement_id]) commentMapsByAnn[comment.announcement_id] = {};
-          commentMapsByAnn[comment.announcement_id][comment.id] = {
-            ...comment,
-            full_name: nameMap[comment.user_id] || 'Unknown Alumni',
-            role: userMap[comment.user_id]?.role || 'alumni',
-            replies: [],
-            showReplyInput: false
-          };
-        });
-
-        // assemble roots per announcement
-        Object.keys(commentMapsByAnn).forEach(annId => {
-          const map = commentMapsByAnn[annId];
-          Object.values(map).forEach(c => {
-            if (c.parent_comment_id) {
-              const parent = map[c.parent_comment_id];
-              if (parent) parent.replies.push(c);
-            } else {
-              grouped[annId].push(c);
-            }
-          });
-        });
-
-        setComments(prev => ({ ...prev, ...grouped }));
-        setCommentCounts(prev => ({ ...prev, ...counts }));
-        setAllCommentsFetched(true);
-      } catch (err) {
-        console.error('Error fetching all comments:', err);
-        showSettingsToast('Failed to load comments', 'error');
-      } finally {
-        setAllCommentsLoading(false);
-        // clear per-ann loading
-        setCommentLoading(prev => {
-          const copy = { ...prev };
-          announcements.forEach(a => (copy[a.id] = false));
-          return copy;
-        });
-      }
-    };
-
-  // Add a comment
-  const addComment = async (announcementId: string, content: string, parentCommentId: string | null = null) => {
-    if (!content.trim()) return;
+  const fetchAllComments = async () => {
+    if (!announcements || announcements.length === 0) return;
+    const announcementIds = announcements.map(a => a.id);
+    setAllCommentsLoading(true);
+    setCommentLoading(prev => {
+      const copy = { ...prev };
+      announcementIds.forEach(id => (copy[id] = true));
+      return copy;
+    });
 
     try {
-      const { error } = await supabase
+      const { data: allCommentsData, error } = await supabase
         .from('announcement_comments')
-        .insert({
-          announcement_id: announcementId,
-          user_id: session.user.id,
-          content: content.trim(),
-          parent_comment_id: parentCommentId
-        })
-        .select()
-        .single();
+        .select('*')
+        .in('announcement_id', announcementIds)
+        .order('created_at', { ascending: true });
 
       if (error) throw error;
 
-      // Refresh comments
-      await fetchComments(announcementId);
-      
-      // Clear input
-        // Update announcement views (optional: log activity)
-      await supabase.from('alumni_activities').insert({
-        user_id: session.user.id,
-        activity_type: 'announcement_comment',
-        description: `Commented on announcement: ${content.substring(0, 50)}...`,
-        metadata: { announcement_id: announcementId }
+      const allComments = (allCommentsData as AnnouncementComment[] | null) || [];
+
+      const userIds = [...new Set(allComments.map(c => c.user_id))];
+      let userMap: Record<string, { id: string; role?: string }> = {};
+      let nameMap: Record<string, string> = {};
+
+      if (userIds.length > 0) {
+        const { data: users } = await supabase
+          .from('users')
+          .select('id, role')
+          .in('id', userIds);
+
+        userMap = users?.reduce((acc, user) => ({ ...acc, [user.id]: user }), {}) || {};
+
+        const { data: alumni } = await supabase
+          .from('alumni_profiles')
+          .select('user_id, full_name')
+          .in('user_id', userIds);
+
+        nameMap = alumni?.reduce((acc, profile) => ({ ...acc, [profile.user_id]: profile.full_name }), {}) || {};
+      }
+
+      const grouped: Record<string, (AnnouncementComment & { replies: AnnouncementComment[]; showReplyInput?: boolean })[]> = {};
+      const counts: Record<string, number> = {};
+
+      announcementIds.forEach(id => {
+        grouped[id] = [];
+        counts[id] = 0;
       });
 
-      showSettingsToast('Comment added successfully!', 'success');
-    } catch (error) {
-      console.error('Error adding comment:', error);
-      showSettingsToast('Failed to add comment', 'error');
+      const commentMapsByAnn: Record<string, Record<string, AnnouncementComment & { replies: AnnouncementComment[]; showReplyInput?: boolean }>> = {};
+
+      allComments.forEach(comment => {
+        counts[comment.announcement_id] = (counts[comment.announcement_id] || 0) + 1;
+        if (!commentMapsByAnn[comment.announcement_id]) commentMapsByAnn[comment.announcement_id] = {};
+        commentMapsByAnn[comment.announcement_id][comment.id] = {
+          ...comment,
+          full_name: nameMap[comment.user_id] || 'Unknown Alumni',
+          role: userMap[comment.user_id]?.role || 'alumni',
+          replies: [],
+          showReplyInput: false
+        };
+      });
+
+      Object.keys(commentMapsByAnn).forEach(annId => {
+        const map = commentMapsByAnn[annId];
+        Object.values(map).forEach(c => {
+          if (c.parent_comment_id) {
+            const parent = map[c.parent_comment_id];
+            if (parent) parent.replies.push(c);
+          } else {
+            grouped[annId].push(c);
+          }
+        });
+      });
+
+      setComments(prev => ({ ...prev, ...grouped }));
+      setCommentCounts(prev => ({ ...prev, ...counts }));
+      setAllCommentsFetched(true);
+    } catch (err) {
+      console.error('Error fetching all comments:', err);
+      showSettingsToast('Failed to load comments', 'error');
+    } finally {
+      setAllCommentsLoading(false);
+      setCommentLoading(prev => {
+        const copy = { ...prev };
+        announcements.forEach(a => (copy[a.id] = false));
+        return copy;
+      });
     }
   };
 
-  // Delete a comment (admin can delete any, users can delete their own)
+const addComment = async (announcementId: string, content: string, parentCommentId: string | null = null) => {
+  if (!content.trim()) return;
+
+  try {
+    // 1. Insert the comment
+    const { error } = await supabase
+      .from('announcement_comments')
+      .insert({
+        announcement_id: announcementId,
+        user_id: session.user.id,
+        content: content.trim(),
+        parent_comment_id: parentCommentId
+      });
+
+    if (error) {
+      console.error('Error inserting comment:', error);
+      showSettingsToast('Failed to add comment', 'error');
+      return;
+    }
+
+    // 2. Get the commenter's name
+    const { data: profile } = await supabase
+      .from('alumni_profiles')
+      .select('full_name')
+      .eq('user_id', session.user.id)
+      .single();
+
+    const commenterName = profile?.full_name || 'An alumni';
+
+    // 3. Get the announcement title
+    const { data: ann } = await supabase
+      .from('announcements')
+      .select('title')
+      .eq('id', announcementId)
+      .single();
+
+    const announcementTitle = ann?.title || 'announcement';
+
+    // 4. SEND NOTIFICATION
+    if (parentCommentId) {
+      // REPLY - notify the alumni who wrote the parent comment
+      const { data: parentComment } = await supabase
+        .from('announcement_comments')
+        .select('user_id')
+        .eq('id', parentCommentId)
+        .single();
+
+      if (parentComment) {
+        const adminName = session.user.user_metadata?.full_name || 'Admin';
+        await notifyReplyAdded(
+          parentComment.user_id,
+          adminName,
+          announcementTitle,
+          content,
+          announcementId
+        );
+      }
+    } else {
+      // COMMENT - notify ALL admins
+      await notifyCommentAdded(
+        commenterName,
+        announcementTitle,
+        content,
+        announcementId,
+        session.user.id
+      );
+    }
+
+    // 5. Refresh comments
+    await fetchComments(announcementId);
+
+    // 6. Log activity
+    await supabase.from('alumni_activities').insert({
+      user_id: session.user.id,
+      activity_type: 'announcement_comment',
+      description: `Commented on announcement: ${content.substring(0, 50)}...`,
+      metadata: { announcement_id: announcementId }
+    });
+
+    showSettingsToast('Comment added successfully!', 'success');
+  } catch (error) {
+    console.error('Error in addComment:', error);
+    showSettingsToast('Failed to add comment', 'error');
+  }
+};
   const deleteComment = async (commentId: string, announcementId: string) => {
     if (!confirm('Are you sure you want to delete this comment?')) return;
 
     try {
-      // First delete any replies
       await supabase
         .from('announcement_comments')
         .delete()
         .eq('parent_comment_id', commentId);
 
-      // Then delete the comment itself
       const { error } = await supabase
         .from('announcement_comments')
         .delete()
@@ -1194,7 +1184,6 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
     }
   };
 
-  // Edit Announcement
   const handleEditAnnouncement = async () => {
     if (!editingAnnouncement) return;
 
@@ -1211,6 +1200,13 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
       .eq('id', editingAnnouncement.id);
 
     if (!error) {
+      // ✅ 8. ANNOUNCEMENT EDITED - Notify the admin who edited it
+      await notifyAnnouncementEdited(
+        session.user.id,
+        editForm.title,
+        editingAnnouncement.id
+      );
+
       setShowEditModal(false);
       setEditingAnnouncement(null);
       fetchData();
@@ -1220,12 +1216,10 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
     }
   };
 
-
-
   // ============================================================
   // SECTION 6: FILTER FUNCTIONS
   // ============================================================
-  
+
   const getFilteredAlumni = () => {
     let filtered = [...alumni];
     if (filterDepartment) filtered = filtered.filter(a => a.department === filterDepartment);
@@ -1233,35 +1227,34 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
     if (filterBatch) filtered = filtered.filter(a => a.batch_year === parseInt(filterBatch));
     if (filterStatus) filtered = filtered.filter(a => a.employment_status === filterStatus);
     if (alumniSearchTerm) {
-    const searchLower = alumniSearchTerm.toLowerCase();
-    filtered = filtered.filter(a => 
-      a.full_name?.toLowerCase().includes(searchLower)
-    );
-  }
+      const searchLower = alumniSearchTerm.toLowerCase();
+      filtered = filtered.filter(a =>
+        a.full_name?.toLowerCase().includes(searchLower)
+      );
+    }
     return filtered;
   };
 
   const getFilteredAnnouncements = () => {
     let filtered = [...announcements];
-    
+
     if (announcementFilterType === 'all') {
       if (announcementFilterCourse) {
-        filtered = filtered.filter(ann => 
-          ann.target_type === 'all' && 
+        filtered = filtered.filter(ann =>
+          ann.target_type === 'all' &&
           (ann.target_course === announcementFilterCourse || !ann.target_course)
         );
       }
       if (announcementFilterBatchYear) {
-        filtered = filtered.filter(ann => 
-          ann.target_type === 'all' && 
+        filtered = filtered.filter(ann =>
+          ann.target_type === 'all' &&
           (ann.target_batch_year === parseInt(announcementFilterBatchYear) || !ann.target_batch_year)
         );
       }
       if (!announcementFilterCourse && !announcementFilterBatchYear) {
         filtered = filtered.filter(ann => ann.target_type === 'all');
       }
-    } 
-    else if (announcementFilterType === 'course') {
+    } else if (announcementFilterType === 'course') {
       filtered = filtered.filter(ann => ann.target_type === 'course');
       if (announcementFilterCourse) {
         filtered = filtered.filter(ann => ann.target_course === announcementFilterCourse);
@@ -1269,8 +1262,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
       if (announcementFilterBatchYear) {
         filtered = filtered.filter(ann => ann.target_batch_year === parseInt(announcementFilterBatchYear));
       }
-    } 
-    else if (announcementFilterType === 'batch_year') {
+    } else if (announcementFilterType === 'batch_year') {
       filtered = filtered.filter(ann => ann.target_type === 'batch_year');
       if (announcementFilterBatchYear) {
         filtered = filtered.filter(ann => ann.target_batch_year === parseInt(announcementFilterBatchYear));
@@ -1279,14 +1271,14 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
         filtered = filtered.filter(ann => ann.target_course === announcementFilterCourse);
       }
     }
-    
+
     return filtered;
   };
 
   // ============================================================
   // SECTION 7: UI HELPER FUNCTIONS
   // ============================================================
-  
+
   const getCategoryLabel = (category: string) => {
     const labels: Record<string, string> = {
       alumni_events: '🎉 Alumni Event',
@@ -1376,14 +1368,14 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
   // ============================================================
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
-      
+
       {/* ========================================================== */}
       {/* BLOCK 1: NAVIGATION BAR */}
       {/* ========================================================== */}
       <nav className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-b border-gray-100 dark:border-gray-700 sticky top-0 z-40 transition-colors duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16 sm:h-20">
-            
+
             {/* Logo Section */}
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-[#800000] to-[#a10000] rounded-xl flex items-center justify-center shadow-md">
@@ -1403,7 +1395,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
 
             {/* Right Section */}
             <div className="flex items-center gap-4">
-              
+
               {/* Date Display */}
               <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-full border border-gray-100 dark:border-gray-600">
                 <svg className="w-4 h-4 text-[#800000] dark:text-[#a10000]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1442,10 +1434,10 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                       {adminProfile.email?.split('@')[0]}
                     </p>
                   </div>
-                  <svg 
+                  <svg
                     className={`w-4 h-4 text-gray-500 dark:text-gray-400 transition-transform duration-300 ${showProfileDropdown ? 'rotate-180' : ''}`}
-                    fill="none" 
-                    stroke="currentColor" 
+                    fill="none"
+                    stroke="currentColor"
                     viewBox="0 0 24 24"
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -1457,7 +1449,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setShowProfileDropdown(false)} />
                     <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden z-50">
-                      
+
                       {/* Header */}
                       <div className="p-4 bg-gradient-to-r from-[#800000]/5 to-transparent border-b border-gray-100 dark:border-gray-700">
                         <div className="flex items-center gap-3">
@@ -1482,11 +1474,11 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
 
                       {/* Menu Items */}
                       <div className="p-2">
-                        <button 
-                          onClick={() => { 
-                            setShowProfileDropdown(false); 
-                            setShowProfileModal(true); 
-                          }} 
+                        <button
+                          onClick={() => {
+                            setShowProfileDropdown(false);
+                            setShowProfileModal(true);
+                          }}
                           className="w-full flex items-center gap-3 px-3 py-2.5 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl transition-all duration-200 group"
                         >
                           <div className="w-8 h-8 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center group-hover:bg-[#800000]/10 transition-colors">
@@ -1500,11 +1492,11 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                           </div>
                         </button>
 
-                        <button 
-                          onClick={() => { 
-                            setShowProfileDropdown(false); 
-                            setShowSettingsModal(true); 
-                          }} 
+                        <button
+                          onClick={() => {
+                            setShowProfileDropdown(false);
+                            setShowSettingsModal(true);
+                          }}
                           className="w-full flex items-center gap-3 px-3 py-2.5 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl transition-all duration-200 group"
                         >
                           <div className="w-8 h-8 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center group-hover:bg-[#800000]/10 transition-colors">
@@ -1522,14 +1514,14 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                         <div className="my-2 border-t border-gray-100 dark:border-gray-700" />
 
                         {/* Sign Out Button */}
-                        <button 
-                          onClick={handleSignOut} 
-                          disabled={signOutLoading} 
+                        <button
+                          onClick={handleSignOut}
+                          disabled={signOutLoading}
                           className="w-full flex items-center gap-3 px-3 py-2.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all duration-200 group"
                         >
                           <div className="w-8 h-8 bg-red-50 dark:bg-red-900/30 rounded-lg flex items-center justify-center group-hover:bg-red-100 dark:group-hover:bg-red-900/50 transition-colors">
-                            {signOutLoading ? 
-                              <div className="w-4 h-4 border-2 border-red-600/30 border-t-red-600 rounded-full animate-spin" /> : 
+                            {signOutLoading ?
+                              <div className="w-4 h-4 border-2 border-red-600/30 border-t-red-600 rounded-full animate-spin" /> :
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                               </svg>
@@ -1539,7 +1531,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                             <p className="text-sm font-medium">Sign Out</p>
                             <p className="text-xs text-red-400">End your session</p>
                           </div>
-                          {!signOutLoading && 
+                          {!signOutLoading &&
                             <svg className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                             </svg>
@@ -1567,12 +1559,11 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
       {/* ========================================================== */}
       {settingsMessage && (
         <div className="fixed top-20 right-4 z-50 animate-in slide-in-from-top-2 duration-300">
-          <div className={`px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 text-sm font-medium ${
-            settingsMessage.type === 'success' ? 'bg-emerald-500 text-white' : 
-            settingsMessage.type === 'error' ? 'bg-red-500 text-white' : 
-            'bg-blue-500 text-white'
-          }`}>
-            {settingsMessage.type === 'success' ? '✅' : settingsMessage.type === 'error' ? '❌' : 'ℹ️'} 
+          <div className={`px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 text-sm font-medium ${settingsMessage.type === 'success' ? 'bg-emerald-500 text-white' :
+              settingsMessage.type === 'error' ? 'bg-red-500 text-white' :
+                'bg-blue-500 text-white'
+            }`}>
+            {settingsMessage.type === 'success' ? '✅' : settingsMessage.type === 'error' ? '❌' : 'ℹ️'}
             {settingsMessage.text}
           </div>
         </div>
@@ -1582,68 +1573,57 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
       {/* BLOCK 3: MAIN CONTENT WITH TABS */}
       {/* ========================================================== */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
+
         {/* Tab Navigation */}
         <div className="flex flex-wrap gap-2 mb-8 border-b border-gray-200 dark:border-gray-700">
-          <button 
-            onClick={() => setActiveMainTab('overview')} 
-            className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${
-              activeMainTab === 'overview' 
-                ? 'bg-[#800000] text-white shadow-md' 
+          <button
+            onClick={() => setActiveMainTab('overview')}
+            className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${activeMainTab === 'overview'
+                ? 'bg-[#800000] text-white shadow-md'
                 : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-            }`}
+              }`}
           >
             📊 Overview
           </button>
-          <button 
-            onClick={() => setActiveMainTab('departments')} 
-            className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${
-              activeMainTab === 'departments' 
-                ? 'bg-[#800000] text-white shadow-md' 
+          <button
+            onClick={() => setActiveMainTab('departments')}
+            className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${activeMainTab === 'departments'
+                ? 'bg-[#800000] text-white shadow-md'
                 : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-            }`}
+              }`}
           >
             🏛️ Department Analytics
           </button>
-          <button 
-            onClick={() => setActiveMainTab('announcements')} 
-            className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${
-              activeMainTab === 'announcements' 
-                ? 'bg-[#800000] text-white shadow-md' 
+          <button
+            onClick={() => setActiveMainTab('announcements')}
+            className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${activeMainTab === 'announcements'
+                ? 'bg-[#800000] text-white shadow-md'
                 : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-            }`}
+              }`}
           >
             📢 Announcements
           </button>
-          <button 
-            onClick={() => setActiveMainTab('insights')} 
-            className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${
-              activeMainTab === 'insights' 
-                ? 'bg-[#800000] text-white shadow-md' 
+          <button
+            onClick={() => setActiveMainTab('insights')}
+            className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${activeMainTab === 'insights'
+                ? 'bg-[#800000] text-white shadow-md'
                 : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-            }`}
+              }`}
           >
             🤖 Program Insights
           </button>
-          <button 
-            onClick={() => setActiveMainTab('masterlist')} 
-            className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${
-              activeMainTab === 'masterlist' 
-                ? 'bg-[#800000] text-white shadow-md' 
+          <button
+            onClick={() => setActiveMainTab('masterlist')}
+            className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${activeMainTab === 'masterlist'
+                ? 'bg-[#800000] text-white shadow-md'
                 : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-            }`}
+              }`}
           >
             📥 Master List
           </button>
-
-          
-          <button onClick={() => setActiveMainTab('reports')} 
-          className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 
-          ${activeMainTab === 'reports' ? 'bg-[#800000] text-white shadow-md' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>📊 Reports</button>
+          <button onClick={() => setActiveMainTab('reports')}
+            className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${activeMainTab === 'reports' ? 'bg-[#800000] text-white shadow-md' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>📊 Reports</button>
         </div>
-
-
-        
 
         {/* ======================================================== */}
         {/* TAB 1: OVERVIEW */}
@@ -1652,7 +1632,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
           <>
             {/* STATS CARDS */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5 mb-8">
-              
+
               {/* Total Alumni Card */}
               <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 shadow-sm hover:shadow-md transition-all duration-300">
                 <div className="flex items-center justify-between mb-3">
@@ -1693,9 +1673,9 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                 </p>
                 <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700">
                   <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-emerald-500 rounded-full" 
-                      style={{ width: `${stats.total > 0 ? (stats.employed / stats.total) * 100 : 0}%` }} 
+                    <div
+                      className="h-full bg-emerald-500 rounded-full"
+                      style={{ width: `${stats.total > 0 ? (stats.employed / stats.total) * 100 : 0}%` }}
                     />
                   </div>
                 </div>
@@ -1721,9 +1701,9 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                 </p>
                 <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700">
                   <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-rose-500 rounded-full" 
-                      style={{ width: `${stats.total > 0 ? (stats.unemployed / stats.total) * 100 : 0}%` }} 
+                    <div
+                      className="h-full bg-rose-500 rounded-full"
+                      style={{ width: `${stats.total > 0 ? (stats.unemployed / stats.total) * 100 : 0}%` }}
                     />
                   </div>
                 </div>
@@ -1749,9 +1729,9 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                 </p>
                 <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700">
                   <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-violet-500 rounded-full" 
-                      style={{ width: `${stats.total > 0 ? (stats.inField / stats.total) * 100 : 0}%` }} 
+                    <div
+                      className="h-full bg-violet-500 rounded-full"
+                      style={{ width: `${stats.total > 0 ? (stats.inField / stats.total) * 100 : 0}%` }}
                     />
                   </div>
                 </div>
@@ -1777,9 +1757,9 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                 </p>
                 <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700">
                   <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-amber-500 rounded-full" 
-                      style={{ width: `${stats.total > 0 ? (stats.outOfField / stats.total) * 100 : 0}%` }} 
+                    <div
+                      className="h-full bg-amber-500 rounded-full"
+                      style={{ width: `${stats.total > 0 ? (stats.outOfField / stats.total) * 100 : 0}%` }}
                     />
                   </div>
                 </div>
@@ -1788,7 +1768,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
 
             {/* CHARTS */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-              
+
               {/* Employment Pie Chart */}
               <Card>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 text-center">
@@ -1797,15 +1777,15 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                 {stats.total > 0 ? (
                   <ResponsiveContainer width="100%" height={320}>
                     <PieChart key={`employment-${chartKey}`}>
-                      <Pie 
-                        data={nonZeroEmploymentData} 
-                        cx="50%" 
-                        cy="50%" 
-                        innerRadius={60} 
-                        outerRadius={100} 
-                        paddingAngle={5} 
-                        dataKey="value" 
-                        label={({ name, percent }) => `${name}\n${(percent * 100).toFixed(0)}%`} 
+                      <Pie
+                        data={nonZeroEmploymentData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={100}
+                        paddingAngle={5}
+                        dataKey="value"
+                        label={({ name, percent }) => `${name}\n${(percent * 100).toFixed(0)}%`}
                         labelLine={true}
                       >
                         {nonZeroEmploymentData.map((entry, index) => (
@@ -1831,15 +1811,15 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                 {stats.total > 0 ? (
                   <ResponsiveContainer width="100%" height={320}>
                     <PieChart key={`alignment-${chartKey}`}>
-                      <Pie 
-                        data={nonZeroAlignmentData} 
-                        cx="50%" 
-                        cy="50%" 
-                        innerRadius={60} 
-                        outerRadius={100} 
-                        paddingAngle={5} 
-                        dataKey="value" 
-                        label={({ name, percent }) => `${name}\n${(percent * 100).toFixed(0)}%`} 
+                      <Pie
+                        data={nonZeroAlignmentData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={100}
+                        paddingAngle={5}
+                        dataKey="value"
+                        label={({ name, percent }) => `${name}\n${(percent * 100).toFixed(0)}%`}
                         labelLine={true}
                       >
                         {nonZeroAlignmentData.map((entry, index) => (
@@ -1887,8 +1867,8 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                   </p>
                 ) : (
                   activities.map((activity) => (
-                    <div 
-                      key={activity.id} 
+                    <div
+                      key={activity.id}
                       className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition"
                     >
                       <div className="text-2xl">
@@ -1898,7 +1878,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                         <p className="text-sm text-gray-700 dark:text-gray-300">
                           <span className="font-semibold">
                             {activity.full_name || 'Someone'}
-                          </span> 
+                          </span>
                           {activity.description}
                         </p>
                         <p className="text-xs text-gray-400 dark:text-gray-500">
@@ -1915,17 +1895,13 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
             <Card>
               <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
                 Alumni Directory
-                
               </h3>
-              
-              
+
               {/* Filters Row */}
-              
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
-                
-                <select 
-                  value={filterDepartment} 
-                  onChange={e => setFilterDepartment(e.target.value)} 
+                <select
+                  value={filterDepartment}
+                  onChange={e => setFilterDepartment(e.target.value)}
                   className="px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
                 >
                   <option value="">All Departments</option>
@@ -1935,10 +1911,10 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                     </option>
                   ))}
                 </select>
-                
-                <select 
-                  value={filterCourse} 
-                  onChange={e => setFilterCourse(e.target.value)} 
+
+                <select
+                  value={filterCourse}
+                  onChange={e => setFilterCourse(e.target.value)}
                   className="px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
                 >
                   <option value="">All Programs</option>
@@ -1948,10 +1924,10 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                     </option>
                   ))}
                 </select>
-                
-                <select 
-                  value={filterBatch} 
-                  onChange={e => setFilterBatch(e.target.value)} 
+
+                <select
+                  value={filterBatch}
+                  onChange={e => setFilterBatch(e.target.value)}
                   className="px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
                 >
                   <option value="">All Batch Years</option>
@@ -1961,33 +1937,32 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                     </option>
                   ))}
                 </select>
-               <select
-  value={filterStatus}
-  onChange={e => setFilterStatus(e.target.value)}
-  className="px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
->
-  <option value="">All Employment Status</option>
-  <option value="Full Time">Full Time</option>
-  <option value="Part Time">Part Time</option>
-  <option value="Self-Employed">Self-Employed</option>
-  <option value="Independent Contractor">Independent Contractor</option>
-  <option value="Seasonal Worker">Seasonal Worker</option>
-  <option value="Unemployed">Unemployed</option>
-</select>
-                 
+                <select
+                  value={filterStatus}
+                  onChange={e => setFilterStatus(e.target.value)}
+                  className="px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+                >
+                  <option value="">All Employment Status</option>
+                  <option value="Full Time">Full Time</option>
+                  <option value="Part Time">Part Time</option>
+                  <option value="Self-Employed">Self-Employed</option>
+                  <option value="Independent Contractor">Independent Contractor</option>
+                  <option value="Seasonal Worker">Seasonal Worker</option>
+                  <option value="Unemployed">Unemployed</option>
+                </select>
               </div>
-               <div className="sm:col-span-1">
-      <input
-        type="text"
-        placeholder=" Search by name..."
-        value={alumniSearchTerm}
-        onChange={(e) => setAlumniSearchTerm(e.target.value)}
-        className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:border-[#800000] focus:ring-1 focus:ring-[#800000] outline-none"
-      />
-    </div>
+              <div className="sm:col-span-1">
+                <input
+                  type="text"
+                  placeholder=" Search by name..."
+                  value={alumniSearchTerm}
+                  onChange={(e) => setAlumniSearchTerm(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:border-[#800000] focus:ring-1 focus:ring-[#800000] outline-none"
+                />
+              </div>
               {/* Table using column-style divs for easier debugging */}
               <div className="overflow-x-auto">
-                
+
                 {/* Table Header - Hidden on mobile */}
                 <div className="hidden md:grid grid-cols-7 gap-4 px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-t-lg text-sm font-semibold text-gray-600 dark:text-gray-300">
                   <div>Name</div>
@@ -2001,7 +1976,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
 
                 {/* Table Rows */}
                 <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                  
+
                   {/* Empty State */}
                   {filteredAlumni.length === 0 && (
                     <div className="px-4 py-12 text-center">
@@ -2018,11 +1993,11 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                       </div>
                     </div>
                   )}
-                  
+
                   {/* Alumni Rows */}
                   {filteredAlumni.map(alum => (
-                    <div 
-                      key={alum.id} 
+                    <div
+                      key={alum.id}
                       className="grid grid-cols-1 md:grid-cols-7 gap-2 md:gap-4 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
                     >
                       {/* Name Column */}
@@ -2034,24 +2009,23 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                           {alum.full_name || 'N/A'}
                         </span>
                       </div>
-                      
+
                       {/* Department Column */}
                       <div className="flex justify-between md:block">
                         <span className="md:hidden font-semibold text-gray-500 text-xs">
                           Department
                         </span>
-                        <span className={`inline-block px-2 py-1 text-xs rounded-full ${
-                          alum.department === 'CCS' ? 'bg-blue-100 text-blue-700' :
-                          alum.department === 'CTE' ? 'bg-emerald-100 text-emerald-700' :
-                          alum.department === 'CCJE' ? 'bg-red-100 text-red-700' :
-                          alum.department === 'CBE' ? 'bg-amber-100 text-amber-700' :
-                          alum.department === 'PSY' ? 'bg-purple-100 text-purple-700' :
-                          'bg-gray-100 text-gray-700'
-                        }`}>
+                        <span className={`inline-block px-2 py-1 text-xs rounded-full ${alum.department === 'CCS' ? 'bg-blue-100 text-blue-700' :
+                            alum.department === 'CTE' ? 'bg-emerald-100 text-emerald-700' :
+                              alum.department === 'CCJE' ? 'bg-red-100 text-red-700' :
+                                alum.department === 'CBE' ? 'bg-amber-100 text-amber-700' :
+                                  alum.department === 'PSY' ? 'bg-purple-100 text-purple-700' :
+                                    'bg-gray-100 text-gray-700'
+                          }`}>
                           {alum.department || 'N/A'}
                         </span>
                       </div>
-                      
+
                       {/* Course Column */}
                       <div className="flex justify-between md:block">
                         <span className="md:hidden font-semibold text-gray-500 text-xs">
@@ -2061,7 +2035,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                           {alum.course || 'N/A'}
                         </span>
                       </div>
-                      
+
                       {/* Batch Column */}
                       <div className="flex justify-between md:block">
                         <span className="md:hidden font-semibold text-gray-500 text-xs">
@@ -2071,21 +2045,20 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                           {alum.batch_year || 'N/A'}
                         </span>
                       </div>
-                      
+
                       {/* Employment Status Column */}
                       <div className="flex justify-between md:block">
                         <span className="md:hidden font-semibold text-gray-500 text-xs">
                           Employment
                         </span>
-                        <span className={`px-2 py-1 text-xs rounded-full ${
-                          alum.employment_status === 'Employed' ? 'bg-emerald-100 text-emerald-700' : 
-                          alum.employment_status === 'Unemployed' ? 'bg-red-100 text-red-700' : 
-                          'bg-gray-100 text-gray-700'
-                        }`}>
+                        <span className={`px-2 py-1 text-xs rounded-full ${alum.employment_status === 'Employed' ? 'bg-emerald-100 text-emerald-700' :
+                            alum.employment_status === 'Unemployed' ? 'bg-red-100 text-red-700' :
+                              'bg-gray-100 text-gray-700'
+                          }`}>
                           {alum.employment_status || 'N/A'}
                         </span>
                       </div>
-                      
+
                       {/* Alignment Column */}
                       <div className="flex justify-between md:block">
                         <span className="md:hidden font-semibold text-gray-500 text-xs">
@@ -2109,7 +2082,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                           )}
                         </div>
                       </div>
-                      
+
                       {/* Actions / View Profile Button Column */}
                       <div className="flex justify-between md:block">
                         <span className="md:hidden font-semibold text-gray-500 text-xs">
@@ -2147,20 +2120,20 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
               {DEPARTMENTS.map(dept => {
                 const deptStat = departmentStats.find(d => d.department === dept.code);
                 return (
-                  <Card 
-                    key={dept.code} 
-                    className="p-5 hover:shadow-xl transition-all duration-300 cursor-pointer" 
+                  <Card
+                    key={dept.code}
+                    className="p-5 hover:shadow-xl transition-all duration-300 cursor-pointer"
                     onClick={() => setSelectedDepartment(dept.code)}
                   >
                     <div className="flex items-center justify-between mb-3">
-                      <div 
-                        className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl`} 
+                      <div
+                        className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl`}
                         style={{ backgroundColor: `${dept.color}20`, color: dept.color }}
                       >
                         {dept.icon}
                       </div>
-                      <span 
-                        className={`text-xs font-semibold px-2 py-1 rounded-full`} 
+                      <span
+                        className={`text-xs font-semibold px-2 py-1 rounded-full`}
                         style={{ backgroundColor: `${dept.color}20`, color: dept.color }}
                       >
                         {deptStat?.alignment_rate?.toFixed(0) || 0}% Aligned
@@ -2185,9 +2158,9 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                         </span>
                       </div>
                       <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full rounded-full" 
-                          style={{ width: `${deptStat?.employment_rate || 0}%`, backgroundColor: dept.color }} 
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${deptStat?.employment_rate || 0}%`, backgroundColor: dept.color }}
                         />
                       </div>
                     </div>
@@ -2198,7 +2171,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
 
             {/* Department Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-              
+
               {/* Employment & Alignment Rates Chart */}
               <Card>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 text-center">
@@ -2208,13 +2181,13 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                   <BarChart data={departmentStats} layout="vertical" margin={{ left: 80 }}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis type="number" domain={[0, 100]} tickFormatter={(value) => `${value}%`} />
-                    <YAxis 
-                      type="category" 
-                      dataKey="department" 
+                    <YAxis
+                      type="category"
+                      dataKey="department"
                       tickFormatter={(value) => {
                         const dept = DEPARTMENTS.find(d => d.code === value);
                         return dept?.name || value;
-                      }} 
+                      }}
                     />
                     <Tooltip formatter={(value) => `${Number(value).toFixed(1)}%`} />
                     <Legend />
@@ -2233,13 +2206,13 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                   <BarChart data={departmentStats} layout="vertical" margin={{ left: 80 }}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis type="number" />
-                    <YAxis 
-                      type="category" 
-                      dataKey="department" 
+                    <YAxis
+                      type="category"
+                      dataKey="department"
                       tickFormatter={(value) => {
                         const dept = DEPARTMENTS.find(d => d.code === value);
                         return dept?.name || value;
-                      }} 
+                      }}
                     />
                     <Tooltip />
                     <Legend />
@@ -2269,21 +2242,20 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                         setSelectedDepartment(dept.code);
                         processDepartmentBatchData(alumni, dept.code);
                       }}
-                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 ${
-                        selectedDepartment === dept.code
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 ${selectedDepartment === dept.code
                           ? 'bg-[#800000] text-white'
                           : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
-                      }`}
+                        }`}
                     >
                       {dept.name}
                     </button>
                   ))}
                 </div>
               </div>
-              
+
               {/* Batch Table */}
               <div className="overflow-x-auto">
-                
+
                 {/* Header */}
                 <div className="hidden md:grid grid-cols-5 gap-4 px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-t-lg text-sm font-semibold text-gray-600 dark:text-gray-300">
                   <div>Batch Year</div>
@@ -2292,7 +2264,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                   <div>Alignment Rate</div>
                   <div>Trend</div>
                 </div>
-                
+
                 {/* Rows */}
                 <div className="divide-y divide-gray-100 dark:divide-gray-700">
                   {departmentBatchData.length === 0 ? (
@@ -2304,8 +2276,8 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                       const prevRate = idx > 0 ? departmentBatchData[idx - 1].rate : batch.rate;
                       const trend = batch.rate - prevRate;
                       return (
-                        <div 
-                          key={batch.batch} 
+                        <div
+                          key={batch.batch}
                           className="grid grid-cols-1 md:grid-cols-5 gap-2 md:gap-4 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-200"
                         >
                           <div className="flex justify-between md:block">
@@ -2338,9 +2310,9 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                             </span>
                             <div className="flex items-center gap-3">
                               <div className="flex-1 h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                                <div 
-                                  className="h-full bg-[#800000] rounded-full" 
-                                  style={{ width: `${batch.rate}%` }} 
+                                <div
+                                  className="h-full bg-[#800000] rounded-full"
+                                  style={{ width: `${batch.rate}%` }}
                                 />
                               </div>
                               <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
@@ -2374,7 +2346,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                 Department Summary
               </h3>
               <div className="overflow-x-auto">
-                
+
                 {/* Header */}
                 <div className="hidden md:grid grid-cols-9 gap-4 px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-t-lg text-sm font-semibold text-gray-600 dark:text-gray-300">
                   <div>Department</div>
@@ -2387,14 +2359,14 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                   <div>Employment %</div>
                   <div>Alignment %</div>
                 </div>
-                
+
                 {/* Rows */}
                 <div className="divide-y divide-gray-100 dark:divide-gray-700">
                   {departmentStats.map(dept => {
                     const departmentInfo = DEPARTMENTS.find(d => d.code === dept.department);
                     return (
-                      <div 
-                        key={dept.department} 
+                      <div
+                        key={dept.department}
                         className="grid grid-cols-1 md:grid-cols-9 gap-2 md:gap-4 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-200"
                       >
                         <div className="flex justify-between md:block">
@@ -2462,9 +2434,9 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                           </span>
                           <div className="flex items-center gap-2">
                             <div className="w-16 h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                              <div 
-                                className="h-full bg-emerald-500 rounded-full" 
-                                style={{ width: `${dept.employment_rate}%` }} 
+                              <div
+                                className="h-full bg-emerald-500 rounded-full"
+                                style={{ width: `${dept.employment_rate}%` }}
                               />
                             </div>
                             <span className="text-sm text-gray-600 dark:text-gray-400">
@@ -2478,9 +2450,9 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                           </span>
                           <div className="flex items-center gap-2">
                             <div className="w-16 h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                              <div 
-                                className="h-full bg-[#800000] rounded-full" 
-                                style={{ width: `${dept.alignment_rate}%` }} 
+                              <div
+                                className="h-full bg-[#800000] rounded-full"
+                                style={{ width: `${dept.alignment_rate}%` }}
                               />
                             </div>
                             <span className="text-sm font-semibold text-[#800000]">
@@ -2497,9 +2469,6 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
           </>
         )}
 
-        {/* ======================================================== */}
-        {/* TAB 3: ANNOUNCEMENTS */}
-        {/* ======================================================== */}
         {/* ======================================================== */}
         {/* TAB 3: ANNOUNCEMENTS */}
         {/* ======================================================== */}
@@ -2532,9 +2501,9 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                   <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
                     {announcementFilterType === 'all' ? 'Program (Optional)' : announcementFilterType === 'course' ? 'Specific Program' : 'Program Filter'}
                   </label>
-                  <select 
-                    value={announcementFilterCourse} 
-                    onChange={(e) => setAnnouncementFilterCourse(e.target.value)} 
+                  <select
+                    value={announcementFilterCourse}
+                    onChange={(e) => setAnnouncementFilterCourse(e.target.value)}
                     className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
                   >
                     <option value="">All Programs</option>
@@ -2549,9 +2518,9 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                   <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
                     {announcementFilterType === 'all' ? 'Batch Year (Optional)' : announcementFilterType === 'batch_year' ? 'Specific Batch Year' : 'Batch Year Filter'}
                   </label>
-                  <select 
-                    value={announcementFilterBatchYear} 
-                    onChange={(e) => setAnnouncementFilterBatchYear(e.target.value)} 
+                  <select
+                    value={announcementFilterBatchYear}
+                    onChange={(e) => setAnnouncementFilterBatchYear(e.target.value)}
                     className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
                   >
                     <option value="">All Batch Years</option>
@@ -2565,12 +2534,12 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
               </div>
               {(announcementFilterCourse || announcementFilterBatchYear || announcementFilterType !== 'all') && (
                 <div className="mt-3 text-right">
-                  <button 
-                    onClick={() => { 
-                      setAnnouncementFilterType('all'); 
-                      setAnnouncementFilterCourse(''); 
-                      setAnnouncementFilterBatchYear(''); 
-                    }} 
+                  <button
+                    onClick={() => {
+                      setAnnouncementFilterType('all');
+                      setAnnouncementFilterCourse('');
+                      setAnnouncementFilterBatchYear('');
+                    }}
                     className="text-xs text-[#800000] hover:underline font-medium"
                   >
                     Clear All Filters
@@ -2587,12 +2556,12 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                   <p className="text-gray-500 dark:text-gray-400">
                     No announcements match your filters
                   </p>
-                  <button 
-                    onClick={() => { 
-                      setAnnouncementFilterType('all'); 
-                      setAnnouncementFilterCourse(''); 
-                      setAnnouncementFilterBatchYear(''); 
-                    }} 
+                  <button
+                    onClick={() => {
+                      setAnnouncementFilterType('all');
+                      setAnnouncementFilterCourse('');
+                      setAnnouncementFilterBatchYear('');
+                    }}
                     className="mt-2 text-sm text-[#800000] hover:underline"
                   >
                     Clear filters to see all announcements
@@ -2601,7 +2570,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
               ) : (
                 filteredAnnouncements.map(ann => {
                   const isExpanded = showComments[ann.id] || false;
-                  
+
                   return (
                     <article
                       key={ann.id}
@@ -2633,7 +2602,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                           </p>
                         </div>
                         <div className="flex flex-wrap gap-2 lg:flex-col lg:items-stretch">
-                          <button 
+                          <button
                             onClick={() => {
                               setEditingAnnouncement(ann);
                               setEditForm({
@@ -2650,14 +2619,14 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                           >
                             Edit
                           </button>
-                          <button 
-                            onClick={() => toggleAnnouncementStatus(ann.id, ann.published)} 
+                          <button
+                            onClick={() => toggleAnnouncementStatus(ann.id, ann.published)}
                             className="px-3 py-2 text-sm font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
                           >
                             {ann.published ? 'Unpublish' : 'Publish'}
                           </button>
-                          <button 
-                            onClick={() => deleteAnnouncement(ann.id)} 
+                          <button
+                            onClick={() => deleteAnnouncement(ann.id)}
                             className="px-3 py-2 text-sm font-medium bg-red-100 text-red-700 rounded-lg hover:bg-red-200 dark:bg-red-900/50 dark:text-red-300 dark:hover:bg-red-900"
                           >
                             Delete
@@ -2745,7 +2714,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
 
             {/* AI Insights Cards */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              
+
               {/* Recommendations Card */}
               <Card className="h-full">
                 <div className="flex items-center gap-2 mb-4">
@@ -2771,8 +2740,8 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                   ) : (
                     <div className="text-center py-8 text-gray-500">
                       <p>No recommendations yet.</p>
-                      <button 
-                        onClick={fetchAIInsights} 
+                      <button
+                        onClick={fetchAIInsights}
                         className="mt-3 text-sm text-[#800000] hover:underline"
                       >
                         Generate Recommendations
@@ -2807,8 +2776,8 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                   ) : (
                     <div className="text-center py-8 text-gray-500">
                       <p>No analysis available.</p>
-                      <button 
-                        onClick={fetchAIInsights} 
+                      <button
+                        onClick={fetchAIInsights}
                         className="mt-3 text-sm text-[#800000] hover:underline"
                       >
                         Generate Analysis
@@ -2826,7 +2795,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
         {/* ======================================================== */}
         {activeMainTab === 'masterlist' && (
           <div className="space-y-6">
-            
+
             {/* Header */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -2842,14 +2811,16 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                   </p>
                 </div>
               </div>
-              <Button variant="primary" onClick={() => setShowImportModal(true)} className="flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                </svg>
-                Import New List
-              </Button>
+              <div className="flex gap-2">
+                
+                <Button variant="primary" onClick={() => setShowImportModal(true)} className="flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                  Import New List
+                </Button>
+              </div>
             </div>
-
 
             {/* Stats Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -2868,7 +2839,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                   </div>
                 </div>
               </div>
-              
+
               <div className="bg-gradient-to-r from-green-50 to-white dark:from-green-900/20 dark:to-gray-800 rounded-xl p-5 border border-green-100 dark:border-green-800">
                 <div className="flex items-center justify-between">
                   <div>
@@ -2884,7 +2855,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                   </div>
                 </div>
               </div>
-              
+
               <div className="bg-gradient-to-r from-purple-50 to-white dark:from-purple-900/20 dark:to-gray-800 rounded-xl p-5 border border-purple-100 dark:border-purple-800">
                 <div className="flex items-center justify-between">
                   <div>
@@ -2900,7 +2871,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                   </div>
                 </div>
               </div>
-              
+
               <div className="bg-gradient-to-r from-amber-50 to-white dark:from-amber-900/20 dark:to-gray-800 rounded-xl p-5 border border-amber-100 dark:border-amber-800">
                 <div className="flex items-center justify-between">
                   <div>
@@ -2926,19 +2897,19 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                     <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
-                    <input 
-                      type="text" 
-                      placeholder="Search by student ID, name, email, or course..." 
-                      value={masterListSearch} 
-                      onChange={(e) => setMasterListSearch(e.target.value)} 
-                      className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:border-[#800000] focus:ring-1 focus:ring-[#800000] outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white" 
+                    <input
+                      type="text"
+                      placeholder="Search by student ID, name, email, or course..."
+                      value={masterListSearch}
+                      onChange={(e) => setMasterListSearch(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:border-[#800000] focus:ring-1 focus:ring-[#800000] outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                     />
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <select 
-                    value={masterListFilterBatch} 
-                    onChange={(e) => setMasterListFilterBatch(e.target.value)} 
+                  <select
+                    value={masterListFilterBatch}
+                    onChange={(e) => setMasterListFilterBatch(e.target.value)}
                     className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:border-[#800000] focus:ring-1 focus:ring-[#800000] outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
                   >
                     <option value="">All Batches</option>
@@ -2946,9 +2917,9 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                       <option key={b} value={b}>{b}</option>
                     ))}
                   </select>
-                  <select 
-                    value={masterListFilterCourse} 
-                    onChange={(e) => setMasterListFilterCourse(e.target.value)} 
+                  <select
+                    value={masterListFilterCourse}
+                    onChange={(e) => setMasterListFilterCourse(e.target.value)}
                     className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:border-[#800000] focus:ring-1 focus:ring-[#800000] outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
                   >
                     <option value="">All Programs</option>
@@ -2957,12 +2928,12 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                     ))}
                   </select>
                   {(masterListSearch || masterListFilterBatch || masterListFilterCourse) && (
-                    <button 
-                      onClick={() => { 
-                        setMasterListSearch(''); 
-                        setMasterListFilterBatch(''); 
-                        setMasterListFilterCourse(''); 
-                      }} 
+                    <button
+                      onClick={() => {
+                        setMasterListSearch('');
+                        setMasterListFilterBatch('');
+                        setMasterListFilterCourse('');
+                      }}
                       className="px-3 py-2 text-sm text-[#800000] hover:underline"
                     >
                       Clear
@@ -2979,8 +2950,8 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                   Graduate Records
                 </h3>
                 <div className="flex gap-2">
-                  <button 
-                    onClick={refreshMasterList} 
+                  <button
+                    onClick={refreshMasterList}
                     className="text-sm text-gray-500 hover:text-[#800000] transition-colors flex items-center gap-1"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2988,32 +2959,24 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                     </svg>
                     Refresh
                   </button>
-                  <button 
-                    onClick={exportMasterListToCSV} 
-                    className="text-sm text-gray-500 hover:text-green-600 transition-colors flex items-center gap-1"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-                    </svg>
-                    Export CSV
-                  </button>
+                   
                 </div>
               </div>
-              
+
               <div className="overflow-x-auto">
-                
+
                 {/* Header */}
                 <div className="hidden md:grid grid-cols-7 gap-6 px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-t-lg text-sm font-semibold text-gray-600 dark:text-gray-300">
-  <div>Student ID</div>
-  <div>Full Name</div>
-  <div>Email</div>
-  <div>Program</div>
-  <div>Department</div>
-  <div>Batch Year</div>
-  <div>Status</div>
-  {/* <div>Actions</div> */}
-</div>
-                
+                  <div>Student ID</div>
+                  <div>Full Name</div>
+                  <div>Email</div>
+                  <div>Program</div>
+                  <div>Department</div>
+                  <div>Batch Year</div>
+                  <div>Status</div>
+                  
+                </div>
+
                 {/* Rows */}
                 <div className="divide-y divide-gray-100 dark:divide-gray-700">
                   {masterListLoading ? (
@@ -3031,10 +2994,10 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                     </div>
                   ) : (
                     paginatedMasterList.map((record: any) => (
-                      <div 
-  key={record.id} 
-  className="grid grid-cols-1 md:grid-cols-7 gap-6 md:gap-4 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
->
+                      <div
+                        key={record.id}
+                        className="grid grid-cols-1 md:grid-cols-7 gap-6 md:gap-4 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
+                      >
                         <div className="flex justify-between md:block">
                           <span className="md:hidden font-semibold text-gray-500 text-xs">
                             Student ID
@@ -3056,8 +3019,8 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                             Email
                           </span>
                           <span className="text-sm text-gray-600 dark:text-gray-400 break-words whitespace-normal">
-  {record.email || ''}
-</span>
+                            {record.email || ''}
+                          </span>
                         </div>
                         <div className="flex justify-between md:block">
                           <span className="md:hidden font-semibold text-gray-500 text-xs">
@@ -3067,22 +3030,20 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                             {record.course || '-'}
                           </span>
                         </div>
-                        {/* ✅ ADD DEPARTMENT COLUMN HERE */}
-<div className="flex justify-between md:block">
-  <span className="md:hidden font-semibold text-gray-500 text-xs">
-    Department
-  </span>
-  <span className={`inline-block px-2 py-1 text-xs rounded-full ${
-    record.department === 'CCS' ? 'bg-blue-100 text-blue-700' :
-    record.department === 'CTE' ? 'bg-emerald-100 text-emerald-700' :
-    record.department === 'CCJE' ? 'bg-red-100 text-red-700' :
-    record.department === 'CBE' ? 'bg-amber-100 text-amber-700' :
-    record.department === 'PSY' ? 'bg-purple-100 text-purple-700' :
-    'bg-gray-100 text-gray-700'
-  }`}>
-    {record.department || '—'}
-  </span>
-</div>
+                        <div className="flex justify-between md:block">
+                          <span className="md:hidden font-semibold text-gray-500 text-xs">
+                            Department
+                          </span>
+                          <span className={`inline-block px-2 py-1 text-xs rounded-full ${record.department === 'CCS' ? 'bg-blue-100 text-blue-700' :
+                              record.department === 'CTE' ? 'bg-emerald-100 text-emerald-700' :
+                                record.department === 'CCJE' ? 'bg-red-100 text-red-700' :
+                                  record.department === 'CBE' ? 'bg-amber-100 text-amber-700' :
+                                    record.department === 'PSY' ? 'bg-purple-100 text-purple-700' :
+                                      'bg-gray-100 text-gray-700'
+                            }`}>
+                            {record.department || '—'}
+                          </span>
+                        </div>
                         <div className="flex justify-between md:block">
                           <span className="md:hidden font-semibold text-gray-500 text-xs">
                             Batch Year
@@ -3095,49 +3056,20 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                           <span className="md:hidden font-semibold text-gray-500 text-xs">
                             Status
                           </span>
-                          <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                            record.verified 
-                              ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' 
+                          <span className={`px-2 py-1 text-xs font-semibold rounded-full ${record.verified
+                              ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
                               : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
-                          }`}>
+                            }`}>
                             {record.verified ? 'Verified' : 'Pending'}
                           </span>
                         </div>
-                        {/* <div className="flex justify-between md:block">
-                          <span className="md:hidden font-semibold text-gray-500 text-xs">
-                            Actions
-                          </span>
-                          <div className="flex gap-2">
-                            <button 
-                              onClick={() => toggleRecordVerification(record.id, !record.verified)} 
-                              className={`p-1 rounded-lg transition-colors ${
-                                record.verified 
-                                  ? 'text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/20' 
-                                  : 'text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20'
-                              }`} 
-                              title={record.verified ? 'Unverify' : 'Verify'}
-                            >
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                            </button>
-                            <button 
-                              onClick={() => deleteMasterListRecord(record.id, record.full_name)} 
-                              className="p-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" 
-                              title="Delete Record"
-                            >
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          </div>
-                        </div> */}
+                         
                       </div>
                     ))
                   )}
                 </div>
               </div>
-              
+
               {/* Pagination */}
               {filteredMasterList.length > 0 && (
                 <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
@@ -3145,9 +3077,9 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                     Showing {paginatedMasterList.length} of {filteredMasterList.length} records
                   </p>
                   <div className="flex gap-2">
-                    <button 
-                      onClick={() => setMasterListPage(Math.max(1, masterListPage - 1))} 
-                      disabled={masterListPage === 1} 
+                    <button
+                      onClick={() => setMasterListPage(Math.max(1, masterListPage - 1))}
+                      disabled={masterListPage === 1}
                       className="px-3 py-1 text-sm border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
                     >
                       Previous
@@ -3155,9 +3087,9 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                     <span className="px-3 py-1 text-sm text-gray-600 dark:text-gray-400">
                       Page {masterListPage} of {Math.ceil(filteredMasterList.length / itemsPerPage)}
                     </span>
-                    <button 
-                      onClick={() => setMasterListPage(masterListPage + 1)} 
-                      disabled={masterListPage === Math.ceil(filteredMasterList.length / itemsPerPage)} 
+                    <button
+                      onClick={() => setMasterListPage(masterListPage + 1)}
+                      disabled={masterListPage === Math.ceil(filteredMasterList.length / itemsPerPage)}
                       className="px-3 py-1 text-sm border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
                     >
                       Next
@@ -3202,14 +3134,14 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                 Display Name
               </label>
               <div className="flex gap-2">
-                <input 
-                  type="text" 
-                  value={adminProfile.full_name} 
-                  onChange={(e) => setAdminProfile(prev => ({ ...prev, full_name: e.target.value }))} 
-                  className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:border-[#800000] focus:ring-1 focus:ring-[#800000] outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white" 
+                <input
+                  type="text"
+                  value={adminProfile.full_name}
+                  onChange={(e) => setAdminProfile(prev => ({ ...prev, full_name: e.target.value }))}
+                  className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:border-[#800000] focus:ring-1 focus:ring-[#800000] outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 />
-                <button 
-                  onClick={() => updateAdminProfile(adminProfile.full_name)} 
+                <button
+                  onClick={() => updateAdminProfile(adminProfile.full_name)}
                   className="px-4 py-2 bg-[#800000] text-white rounded-lg hover:bg-[#6a0000] transition"
                 >
                   Save
@@ -3224,11 +3156,11 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                 Email Address
               </label>
               <div className="flex items-center gap-2">
-                <input 
-                  type="email" 
-                  value={adminProfile.email} 
-                  disabled 
-                  className="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400 cursor-not-allowed" 
+                <input
+                  type="email"
+                  value={adminProfile.email}
+                  disabled
+                  className="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400 cursor-not-allowed"
                 />
                 <span className="text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-1 rounded-full">
                   Verified
@@ -3250,7 +3182,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
       {/* Settings Modal */}
       <Modal isOpen={showSettingsModal} onClose={() => setShowSettingsModal(false)} title="Settings" size="lg">
         <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2">
-          
+
           {/* Appearance Section */}
           <div>
             <div className="flex items-center gap-2 mb-4">
@@ -3273,9 +3205,9 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                     Switch between light and dark theme
                   </p>
                 </div>
-                <button 
-                  onClick={toggleDarkMode} 
-                  className="relative w-12 h-6 rounded-full transition-colors duration-300 focus:outline-none" 
+                <button
+                  onClick={toggleDarkMode}
+                  className="relative w-12 h-6 rounded-full transition-colors duration-300 focus:outline-none"
                   style={{ backgroundColor: isDarkMode ? '#800000' : '#d1d5db' }}
                 >
                   <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform duration-300 flex items-center justify-center text-xs ${isDarkMode ? 'translate-x-6' : 'translate-x-0'}`}>
@@ -3309,17 +3241,17 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                   </p>
                 </div>
                 <div className="relative">
-                  <input 
-                    type="checkbox" 
-                    checked={notificationSettings.emailAnnouncements} 
-                    onChange={(e) => setNotificationSettings(prev => ({ ...prev, emailAnnouncements: e.target.checked }))} 
-                    className="sr-only peer" 
+                  <input
+                    type="checkbox"
+                    checked={notificationSettings.emailAnnouncements}
+                    onChange={(e) => setNotificationSettings(prev => ({ ...prev, emailAnnouncements: e.target.checked }))}
+                    className="sr-only peer"
                   />
                   <div className="w-10 h-5 bg-gray-200 dark:bg-gray-600 rounded-full peer peer-checked:bg-[#800000] peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all">
                   </div>
                 </div>
               </label>
-              
+
               <label className="flex items-center justify-between cursor-pointer">
                 <div>
                   <p className="font-medium text-gray-700 dark:text-gray-300">
@@ -3330,17 +3262,17 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                   </p>
                 </div>
                 <div className="relative">
-                  <input 
-                    type="checkbox" 
-                    checked={notificationSettings.emailActivityDigest} 
-                    onChange={(e) => setNotificationSettings(prev => ({ ...prev, emailActivityDigest: e.target.checked }))} 
-                    className="sr-only peer" 
+                  <input
+                    type="checkbox"
+                    checked={notificationSettings.emailActivityDigest}
+                    onChange={(e) => setNotificationSettings(prev => ({ ...prev, emailActivityDigest: e.target.checked }))}
+                    className="sr-only peer"
                   />
                   <div className="w-10 h-5 bg-gray-200 dark:bg-gray-600 rounded-full peer peer-checked:bg-[#800000] peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all">
                   </div>
                 </div>
               </label>
-              
+
               <label className="flex items-center justify-between cursor-pointer">
                 <div>
                   <p className="font-medium text-gray-700 dark:text-gray-300">
@@ -3351,11 +3283,11 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                   </p>
                 </div>
                 <div className="relative">
-                  <input 
-                    type="checkbox" 
-                    checked={notificationSettings.emailSecurityAlerts} 
-                    onChange={(e) => setNotificationSettings(prev => ({ ...prev, emailSecurityAlerts: e.target.checked }))} 
-                    className="sr-only peer" 
+                  <input
+                    type="checkbox"
+                    checked={notificationSettings.emailSecurityAlerts}
+                    onChange={(e) => setNotificationSettings(prev => ({ ...prev, emailSecurityAlerts: e.target.checked }))}
+                    className="sr-only peer"
                   />
                   <div className="w-10 h-5 bg-gray-200 dark:bg-gray-600 rounded-full peer peer-checked:bg-[#800000] peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all">
                   </div>
@@ -3376,11 +3308,11 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                 Security
               </h3>
             </div>
-            
+
             {!showChangePassword ? (
               <div className="pl-10">
-                <button 
-                  onClick={() => setShowChangePassword(true)} 
+                <button
+                  onClick={() => setShowChangePassword(true)}
                   className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition font-medium text-sm"
                 >
                   Change Password
@@ -3391,31 +3323,31 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
               </div>
             ) : (
               <div className="space-y-3 pl-10">
-                <input 
-                  type="password" 
-                  placeholder="Current Password" 
-                  value={passwordForm.currentPassword} 
-                  onChange={(e) => setPasswordForm(prev => ({ ...prev, currentPassword: e.target.value }))} 
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:border-[#800000] focus:ring-1 focus:ring-[#800000] outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white" 
+                <input
+                  type="password"
+                  placeholder="Current Password"
+                  value={passwordForm.currentPassword}
+                  onChange={(e) => setPasswordForm(prev => ({ ...prev, currentPassword: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:border-[#800000] focus:ring-1 focus:ring-[#800000] outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 />
-                <input 
-                  type="password" 
-                  placeholder="New Password (min 6 characters)" 
-                  value={passwordForm.newPassword} 
-                  onChange={(e) => setPasswordForm(prev => ({ ...prev, newPassword: e.target.value }))} 
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:border-[#800000] focus:ring-1 focus:ring-[#800000] outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white" 
+                <input
+                  type="password"
+                  placeholder="New Password (min 6 characters)"
+                  value={passwordForm.newPassword}
+                  onChange={(e) => setPasswordForm(prev => ({ ...prev, newPassword: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:border-[#800000] focus:ring-1 focus:ring-[#800000] outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 />
-                <input 
-                  type="password" 
-                  placeholder="Confirm New Password" 
-                  value={passwordForm.confirmPassword} 
-                  onChange={(e) => setPasswordForm(prev => ({ ...prev, confirmPassword: e.target.value }))} 
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:border-[#800000] focus:ring-1 focus:ring-[#800000] outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white" 
+                <input
+                  type="password"
+                  placeholder="Confirm New Password"
+                  value={passwordForm.confirmPassword}
+                  onChange={(e) => setPasswordForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:border-[#800000] focus:ring-1 focus:ring-[#800000] outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 />
                 <div className="flex gap-2 pt-2">
-                  <button 
-                    onClick={updatePassword} 
-                    disabled={isChangingPassword || !passwordForm.currentPassword || !passwordForm.newPassword || passwordForm.newPassword !== passwordForm.confirmPassword || passwordForm.newPassword.length < 6} 
+                  <button
+                    onClick={updatePassword}
+                    disabled={isChangingPassword || !passwordForm.currentPassword || !passwordForm.newPassword || passwordForm.newPassword !== passwordForm.confirmPassword || passwordForm.newPassword.length < 6}
                     className="px-4 py-2 bg-[#800000] text-white rounded-lg hover:bg-[#6a0000] transition text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
                     {isChangingPassword ? (
@@ -3427,11 +3359,11 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                       'Update Password'
                     )}
                   </button>
-                  <button 
-                    onClick={() => { 
-                      setShowChangePassword(false); 
-                      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' }); 
-                    }} 
+                  <button
+                    onClick={() => {
+                      setShowChangePassword(false);
+                      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                    }}
                     className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition text-sm"
                   >
                     Cancel
@@ -3457,7 +3389,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
               <p>
                 <span className="font-medium text-gray-600 dark:text-gray-400">
                   Version:
-                </span> 
+                </span>
                 <span className="text-gray-900 dark:text-white">
                   GradTrack v1.0.0
                 </span>
@@ -3465,7 +3397,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
               <p>
                 <span className="font-medium text-gray-600 dark:text-gray-400">
                   Environment:
-                </span> 
+                </span>
                 <span className="text-gray-900 dark:text-white">
                   Production
                 </span>
@@ -3473,7 +3405,7 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
               <p>
                 <span className="font-medium text-gray-600 dark:text-gray-400">
                   Session ID:
-                </span> 
+                </span>
                 <span className="text-gray-500 dark:text-gray-400 text-xs">
                   {session.user.id.slice(0, 8)}...
                 </span>
@@ -3492,23 +3424,23 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
       {/* Create Announcement Modal */}
       <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="Create Announcement" size="lg">
         <div className="space-y-4">
-          <input 
-            type="text" 
-            value={newAnnouncement.title} 
-            onChange={e => setNewAnnouncement({ ...newAnnouncement, title: e.target.value })} 
-            placeholder="Announcement Title" 
-            className="w-full px-4 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white" 
+          <input
+            type="text"
+            value={newAnnouncement.title}
+            onChange={e => setNewAnnouncement({ ...newAnnouncement, title: e.target.value })}
+            placeholder="Announcement Title"
+            className="w-full px-4 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
           />
-          <textarea 
-            value={newAnnouncement.content} 
-            onChange={e => setNewAnnouncement({ ...newAnnouncement, content: e.target.value })} 
-            placeholder="Announcement Content" 
-            rows={4} 
-            className="w-full px-4 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white" 
+          <textarea
+            value={newAnnouncement.content}
+            onChange={e => setNewAnnouncement({ ...newAnnouncement, content: e.target.value })}
+            placeholder="Announcement Content"
+            rows={4}
+            className="w-full px-4 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
           />
-          <select 
-            value={newAnnouncement.category} 
-            onChange={e => setNewAnnouncement({ ...newAnnouncement, category: e.target.value })} 
+          <select
+            value={newAnnouncement.category}
+            onChange={e => setNewAnnouncement({ ...newAnnouncement, category: e.target.value })}
             className="w-full px-4 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
           >
             <option value="alumni_events">🎉 Alumni Events</option>
@@ -3516,15 +3448,15 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
             <option value="seminars">📚 Seminars</option>
             <option value="career_opportunities">🎯 Career Opportunities</option>
           </select>
-          {/* <select 
-            value={newAnnouncement.target_type} 
-            onChange={e => setNewAnnouncement({ ...newAnnouncement, target_type: e.target.value, target_course: '', target_batch_year: '' })} 
+          <select
+            value={newAnnouncement.target_type}
+            onChange={e => setNewAnnouncement({ ...newAnnouncement, target_type: e.target.value, target_course: '', target_batch_year: '' })}
             className="w-full px-4 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
           >
             <option value="all">Send to All Alumni</option>
             <option value="course">Send by Course</option>
             <option value="batch_year">Send by Batch Year</option>
-          </select> */}
+          </select>
 
           {newAnnouncement.target_type === 'course' && (
             <div className="space-y-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
@@ -3535,10 +3467,10 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Select Course *
                 </label>
-                <select 
-                  value={newAnnouncement.target_course} 
-                  onChange={e => setNewAnnouncement({ ...newAnnouncement, target_course: e.target.value })} 
-                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm" 
+                <select
+                  value={newAnnouncement.target_course}
+                  onChange={e => setNewAnnouncement({ ...newAnnouncement, target_course: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
                   required
                 >
                   <option value="">Select a course</option>
@@ -3551,9 +3483,9 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Batch Year (Optional)
                 </label>
-                <select 
-                  value={newAnnouncement.target_batch_year} 
-                  onChange={e => setNewAnnouncement({ ...newAnnouncement, target_batch_year: e.target.value })} 
+                <select
+                  value={newAnnouncement.target_batch_year}
+                  onChange={e => setNewAnnouncement({ ...newAnnouncement, target_batch_year: e.target.value })}
                   className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
                 >
                   <option value="">All Batch Years</option>
@@ -3577,10 +3509,10 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Select Batch Year *
                 </label>
-                <select 
-                  value={newAnnouncement.target_batch_year} 
-                  onChange={e => setNewAnnouncement({ ...newAnnouncement, target_batch_year: e.target.value })} 
-                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm" 
+                <select
+                  value={newAnnouncement.target_batch_year}
+                  onChange={e => setNewAnnouncement({ ...newAnnouncement, target_batch_year: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
                   required
                 >
                   <option value="">Select a batch year</option>
@@ -3593,9 +3525,9 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Course (Optional)
                 </label>
-                <select 
-                  value={newAnnouncement.target_course} 
-                  onChange={e => setNewAnnouncement({ ...newAnnouncement, target_course: e.target.value })} 
+                <select
+                  value={newAnnouncement.target_course}
+                  onChange={e => setNewAnnouncement({ ...newAnnouncement, target_course: e.target.value })}
                   className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
                 >
                   <option value="">All Courses</option>
@@ -3622,9 +3554,9 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Filter by Program (Optional)
                 </label>
-                <select 
-                  value={newAnnouncement.target_course} 
-                  onChange={e => setNewAnnouncement({ ...newAnnouncement, target_course: e.target.value })} 
+                <select
+                  value={newAnnouncement.target_course}
+                  onChange={e => setNewAnnouncement({ ...newAnnouncement, target_course: e.target.value })}
                   className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
                 >
                   <option value="">All Programs</option>
@@ -3637,9 +3569,9 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Filter by Batch Year (Optional)
                 </label>
-                <select 
-                  value={newAnnouncement.target_batch_year} 
-                  onChange={e => setNewAnnouncement({ ...newAnnouncement, target_batch_year: e.target.value })} 
+                <select
+                  value={newAnnouncement.target_batch_year}
+                  onChange={e => setNewAnnouncement({ ...newAnnouncement, target_batch_year: e.target.value })}
                   className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
                 >
                   <option value="">All Batch Years</option>
@@ -3652,9 +3584,9 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
           )}
 
           <div className="flex gap-3 pt-4">
-            <Button 
-              onClick={createAnnouncement} 
-              className="flex-1" 
+            <Button
+              onClick={createAnnouncement}
+              className="flex-1"
               disabled={!newAnnouncement.title || !newAnnouncement.content || (newAnnouncement.target_type === 'course' && !newAnnouncement.target_course) || (newAnnouncement.target_type === 'batch_year' && !newAnnouncement.target_batch_year)}
             >
               Create Announcement
@@ -3666,439 +3598,426 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
         </div>
       </Modal>
 
-      {/* ========================================================== */}
-{/* VIEW PROFILE MODAL - Scrollable with Profile Picture */}
-{/* ========================================================== */}
-<Modal 
-  isOpen={showProfileViewModal} 
-  onClose={() => {
-    setShowProfileViewModal(false);
-    setSelectedAlumni(null);
-  }} 
-  title="Alumni Profile Details" 
-  size="lg"
->
-  {selectedAlumni && (
-    <div className="max-h-[80vh] overflow-y-auto pr-2 custom-scrollbar">
-      
-      {/* Header Section with Profile Picture */}
-      <div className="flex items-center gap-4 pb-4 border-b border-gray-100 dark:border-gray-700">
-        
-        {/* Profile Picture - Display from alumni's uploaded avatar */}
-        {selectedAlumni.avatar_url ? (
-          <img 
-            src={selectedAlumni.avatar_url} 
-            alt={selectedAlumni.full_name || 'Alumni'}
-            className="w-16 h-16 rounded-full object-cover border-2 border-[#800000] shadow-md"
-            onError={(e) => {
-              // Fallback if image fails to load
-              (e.target as HTMLImageElement).style.display = 'none';
-              const parent = (e.target as HTMLImageElement).parentElement;
-              if (parent) {
-                const fallback = document.createElement('div');
-                fallback.className = 'w-16 h-16 bg-gradient-to-br from-[#800000] to-[#a10000] rounded-full flex items-center justify-center text-white font-bold text-2xl shadow-md';
-                fallback.textContent = selectedAlumni.full_name?.charAt(0).toUpperCase() || 'A';
-                parent.appendChild(fallback);
-              }
-            }}
-          />
-        ) : (
-          <div className="w-16 h-16 bg-gradient-to-br from-[#800000] to-[#a10000] rounded-full flex items-center justify-center text-white font-bold text-2xl shadow-md">
-            {selectedAlumni.full_name?.charAt(0).toUpperCase() || 'A'}
-          </div>
-        )}
-        
-        <div>
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white">
-            {selectedAlumni.full_name || 'Unknown'}
-          </h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            User ID: {selectedAlumni.user_id?.slice(0, 8)}...
-          </p>
-          {selectedAlumni.career_alignment_status === 'In-Field' ? (
-            <span className="inline-block mt-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-700">
-              ✓ Career Aligned (In-Field)
-            </span>
-          ) : selectedAlumni.career_alignment_status === 'Out-of-Field' ? (
-            <span className="inline-block mt-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-700">
-              ⚠️ Not Aligned (Out-of-Field)
-            </span>
-          ) : (
-            <span className="inline-block mt-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-gray-100 text-gray-500">
-              ⏳ Pending Classification
-            </span>
-          )}
-        </div>
-      </div>
+      {/* View Profile Modal */}
+      <Modal
+        isOpen={showProfileViewModal}
+        onClose={() => {
+          setShowProfileViewModal(false);
+          setSelectedAlumni(null);
+        }}
+        title="Alumni Profile Details"
+        size="lg"
+      >
+        {selectedAlumni && (
+          <div className="max-h-[80vh] overflow-y-auto pr-2 custom-scrollbar">
 
-      {/* Two Column Grid for Details */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-        
-        {/* Left Column - Academic Information */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 pb-2 border-b border-gray-100 dark:border-gray-700">
-            <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center text-xs">
-              🎓
-            </div>
-            <h4 className="font-semibold text-gray-900 dark:text-white">
-              Academic Information
-            </h4>
-          </div>
-          
-          <div className="space-y-3">
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Full Name
-              </label>
-              <p className="text-sm text-gray-900 dark:text-white font-medium mt-1">
-                {selectedAlumni.full_name || 'Not specified'}
-              </p>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Course / Program
-              </label>
-              <p className="text-sm text-gray-900 dark:text-white mt-1">
-                {selectedAlumni.course || 'Not specified'}
-              </p>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Department
-              </label>
-              <p className="text-sm text-gray-900 dark:text-white mt-1">
-                <span className={`inline-block px-2 py-0.5 text-xs rounded-full ${
-                  selectedAlumni.department === 'CCS' ? 'bg-blue-100 text-blue-700' :
-                  selectedAlumni.department === 'CTE' ? 'bg-emerald-100 text-emerald-700' :
-                  selectedAlumni.department === 'CCJE' ? 'bg-red-100 text-red-700' :
-                  selectedAlumni.department === 'CBE' ? 'bg-amber-100 text-amber-700' :
-                  selectedAlumni.department === 'PSY' ? 'bg-purple-100 text-purple-700' :
-                  'bg-gray-100 text-gray-700'
-                }`}>
-                  {selectedAlumni.department || 'Not assigned'}
-                </span>
-              </p>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Batch Year
-              </label>
-              <p className="text-sm text-gray-900 dark:text-white mt-1">
-                {selectedAlumni.batch_year || 'Not specified'}
-              </p>
-            </div>
-          </div>
-        </div>
+            {/* Header Section with Profile Picture */}
+            <div className="flex items-center gap-4 pb-4 border-b border-gray-100 dark:border-gray-700">
 
-        {/* Right Column - Career Information */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 pb-2 border-b border-gray-100 dark:border-gray-700">
-            <div className="w-6 h-6 bg-emerald-100 rounded-lg flex items-center justify-center text-xs">
-              💼
-            </div>
-            <h4 className="font-semibold text-gray-900 dark:text-white">
-              Career Information
-            </h4>
-          </div>
-          
-          <div className="space-y-3">
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Employment Status
-              </label>
-              <p className="text-sm text-gray-900 dark:text-white mt-1">
-                <span className={`inline-block px-2 py-0.5 text-xs rounded-full ${
-                  selectedAlumni.employment_status === 'Employed' ? 'bg-emerald-100 text-emerald-700' :
-                  selectedAlumni.employment_status === 'Unemployed' ? 'bg-red-100 text-red-700' :
-                  'bg-gray-100 text-gray-700'
-                }`}>
-                  {selectedAlumni.employment_status || 'Not specified'}
-                </span>
-              </p>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Job Title
-              </label>
-              <p className="text-sm text-gray-900 dark:text-white mt-1">
-                {selectedAlumni.job_title || 'Not specified'}
-              </p>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Industry
-              </label>
-              <p className="text-sm text-gray-900 dark:text-white mt-1">
-                {selectedAlumni.industry || 'Not specified'}
-              </p>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Company
-              </label>
-              <p className="text-sm text-gray-900 dark:text-white mt-1">
-                {selectedAlumni.company || 'Not specified'}
-              </p>
-            </div>
-             
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Location
-              </label>
-              <p className="text-sm text-gray-900 dark:text-white mt-1">
-                {selectedAlumni.location || 'Not specified'}
-              </p>
-            </div> 
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                LinkedIn Profile
-              </label>
-              {selectedAlumni.linkedin_url ? (
-                <a 
-                  href={selectedAlumni.linkedin_url} 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
-                  className="text-sm text-[#800000] hover:underline flex items-center gap-1 mt-1"
-                >
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
-                  </svg>
-                  View LinkedIn Profile
-                </a>
+              {selectedAlumni.avatar_url ? (
+                <img
+                  src={selectedAlumni.avatar_url}
+                  alt={selectedAlumni.full_name || 'Alumni'}
+                  className="w-16 h-16 rounded-full object-cover border-2 border-[#800000] shadow-md"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                    const parent = (e.target as HTMLImageElement).parentElement;
+                    if (parent) {
+                      const fallback = document.createElement('div');
+                      fallback.className = 'w-16 h-16 bg-gradient-to-br from-[#800000] to-[#a10000] rounded-full flex items-center justify-center text-white font-bold text-2xl shadow-md';
+                      fallback.textContent = selectedAlumni.full_name?.charAt(0).toUpperCase() || 'A';
+                      parent.appendChild(fallback);
+                    }
+                  }}
+                />
               ) : (
-                <p className="text-sm text-gray-500 mt-1">
-                  Not specified
+                <div className="w-16 h-16 bg-gradient-to-br from-[#800000] to-[#a10000] rounded-full flex items-center justify-center text-white font-bold text-2xl shadow-md">
+                  {selectedAlumni.full_name?.charAt(0).toUpperCase() || 'A'}
+                </div>
+              )}
+
+              <div>
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                  {selectedAlumni.full_name || 'Unknown'}
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  User ID: {selectedAlumni.user_id?.slice(0, 8)}...
                 </p>
-              )}
+                {selectedAlumni.career_alignment_status === 'In-Field' ? (
+                  <span className="inline-block mt-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-700">
+                    ✓ Career Aligned (In-Field)
+                  </span>
+                ) : selectedAlumni.career_alignment_status === 'Out-of-Field' ? (
+                  <span className="inline-block mt-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-700">
+                    ⚠️ Not Aligned (Out-of-Field)
+                  </span>
+                ) : (
+                  <span className="inline-block mt-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-gray-100 text-gray-500">
+                    ⏳ Pending Classification
+                  </span>
+                )}
+              </div>
             </div>
-          </div>
-        </div>
-      </div>
 
-      {/* AI Classification Section */}
-      <div className="bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 rounded-xl p-4 border border-purple-100 dark:border-purple-800 mt-4">
-        <div className="flex items-center gap-2 mb-3">
-          <div className="w-6 h-6 bg-purple-100 rounded-lg flex items-center justify-center text-xs">
-            🤖
-          </div>
-          <h4 className="font-semibold text-gray-900 dark:text-white">
-            AI Classification
-          </h4>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Career Alignment
-            </label>
-            <p className="text-sm font-medium mt-1">
-              {selectedAlumni.career_alignment_status === 'In-Field' ? (
-                <span className="text-green-600">In-Field ✓</span>
-              ) : selectedAlumni.career_alignment_status === 'Out-of-Field' ? (
-                <span className="text-amber-600">Out-of-Field ⚠️</span>
-              ) : (
-                <span className="text-gray-500">Pending Classification ⏳</span>
-              )}
-            </p>
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              AI Confidence Score
-            </label>
-            <p className="text-sm font-medium mt-1">
-              {selectedAlumni.ai_confidence_score ? `${Math.round(selectedAlumni.ai_confidence_score * 100)}%` : 'Not yet classified'}
-            </p>
-            {selectedAlumni.ai_confidence_score && (
-              <div className="mt-1 w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-purple-500 rounded-full" 
-                  style={{ width: `${selectedAlumni.ai_confidence_score * 100}%` }} 
+            {/* Two Column Grid for Details */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+
+              {/* Left Column - Academic Information */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 pb-2 border-b border-gray-100 dark:border-gray-700">
+                  <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center text-xs">
+                    🎓
+                  </div>
+                  <h4 className="font-semibold text-gray-900 dark:text-white">
+                    Academic Information
+                  </h4>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      Full Name
+                    </label>
+                    <p className="text-sm text-gray-900 dark:text-white font-medium mt-1">
+                      {selectedAlumni.full_name || 'Not specified'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      Course / Program
+                    </label>
+                    <p className="text-sm text-gray-900 dark:text-white mt-1">
+                      {selectedAlumni.course || 'Not specified'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      Department
+                    </label>
+                    <p className="text-sm text-gray-900 dark:text-white mt-1">
+                      <span className={`inline-block px-2 py-0.5 text-xs rounded-full ${selectedAlumni.department === 'CCS' ? 'bg-blue-100 text-blue-700' :
+                          selectedAlumni.department === 'CTE' ? 'bg-emerald-100 text-emerald-700' :
+                            selectedAlumni.department === 'CCJE' ? 'bg-red-100 text-red-700' :
+                              selectedAlumni.department === 'CBE' ? 'bg-amber-100 text-amber-700' :
+                                selectedAlumni.department === 'PSY' ? 'bg-purple-100 text-purple-700' :
+                                  'bg-gray-100 text-gray-700'
+                        }`}>
+                        {selectedAlumni.department || 'Not assigned'}
+                      </span>
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      Batch Year
+                    </label>
+                    <p className="text-sm text-gray-900 dark:text-white mt-1">
+                      {selectedAlumni.batch_year || 'Not specified'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column - Career Information */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 pb-2 border-b border-gray-100 dark:border-gray-700">
+                  <div className="w-6 h-6 bg-emerald-100 rounded-lg flex items-center justify-center text-xs">
+                    💼
+                  </div>
+                  <h4 className="font-semibold text-gray-900 dark:text-white">
+                    Career Information
+                  </h4>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      Employment Status
+                    </label>
+                    <p className="text-sm text-gray-900 dark:text-white mt-1">
+                      <span className={`inline-block px-2 py-0.5 text-xs rounded-full ${selectedAlumni.employment_status === 'Employed' ? 'bg-emerald-100 text-emerald-700' :
+                          selectedAlumni.employment_status === 'Unemployed' ? 'bg-red-100 text-red-700' :
+                            'bg-gray-100 text-gray-700'
+                        }`}>
+                        {selectedAlumni.employment_status || 'Not specified'}
+                      </span>
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      Job Title
+                    </label>
+                    <p className="text-sm text-gray-900 dark:text-white mt-1">
+                      {selectedAlumni.job_title || 'Not specified'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      Industry
+                    </label>
+                    <p className="text-sm text-gray-900 dark:text-white mt-1">
+                      {selectedAlumni.industry || 'Not specified'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      Company
+                    </label>
+                    <p className="text-sm text-gray-900 dark:text-white mt-1">
+                      {selectedAlumni.company || 'Not specified'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      Location
+                    </label>
+                    <p className="text-sm text-gray-900 dark:text-white mt-1">
+                      {selectedAlumni.location || 'Not specified'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      LinkedIn Profile
+                    </label>
+                    {selectedAlumni.linkedin_url ? (
+                      <a
+                        href={selectedAlumni.linkedin_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-[#800000] hover:underline flex items-center gap-1 mt-1"
+                      >
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z" />
+                        </svg>
+                        View LinkedIn Profile
+                      </a>
+                    ) : (
+                      <p className="text-sm text-gray-500 mt-1">
+                        Not specified
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* AI Classification Section */}
+            <div className="bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 rounded-xl p-4 border border-purple-100 dark:border-purple-800 mt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-6 h-6 bg-purple-100 rounded-lg flex items-center justify-center text-xs">
+                  🤖
+                </div>
+                <h4 className="font-semibold text-gray-900 dark:text-white">
+                  AI Classification
+                </h4>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Career Alignment
+                  </label>
+                  <p className="text-sm font-medium mt-1">
+                    {selectedAlumni.career_alignment_status === 'In-Field' ? (
+                      <span className="text-green-600">In-Field ✓</span>
+                    ) : selectedAlumni.career_alignment_status === 'Out-of-Field' ? (
+                      <span className="text-amber-600">Out-of-Field ⚠️</span>
+                    ) : (
+                      <span className="text-gray-500">Pending Classification ⏳</span>
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    AI Confidence Score
+                  </label>
+                  <p className="text-sm font-medium mt-1">
+                    {selectedAlumni.ai_confidence_score ? `${Math.round(selectedAlumni.ai_confidence_score * 100)}%` : 'Not yet classified'}
+                  </p>
+                  {selectedAlumni.ai_confidence_score && (
+                    <div className="mt-1 w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-purple-500 rounded-full"
+                        style={{ width: `${selectedAlumni.ai_confidence_score * 100}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="mt-3 p-2 bg-white/50 dark:bg-gray-800/50 rounded-lg">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  🤖 <span className="font-semibold">How it works:</span> AI analyzes job title against degree to determine career alignment.
+                  {selectedAlumni.career_alignment_status === null && ' Update job title to trigger AI classification.'}
+                </p>
+              </div>
+            </div>
+
+            {/* Profile Completion */}
+            <div className="bg-gray-50 dark:bg-gray-700/30 rounded-xl p-4 mt-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 bg-amber-100 rounded-lg flex items-center justify-center text-xs">
+                    📊
+                  </div>
+                  <h4 className="font-semibold text-gray-900 dark:text-white">
+                    Profile Completion
+                  </h4>
+                </div>
+                <span className="text-lg font-bold text-[#800000]">
+                  {selectedAlumni.profile_completion || 0}%
+                </span>
+              </div>
+              <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-[#800000] to-[#a10000] rounded-full"
+                  style={{ width: `${selectedAlumni.profile_completion || 0}%` }}
                 />
               </div>
-            )}
-          </div>
-        </div>
-        <div className="mt-3 p-2 bg-white/50 dark:bg-gray-800/50 rounded-lg">
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            🤖 <span className="font-semibold">How it works:</span> AI analyzes job title against degree to determine career alignment.
-            {selectedAlumni.career_alignment_status === null && ' Update job title to trigger AI classification.'}
-          </p>
-        </div>
-      </div>
-
-      {/* Profile Completion */}
-      <div className="bg-gray-50 dark:bg-gray-700/30 rounded-xl p-4 mt-4">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-amber-100 rounded-lg flex items-center justify-center text-xs">
-              📊
+              <p className="text-xs text-gray-500 mt-2">
+                {selectedAlumni.profile_completion === 100 ? 'Complete profile ✓' : `${100 - (selectedAlumni.profile_completion || 0)}% remaining to complete profile`}
+              </p>
             </div>
-            <h4 className="font-semibold text-gray-900 dark:text-white">
-              Profile Completion
-            </h4>
+
+            {/* Footer Actions */}
+            <div className="flex gap-3 pt-4 mt-2 border-t border-gray-100 dark:border-gray-700">
+              <button
+                onClick={() => {
+                  setShowProfileViewModal(false);
+                  setSelectedAlumni(null);
+                }}
+                className="flex-1 px-4 py-2 bg-gradient-to-r from-[#800000] to-[#a10000] text-white font-semibold rounded-lg hover:from-[#6a0000] hover:to-[#8a0000] transition-all"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(selectedAlumni.user_id || '');
+                  showSettingsToast('User ID copied to clipboard', 'success');
+                }}
+                className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-all flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                Copy User ID
+              </button>
+            </div>
           </div>
-          <span className="text-lg font-bold text-[#800000]">
-            {selectedAlumni.profile_completion || 0}%
-          </span>
+        )}
+      </Modal>
+
+      {/* Manual Add Modal */}
+      <Modal isOpen={showManualAddModal} onClose={() => setShowManualAddModal(false)} title="➕ Manual Add Graduate" size="md">
+        <div className="space-y-4">
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+              Student ID <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={manualForm.student_id}
+              onChange={(e) => setManualForm({ ...manualForm, student_id: e.target.value })}
+              className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+              placeholder="e.g., 202301839"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+              Full Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={manualForm.full_name}
+              onChange={(e) => setManualForm({ ...manualForm, full_name: e.target.value })}
+              className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+              placeholder="e.g., Juan Dela Cruz"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+              Email <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="email"
+              value={manualForm.email}
+              onChange={(e) => setManualForm({ ...manualForm, email: e.target.value })}
+              className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+              placeholder="student@email.com"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+              Program <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={manualForm.course}
+              onChange={(e) => setManualForm({ ...manualForm, course: e.target.value })}
+              className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+              required
+            >
+              <option value="">Select Program</option>
+              <option value="BS Information Technology">BS Information Technology</option>
+              <option value="Bachelor of Elementary Education">Bachelor of Elementary Education (BEED)</option>
+              <option value="Bachelor of Secondary Education - English">Bachelor of Secondary Education - English</option>
+              <option value="Bachelor of Secondary Education - Math">Bachelor of Secondary Education - Math</option>
+              <option value="Bachelor of Secondary Education - Science">Bachelor of Secondary Education - Science</option>
+              <option value="Bachelor of Secondary Education - Social Studies">Bachelor of Secondary Education - Social Studies</option>
+              <option value="Bachelor of Secondary Education - Filipino">Bachelor of Secondary Education - Filipino</option>
+              <option value="BS Criminology">BS Criminology</option>
+              <option value="BS Accountancy">BS Accountancy</option>
+              <option value="BSBA Financial Management">BSBA Financial Management</option>
+              <option value="BS Hospitality Management">BS Hospitality Management (BSHM)</option>
+              <option value="BS Tourism Management">BS Tourism Management (BSTM)</option>
+              <option value="BS Psychology">BS Psychology</option>
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                Batch Year <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="number"
+                value={manualForm.batch_year}
+                onChange={(e) => setManualForm({ ...manualForm, batch_year: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+                placeholder="2027"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                Department <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={manualForm.department}
+                onChange={(e) => setManualForm({ ...manualForm, department: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+              >
+                <option value="">Select Department</option>
+                <option value="CCS">CCS - Computer Studies</option>
+                <option value="CTE">CTE - Teacher Education</option>
+                <option value="CCJE">CCJE - Criminal Justice</option>
+                <option value="CBE">CBE - Business Education</option>
+                <option value="PSY">PSY - Psychology</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <Button onClick={handleManualAdd} loading={manualSubmitting} className="flex-1">
+              Add Graduate
+            </Button>
+            <Button variant="secondary" onClick={() => setShowManualAddModal(false)} className="flex-1">
+              Cancel
+            </Button>
+          </div>
+
         </div>
-        <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-          <div 
-            className="h-full bg-gradient-to-r from-[#800000] to-[#a10000] rounded-full" 
-            style={{ width: `${selectedAlumni.profile_completion || 0}%` }} 
-          />
-        </div>
-        <p className="text-xs text-gray-500 mt-2">
-          {selectedAlumni.profile_completion === 100 ? 'Complete profile ✓' : `${100 - (selectedAlumni.profile_completion || 0)}% remaining to complete profile`}
-        </p>
-      </div>
-
-      {/* Footer Actions */}
-      <div className="flex gap-3 pt-4 mt-2 border-t border-gray-100 dark:border-gray-700">
-        <button
-          onClick={() => {
-            setShowProfileViewModal(false);
-            setSelectedAlumni(null);
-          }}
-          className="flex-1 px-4 py-2 bg-gradient-to-r from-[#800000] to-[#a10000] text-white font-semibold rounded-lg hover:from-[#6a0000] hover:to-[#8a0000] transition-all"
-        >
-          Close
-        </button>
-        <button
-          onClick={() => {
-            navigator.clipboard.writeText(selectedAlumni.user_id || '');
-            showSettingsToast('User ID copied to clipboard', 'success');
-          }}
-          className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-all flex items-center gap-2"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-          </svg>
-          Copy User ID
-        </button>
-      </div>
-    </div>
-  )}
-</Modal>
-
-
-<Modal isOpen={showManualAddModal} onClose={() => setShowManualAddModal(false)} title="➕ Manual Add Graduate" size="md">
-  <div className="space-y-4">
-    
-    <div>
-      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-        Student ID <span className="text-red-500">*</span>
-      </label>
-      <input
-        type="text"
-        value={manualForm.student_id}
-        onChange={(e) => setManualForm({ ...manualForm, student_id: e.target.value })}
-        className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
-        placeholder="e.g., 202301839"
-      />
-    </div>
-
-    <div>
-      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-        Full Name <span className="text-red-500">*</span>
-      </label>
-      <input
-        type="text"
-        value={manualForm.full_name}
-        onChange={(e) => setManualForm({ ...manualForm, full_name: e.target.value })}
-        className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
-        placeholder="e.g., Juan Dela Cruz"
-      />
-    </div>
-
-    <div>
-      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-        Email <span className="text-red-500">*</span>
-      </label>
-      <input
-        type="email"
-        value={manualForm.email}
-        onChange={(e) => setManualForm({ ...manualForm, email: e.target.value })}
-        className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
-        placeholder="student@email.com"
-      />
-    </div>
-
-    <div>
-  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-    Program <span className="text-red-500">*</span>
-  </label>
-  <select
-    value={manualForm.course}
-    onChange={(e) => setManualForm({ ...manualForm, course: e.target.value })}
-    className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
-    required
-  >
-    <option value="">Select Program</option>
-    <option value="BS Information Technology">BS Information Technology</option>
-    <option value="Bachelor of Elementary Education">Bachelor of Elementary Education (BEED)</option>
-    <option value="Bachelor of Secondary Education - English">Bachelor of Secondary Education - English</option>
-    <option value="Bachelor of Secondary Education - Math">Bachelor of Secondary Education - Math</option>
-    <option value="Bachelor of Secondary Education - Science">Bachelor of Secondary Education - Science</option>
-    <option value="Bachelor of Secondary Education - Social Studies">Bachelor of Secondary Education - Social Studies</option>
-    <option value="Bachelor of Secondary Education - Filipino">Bachelor of Secondary Education - Filipino</option>
-    <option value="BS Criminology">BS Criminology</option>
-    <option value="BS Accountancy">BS Accountancy</option>
-    <option value="BSBA Financial Management">BSBA Financial Management</option>
-    <option value="BS Hospitality Management">BS Hospitality Management (BSHM)</option>
-    <option value="BS Tourism Management">BS Tourism Management (BSTM)</option>
-    <option value="BS Psychology">BS Psychology</option>
-  </select>
-</div>
-
-    <div className="grid grid-cols-2 gap-4">
-      <div>
-        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-          Batch Year <span className="text-red-500">*</span>
-        </label>
-        <input
-          type="number"
-          value={manualForm.batch_year}
-          onChange={(e) => setManualForm({ ...manualForm, batch_year: e.target.value })}
-          className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
-          placeholder="2027"
-        />
-      </div>
-
-      <div>
-        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-          Department <span className="text-red-500">*</span>
-        </label>
-        <select
-          value={manualForm.department}
-          onChange={(e) => setManualForm({ ...manualForm, department: e.target.value })}
-          className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
-        >
-          <option value="">Select Department</option>
-          <option value="CCS">CCS - Computer Studies</option>
-          <option value="CTE">CTE - Teacher Education</option>
-          <option value="CCJE">CCJE - Criminal Justice</option>
-          <option value="CBE">CBE - Business Education</option>
-          <option value="PSY">PSY - Psychology</option>
-        </select>
-      </div>
-    </div>
-
-    {/* <div className="bg-amber-50 dark:bg-amber-900/20 p-3 rounded-lg">
-      <p className="text-xs text-amber-700 dark:text-amber-400">
-        ⚠️ This will add the graduate directly to the master list with verified = TRUE.
-      </p>
-    </div> */}
-
-    <div className="flex gap-3 pt-4">
-      <Button onClick={handleManualAdd} loading={manualSubmitting} className="flex-1">
-        Add Graduate
-      </Button>
-      <Button variant="secondary" onClick={() => setShowManualAddModal(false)} className="flex-1">
-        Cancel
-      </Button>
-    </div>
-
-  </div>
-</Modal>
+      </Modal>
 
       {/* Edit Announcement Modal */}
       <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="Edit Announcement" size="lg">
@@ -4250,15 +4169,17 @@ const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
       </Modal>
 
       {/* Import Master List Modal */}
-      <ImportMasterListModal 
-        isOpen={showImportModal} 
-        onClose={() => setShowImportModal(false)} 
-        onImportComplete={() => { 
-          fetchMasterList(); 
-          showSettingsToast('Import completed successfully!', 'success'); 
-        }} 
+      <ImportMasterListModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImportComplete={() => {
+          fetchMasterList();
+          showSettingsToast('Import completed successfully!', 'success');
+        }}
+        adminUserId={session.user.id}
+
       />
-      
+
     </div>
   );
 }

@@ -1,23 +1,30 @@
 // src/ImportMasterListModal.tsx
+// src/ImportMasterListModal.tsx
 import React, { useState, useCallback } from 'react';
 import { supabase } from './lib/supabase';
-import { 
-  parseFile, 
-  validateAndTransformData, 
+import { notifyMasterListImported } from './lib/notificationUtils'; // ✅ KEPT - USED BELOW
+import {
+  parseFile,
+  validateAndTransformData,
   getPreviewData,
   REQUIRED_COLUMNS,
   type MasterListRecord,
   type ImportResult
 } from './lib/importUtils';
 
-
 interface ImportMasterListModalProps {
   isOpen: boolean;
   onClose: () => void;
   onImportComplete: () => void;
+  adminUserId?: string; // ✅ ADDED: To know which admin imported
 }
 
-export default function ImportMasterListModal({ isOpen, onClose, onImportComplete }: ImportMasterListModalProps) {
+export default function ImportMasterListModal({
+  isOpen,
+  onClose,
+  onImportComplete,
+  adminUserId // ✅ NEW PROP
+}: ImportMasterListModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [previewData, setPreviewData] = useState<any[]>([]);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
@@ -41,7 +48,7 @@ export default function ImportMasterListModal({ isOpen, onClose, onImportComplet
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    
+
     const droppedFile = e.dataTransfer.files[0];
     if (droppedFile) {
       await processFile(droppedFile);
@@ -57,19 +64,19 @@ export default function ImportMasterListModal({ isOpen, onClose, onImportComplet
 
   const processFile = async (selectedFile: File) => {
     const fileExt = selectedFile.name.split('.').pop()?.toLowerCase();
-    
+
     if (!['csv', 'xlsx', 'xls'].includes(fileExt || '')) {
       setValidationErrors(['Please upload CSV or Excel files only.']);
       return;
     }
-    
+
     setFile(selectedFile);
     setValidationErrors([]);
     setImportResult(null);
-    
+
     try {
       const parsed = await parseFile(selectedFile);
-      
+
       const missingColumns = REQUIRED_COLUMNS.filter(col => !parsed.headers.includes(col));
       if (missingColumns.length > 0) {
         setValidationErrors([`Missing required columns: ${missingColumns.join(', ')}`]);
@@ -77,20 +84,20 @@ export default function ImportMasterListModal({ isOpen, onClose, onImportComplet
         setParsedRecords([]);
         return;
       }
-      
+
       const { valid, errors } = validateAndTransformData(parsed.data);
-      
+
       if (errors.length > 0) {
         setValidationErrors(errors.slice(0, 10));
       }
-      
+
       setParsedRecords(valid);
       setPreviewData(getPreviewData(valid));
-      
+
       if (valid.length === 0) {
         setValidationErrors(prev => [...prev, 'No valid records found in file']);
       }
-      
+
     } catch (error) {
       console.error('Parse error:', error);
       setValidationErrors(['Failed to parse file. Please check the format.']);
@@ -110,10 +117,10 @@ export default function ImportMasterListModal({ isOpen, onClose, onImportComplet
       });
       return;
     }
-    
+
     setImporting(true);
     setImportResult(null);
-    
+
     try {
       if (importMode === 'replace') {
         console.log('🗑️ Deleting all existing master list records...');
@@ -121,30 +128,30 @@ export default function ImportMasterListModal({ isOpen, onClose, onImportComplet
           .from('graduates_master')
           .delete()
           .neq('id', '00000000-0000-0000-0000-000000000000');
-        
+
         if (deleteError) {
           throw new Error(`Delete failed: ${deleteError.message}`);
         }
         console.log('✅ Existing records deleted');
       }
-      
+
       const batchSize = 100;
       let inserted = 0;
       let importErrors: string[] = [];
-      
+
       console.log(`📥 Importing ${parsedRecords.length} records in batches of ${batchSize}...`);
-      
+
       for (let i = 0; i < parsedRecords.length; i += batchSize) {
         const batch = parsedRecords.slice(i, i + batchSize);
         console.log(`Processing batch ${Math.floor(i / batchSize) + 1} of ${Math.ceil(parsedRecords.length / batchSize)}...`);
-        
+
         const { error: insertError } = await supabase
           .from('graduates_master')
-          .upsert(batch, { 
+          .upsert(batch, {
             onConflict: 'student_id',
             ignoreDuplicates: importMode === 'append'
           });
-        
+
         if (insertError) {
           importErrors.push(`Batch ${Math.floor(i / batchSize) + 1}: ${insertError.message}`);
           console.error(`❌ Batch failed:`, insertError);
@@ -153,19 +160,25 @@ export default function ImportMasterListModal({ isOpen, onClose, onImportComplet
           console.log(`✅ Batch ${Math.floor(i / batchSize) + 1} inserted: ${batch.length} records`);
         }
       }
-      
+
       const result: ImportResult = {
         success: importErrors.length === 0,
-        message: importErrors.length === 0 
-          ? `Successfully imported ${inserted} records to graduates_master table` 
+        message: importErrors.length === 0
+          ? `Successfully imported ${inserted} records to graduates_master table`
           : `Imported ${inserted} records with ${importErrors.length} errors`,
         inserted,
         skipped: parsedRecords.length - inserted,
         errors: importErrors
       };
-      
+
       setImportResult(result);
-      
+
+      // ✅ #10 MASTER LIST IMPORTED - Notify the admin who performed the import
+      if (adminUserId && inserted > 0) {
+        await notifyMasterListImported(adminUserId, inserted);
+        console.log(`✅ Notification sent to admin ${adminUserId} for ${inserted} imported records`);
+      }
+
       if (importErrors.length === 0) {
         setTimeout(() => {
           onImportComplete();
@@ -173,7 +186,7 @@ export default function ImportMasterListModal({ isOpen, onClose, onImportComplet
           onClose();
         }, 2000);
       }
-      
+
     } catch (error: any) {
       console.error('Import error:', error);
       setImportResult({
@@ -309,10 +322,26 @@ export default function ImportMasterListModal({ isOpen, onClose, onImportComplet
         </div>
 
         <div className="sticky bottom-0 bg-white dark:bg-gray-800 p-6 border-t border-gray-100 dark:border-gray-700 flex gap-3">
-          <button onClick={handleImport} disabled={parsedRecords.length === 0 || validationErrors.length > 0 || importing} className="flex-1 px-4 py-2 bg-gradient-to-r from-[#800000] to-[#a10000] text-white font-semibold rounded-lg hover:from-[#6a0000] hover:to-[#8a0000] transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-            {importing ? <div className="flex items-center justify-center gap-2"><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Importing to graduates_master...</div> : `Import ${parsedRecords.length} Records to Master List`}
+          <button
+            onClick={handleImport}
+            disabled={parsedRecords.length === 0 || validationErrors.length > 0 || importing}
+            className="flex-1 px-4 py-2 bg-gradient-to-r from-[#800000] to-[#a10000] text-white font-semibold rounded-lg hover:from-[#6a0000] hover:to-[#8a0000] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {importing ? (
+              <div className="flex items-center justify-center gap-2">
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Importing to graduates_master...
+              </div>
+            ) : (
+              `Import ${parsedRecords.length} Records to Master List`
+            )}
           </button>
-          <button onClick={handleClose} className="flex-1 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-all">Cancel</button>
+          <button
+            onClick={handleClose}
+            className="flex-1 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-all"
+          >
+            Cancel
+          </button>
         </div>
       </div>
     </div>

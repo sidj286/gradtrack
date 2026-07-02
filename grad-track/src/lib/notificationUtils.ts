@@ -15,24 +15,43 @@ export async function sendNotification(
   metadata?: any
 ) {
   try {
+    console.log('📨 SEND NOTIFICATION:', { userId, type, title, message });
+
+    // Validate userId
+    if (!userId) {
+      console.error('❌ No userId provided!');
+      return null;
+    }
+
+    const notificationData = {
+      user_id: userId,
+      type,
+      title,
+      message,
+      link: link || null,
+      metadata: metadata || {},
+      is_read: false,
+      created_at: new Date().toISOString()
+    };
+
+    console.log('📝 Inserting notification:', notificationData);
+
     const { data, error } = await supabase
       .from('notifications')
-      .insert({
-        user_id: userId,
-        type,
-        title,
-        message,
-        link: link || null,
-        metadata: metadata || {},
-        is_read: false
-      })
+      .insert(notificationData)
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ Supabase insert error:', error);
+      console.error('❌ Error details:', JSON.stringify(error, null, 2));
+      return null;
+    }
+
+    console.log('✅ Notification inserted successfully:', data);
     return data;
   } catch (error) {
-    console.error('Error sending notification:', error);
+    console.error('❌ sendNotification caught error:', error);
     return null;
   }
 }
@@ -46,22 +65,37 @@ export async function sendNotificationToAllAdmins(
   metadata?: any
 ) {
   try {
+    console.log('📨 SENDING TO ALL ADMINS:', { type, title, message });
+
     // Get all admin users
     const { data: admins, error } = await supabase
       .from('users')
-      .select('id')
+      .select('id, email')
       .eq('role', 'Admin');
 
-    if (error) throw error;
-    if (!admins || admins.length === 0) return [];
+    if (error) {
+      console.error('❌ Error fetching admins:', error);
+      return [];
+    }
 
-    const notifications = admins.map((admin) =>
-      sendNotification(admin.id, type, title, message, link, metadata)
-    );
+    console.log('👥 Admins found:', admins?.length || 0);
+    console.log('👥 Admin IDs:', admins?.map(a => a.id) || []);
 
-    return await Promise.all(notifications);
+    if (!admins || admins.length === 0) {
+      console.warn('⚠️ No admin users found!');
+      return [];
+    }
+
+    const notificationPromises = admins.map((admin) => {
+      console.log(`📨 Sending to admin: ${admin.id} (${admin.email})`);
+      return sendNotification(admin.id, type, title, message, link, metadata);
+    });
+
+    const results = await Promise.all(notificationPromises);
+    console.log('✅ All notifications sent:', results?.length || 0);
+    return results;
   } catch (error) {
-    console.error('Error sending notification to admins:', error);
+    console.error('❌ sendNotificationToAllAdmins error:', error);
     return [];
   }
 }
@@ -69,6 +103,7 @@ export async function sendNotificationToAllAdmins(
 // Get all notifications for a user
 export async function getNotifications(userId: string) {
   try {
+    console.log('🔔 getNotifications called for user:', userId);
     const { data, error } = await supabase
       .from('notifications')
       .select('*')
@@ -76,10 +111,14 @@ export async function getNotifications(userId: string) {
       .order('created_at', { ascending: false })
       .limit(50);
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ Error fetching notifications:', error);
+      return [];
+    }
+    console.log('📋 Notifications found:', data?.length || 0);
     return data || [];
   } catch (error) {
-    console.error('Error fetching notifications:', error);
+    console.error('❌ getNotifications error:', error);
     return [];
   }
 }
@@ -93,10 +132,13 @@ export async function getUnreadCount(userId: string) {
       .eq('user_id', userId)
       .eq('is_read', false);
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ Error fetching unread count:', error);
+      return 0;
+    }
     return count || 0;
   } catch (error) {
-    console.error('Error fetching unread count:', error);
+    console.error('❌ getUnreadCount error:', error);
     return 0;
   }
 }
@@ -162,6 +204,7 @@ export async function notifyCommentAdded(
   announcementId: string,
   alumniId: string
 ) {
+  console.log('🔔 notifyCommentAdded called!');
   const message = `${alumniName} commented on "${announcementTitle}": "${commentContent.substring(0, 60)}${commentContent.length > 60 ? '...' : ''}"`;
   return sendNotificationToAllAdmins(
     'comment',
@@ -172,7 +215,7 @@ export async function notifyCommentAdded(
   );
 }
 
-// 2. REPLY ADDED - Admin replies to alumni comment (sent to specific alumni)
+// 2. REPLY ADDED - Admin replies to alumni comment
 export async function notifyReplyAdded(
   alumniId: string,
   adminName: string,
@@ -180,6 +223,7 @@ export async function notifyReplyAdded(
   replyContent: string,
   announcementId: string
 ) {
+  console.log('🔔 notifyReplyAdded called!');
   const message = `${adminName} replied to your comment on "${announcementTitle}": "${replyContent.substring(0, 60)}${replyContent.length > 60 ? '...' : ''}"`;
   return sendNotification(
     alumniId,
@@ -191,13 +235,14 @@ export async function notifyReplyAdded(
   );
 }
 
-// 3. CAREER UPDATED - Alumni updates job title or company (to ALL admins)
+// 3. CAREER UPDATED - Alumni updates job title or company
 export async function notifyCareerUpdated(
   alumniName: string,
   jobTitle: string,
   company: string,
   alumniId: string
 ) {
+  console.log('🔔 notifyCareerUpdated called!', { alumniName, jobTitle, company });
   const message = `${alumniName} updated job title to "${jobTitle}" at ${company}`;
   return sendNotificationToAllAdmins(
     'career_update',
@@ -208,12 +253,13 @@ export async function notifyCareerUpdated(
   );
 }
 
-// 4. PROFILE UPDATED - Alumni updates profile picture or info (to ALL admins)
+// 4. PROFILE UPDATED - Alumni updates profile picture or info
 export async function notifyProfileUpdated(
   alumniName: string,
   alumniId: string,
   updateType: string = 'profile information'
 ) {
+  console.log('🔔 notifyProfileUpdated called!', { alumniName, updateType });
   const message = `${alumniName} updated their ${updateType}`;
   return sendNotificationToAllAdmins(
     'profile_update',
@@ -224,12 +270,13 @@ export async function notifyProfileUpdated(
   );
 }
 
-// 5. NEW REGISTRATION - New alumni registers (to ALL admins)
+// 5. NEW REGISTRATION - New alumni registers
 export async function notifyNewRegistration(
   alumniName: string,
   course: string,
   alumniId: string
 ) {
+  console.log('🔔 notifyNewRegistration called!', { alumniName, course });
   const message = `${alumniName} (${course}) just registered on GradTrack`;
   return sendNotificationToAllAdmins(
     'registration',
@@ -240,12 +287,13 @@ export async function notifyNewRegistration(
   );
 }
 
-// 6. NEW ANNOUNCEMENT - Admin posts new announcement (to ALL alumni)
+// 6. NEW ANNOUNCEMENT - Admin posts new announcement
 export async function notifyNewAnnouncement(
   alumniIds: string[],
   title: string,
   announcementId: string
 ) {
+  console.log('🔔 notifyNewAnnouncement called!', { alumniCount: alumniIds.length, title });
   const notifications = alumniIds.map((userId) =>
     sendNotification(
       userId,
@@ -259,7 +307,7 @@ export async function notifyNewAnnouncement(
   return Promise.all(notifications);
 }
 
-// 7. EMPLOYMENT STATUS CHANGED - Alumni changes employment status (to ALL admins)
+// 7. EMPLOYMENT STATUS CHANGED - Alumni changes employment status
 export async function notifyEmploymentStatusChanged(
   alumniName: string,
   employmentStatus: string,
@@ -267,6 +315,7 @@ export async function notifyEmploymentStatusChanged(
   jobTitle: string,
   alumniId: string
 ) {
+  console.log('🔔 notifyEmploymentStatusChanged called!', { alumniName, employmentStatus, company, jobTitle });
   let message = `${alumniName} changed status to "${employmentStatus}"`;
   if (company && jobTitle) {
     message = `${alumniName} is now ${employmentStatus} at ${company} as ${jobTitle}`;
@@ -288,6 +337,7 @@ export async function notifyAnnouncementEdited(
   title: string,
   announcementId: string
 ) {
+  console.log('🔔 notifyAnnouncementEdited called!', { adminId, title });
   const message = `You updated announcement: "${title}"`;
   return sendNotification(
     adminId,
@@ -299,11 +349,12 @@ export async function notifyAnnouncementEdited(
   );
 }
 
-// 9. ALUMNI VERIFIED - Alumni verified from master list (to ALL admins)
+// 9. ALUMNI VERIFIED - Alumni verified from master list
 export async function notifyAlumniVerified(
   alumniName: string,
   alumniId: string
 ) {
+  console.log('🔔 notifyAlumniVerified called!', { alumniName });
   const message = `${alumniName} has been verified as a CRMC graduate`;
   return sendNotificationToAllAdmins(
     'registration',
@@ -319,6 +370,7 @@ export async function notifyMasterListImported(
   adminId: string,
   recordCount: number
 ) {
+  console.log('🔔 notifyMasterListImported called!', { adminId, recordCount });
   const message = `Master list imported: ${recordCount} new records added`;
   return sendNotification(
     adminId,

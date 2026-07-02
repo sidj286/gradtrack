@@ -1,7 +1,7 @@
-// src/NotificationBell.tsx
+// src/components/NotificationBell.tsx
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from './lib/supabase';
-import { getUnreadCount, markAllAsRead } from './lib/notificationUtils';
+import { getNotifications, getUnreadCount, markAsRead, markAllAsRead, deleteNotification } from './lib/notificationUtils';
 
 interface Notification {
   id: string;
@@ -21,86 +21,98 @@ interface NotificationBellProps {
 }
 
 export default function NotificationBell({ userId, onNotificationClick }: NotificationBellProps) {
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Fetch unread count and notifications
-  const fetchData = async () => {
-    const count = await getUnreadCount(userId);
-    setUnreadCount(count);
-
-    const { data } = await supabase
-      .from('notifications')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(20);
-    setNotifications(data || []);
+  const fetchNotifications = async () => {
+    setLoading(true);
+    try {
+      const data = await getNotifications(userId);
+      setNotifications(data);
+      const count = await getUnreadCount(userId);
+      setUnreadCount(count);
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Real-time subscription for new notifications
   useEffect(() => {
-    fetchData();
+    if (!userId) return;
+    
+    fetchNotifications();
 
+    // ✅ REAL-TIME SUBSCRIPTION FOR NOTIFICATIONS
     const channel = supabase
-      .channel('notifications-realtime')
+      .channel(`notifications-${userId}`)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'notifications',
-          filter: `user_id=eq.${userId}`
+          filter: `user_id=eq.${userId}`,
         },
-        (payload: { new: Notification }) => {
-          const newNotif = payload.new as Notification;
-          setNotifications(prev => [newNotif, ...prev]);
-          setUnreadCount(prev => prev + 1);
+        (payload) => {
+          console.log(`🔔 New notification for user ${userId}:`, payload);
+          fetchNotifications();
         }
       )
-      .subscribe();
-
-    // Close dropdown on click outside
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          console.log(`📝 Notification updated for user ${userId}:`, payload);
+          fetchNotifications();
+        }
+      )
+      .subscribe((status) => {
+        console.log(`📡 Notification subscription status for ${userId}:`, status);
+      });
 
     return () => {
       supabase.removeChannel(channel);
-      document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [userId]);
 
-  const handleMarkAllRead = async () => {
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleMarkAsRead = async (notificationId: string) => {
+    await markAsRead(notificationId);
+    fetchNotifications();
+  };
+
+  const handleMarkAllAsRead = async () => {
     await markAllAsRead(userId);
-    setUnreadCount(0);
-    setNotifications(prev =>
-      prev.map(n => ({ ...n, is_read: true }))
-    );
+    fetchNotifications();
+  };
+
+  const handleDelete = async (notificationId: string) => {
+    await deleteNotification(notificationId);
+    fetchNotifications();
   };
 
   const handleNotificationClick = (notification: Notification) => {
-    // Mark as read
     if (!notification.is_read) {
-      supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('id', notification.id)
-        .then(() => {
-          setUnreadCount(prev => Math.max(0, prev - 1));
-          setNotifications(prev =>
-            prev.map(n =>
-              n.id === notification.id ? { ...n, is_read: true } : n
-            )
-          );
-        });
+      handleMarkAsRead(notification.id);
     }
-
     if (onNotificationClick) {
       onNotificationClick(notification);
     }
@@ -115,108 +127,115 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
       profile_update: '✏️',
       registration: '🎉',
       announcement: '📢',
-      mention: '🔔'
     };
     return icons[type] || '🔔';
   };
 
-  const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-    if (seconds < 60) return 'Just now';
-    const minutes = Math.floor(seconds / 60);
+  const getTimeAgo = (dateString: string) => {
+    const diff = Date.now() - new Date(dateString).getTime();
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+    if (minutes < 1) return 'Just now';
     if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
     if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    if (days < 7) return `${days}d ago`;
-    return date.toLocaleDateString();
+    return `${days}d ago`;
   };
 
   return (
     <div className="relative" ref={dropdownRef}>
-      {/* Bell Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+        className="relative p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200"
       >
         <svg className="w-6 h-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
         </svg>
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse ring-2 ring-white">
-            {unreadCount > 99 ? '99+' : unreadCount}
+          <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center animate-pulse">
+            {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
       </button>
 
-      {/* Dropdown */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden z-50 max-h-[500px] flex flex-col">
-          {/* Header */}
-          <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gradient-to-r from-[#800000]/5 to-transparent">
-            <h3 className="font-bold text-gray-900 dark:text-white">Notifications</h3>
-            <div className="flex gap-2">
-              {unreadCount > 0 && (
-                <button
-                  onClick={handleMarkAllRead}
-                  className="text-xs text-[#800000] hover:underline"
-                >
-                  Mark all read
-                </button>
-              )}
-            </div>
+        <div className="absolute right-0 mt-2 w-80 md:w-96 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden z-50">
+          <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-700 bg-gradient-to-r from-[#800000]/5 to-transparent">
+            <h3 className="font-bold text-gray-900 dark:text-white">
+              Notifications
+            </h3>
+            {unreadCount > 0 && (
+              <button
+                onClick={handleMarkAllAsRead}
+                className="text-xs text-[#800000] hover:underline font-medium"
+              >
+                Mark all as read
+              </button>
+            )}
           </div>
 
-          {/* List */}
-          <div className="overflow-y-auto flex-1">
-            {notifications.length === 0 ? (
-              <div className="p-8 text-center">
-                <div className="text-4xl mb-3">🔔</div>
-                <p className="text-gray-500 font-medium">No notifications</p>
+          <div className="max-h-96 overflow-y-auto">
+            {loading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="w-6 h-6 border-2 border-[#800000]/20 border-t-[#800000] rounded-full animate-spin" />
+              </div>
+            ) : notifications.length === 0 ? (
+              <div className="text-center py-8">
+                <div className="text-4xl mb-2">🔕</div>
+                <p className="text-gray-500 dark:text-gray-400">No notifications</p>
                 <p className="text-xs text-gray-400 mt-1">You're all caught up!</p>
               </div>
             ) : (
-              notifications.map((notif) => (
+              notifications.map((notification) => (
                 <div
-                  key={notif.id}
-                  onClick={() => handleNotificationClick(notif)}
-                  className={`p-4 border-b border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
-                    !notif.is_read ? 'bg-gradient-to-r from-[#800000]/5 to-transparent' : ''
+                  key={notification.id}
+                  onClick={() => handleNotificationClick(notification)}
+                  className={`flex items-start gap-3 p-4 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-all duration-200 border-b border-gray-100 dark:border-gray-700 group ${
+                    !notification.is_read ? 'bg-[#800000]/5 dark:bg-[#800000]/10' : ''
                   }`}
                 >
-                  <div className="flex gap-3">
-                    <div className="text-2xl flex-shrink-0">{getIcon(notif.type)}</div>
-                    <div className="flex-1 min-w-0">
+                  <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-lg group-hover:bg-[#800000]/10 transition-colors">
+                    {getIcon(notification.type)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
                       <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                        {notif.title}
+                        {notification.title}
                       </p>
-                      <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2">
-                        {notif.message}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-1">{formatTime(notif.created_at)}</p>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(notification.id);
+                        }}
+                        className="flex-shrink-0 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
                     </div>
-                    {!notif.is_read && (
-                      <div className="w-2 h-2 bg-[#800000] rounded-full flex-shrink-0 mt-2"></div>
-                    )}
+                    <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
+                      {notification.message}
+                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs text-gray-400">
+                        {getTimeAgo(notification.created_at)}
+                      </span>
+                      {!notification.is_read && (
+                        <span className="w-2 h-2 bg-[#800000] rounded-full animate-pulse" />
+                      )}
+                    </div>
                   </div>
                 </div>
               ))
             )}
           </div>
 
-          {/* Footer */}
-          {notifications.length > 0 && (
-            <div className="p-2 border-t border-gray-200 dark:border-gray-700 text-center">
-              <button
-                onClick={() => setIsOpen(false)}
-                className="text-xs text-[#800000] hover:underline"
-              >
-                Close
-              </button>
-            </div>
-          )}
+          <div className="p-3 bg-gray-50 dark:bg-gray-900 border-t border-gray-100 dark:border-gray-700 text-center">
+            <p className="text-[10px] text-gray-400 dark:text-gray-500">
+              {notifications.length} notification{notifications.length !== 1 ? 's' : ''}
+            </p>
+          </div>
         </div>
       )}
     </div>
