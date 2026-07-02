@@ -1,6 +1,6 @@
 // src/AnnouncementComments.tsx
-import { useState } from 'react';
-import { supabase } from './lib/supabase';
+import React, { useState } from 'react';
+import type { Session } from '@supabase/supabase-js';
 
 interface Comment {
   id: string;
@@ -9,21 +9,298 @@ interface Comment {
   content: string;
   parent_comment_id: string | null;
   created_at: string;
+  updated_at?: string;
   full_name?: string;
   role?: string;
   replies?: Comment[];
+  showReplyInput?: boolean;
 }
 
 interface AnnouncementCommentsProps {
   announcementId: string;
   comments: Comment[];
   loading: boolean;
-  session: any;
+  session: Session;
   isAdmin?: boolean;
   onAddComment: (announcementId: string, content: string, parentCommentId: string | null) => Promise<void>;
   onDeleteComment: (commentId: string, announcementId: string) => Promise<void>;
+  onEditComment?: (commentId: string, announcementId: string, newContent: string) => Promise<void>;
 }
+// ==================== 3-DOTS MENU COMPONENT ====================
+const CommentMenu: React.FC<{
+  comment: Comment;
+  session: Session;
+  isAdmin?: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}> = ({ comment, session, isAdmin, onEdit, onDelete }) => {
+  const [isOpen, setIsOpen] = useState(false);
 
+  const isCommentOwner = comment.user_id === session.user.id;
+
+  // ✅ Admin can delete ANY comment, but CANNOT edit
+  // ✅ Owner can edit AND delete their own comment
+  const canEdit = isCommentOwner; // Only the owner can edit
+  const canDelete = isCommentOwner || isAdmin; // Owner OR Admin can delete
+
+  if (!canEdit && !canDelete) return null;
+
+  return (
+    <div className="relative">
+      {/* 3-dots button */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+        title="More options"
+      >
+        <svg className="w-4 h-4 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+        </svg>
+      </button>
+
+      {/* Dropdown menu */}
+      {isOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setIsOpen(false)}
+          />
+          {/* Menu */}
+          <div className="absolute right-0 mt-1 w-40 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden z-50">
+            {/* ✅ EDIT - Only for comment owner */}
+            {canEdit && (
+              <button
+                onClick={() => {
+                  setIsOpen(false);
+                  onEdit();
+                }}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Edit Comment
+              </button>
+            )}
+            {/* ✅ DELETE - Owner OR Admin */}
+            {canDelete && (
+              <button
+                onClick={() => {
+                  setIsOpen(false);
+                  onDelete();
+                }}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Delete Comment
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+// ==================== SINGLE COMMENT COMPONENT ====================
+const CommentItem: React.FC<{
+  comment: Comment;
+  session: Session;
+  isAdmin?: boolean;
+  level: number;
+  onAddComment: (announcementId: string, content: string, parentCommentId: string | null) => Promise<void>;
+  onDeleteComment: (commentId: string, announcementId: string) => Promise<void>;
+  onEditComment?: (commentId: string, announcementId: string, newContent: string) => Promise<void>;
+  announcementId: string;
+}> = ({ 
+  comment, 
+  session, 
+  isAdmin, 
+  level, 
+  onAddComment, 
+  onDeleteComment,
+  onEditComment,
+  announcementId 
+}) => {
+  const [showReplyInput, setShowReplyInput] = useState(false);
+  const [replyContent, setReplyContent] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState(comment.content);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleReply = async () => {
+    if (!replyContent.trim() || isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await onAddComment(announcementId, replyContent, comment.id);
+      setReplyContent('');
+      setShowReplyInput(false);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleEdit = async () => {
+    if (!editContent.trim() || isSubmitting || !onEditComment) return;
+    setIsSubmitting(true);
+    try {
+      await onEditComment(comment.id, announcementId, editContent);
+      setIsEditing(false);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (window.confirm('Are you sure you want to delete this comment?')) {
+      await onDeleteComment(comment.id, announcementId);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return date.toLocaleDateString();
+  };
+
+  const isCommentOwner = comment.user_id === session.user.id;
+
+  return (
+    <div className={`${level > 0 ? 'ml-4 sm:ml-8 border-l-2 border-gray-200 dark:border-gray-700 pl-3 sm:pl-4' : ''}`}>
+      <div className={`rounded-lg p-3 ${isCommentOwner ? 'bg-[#800000]/5 border border-[#800000]/10' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
+        {/* Comment Header */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
+            <span className="font-semibold text-sm text-gray-900 dark:text-white truncate">
+              {comment.full_name || 'Unknown'}
+            </span>
+            {comment.role === 'Admin' && (
+              <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-[#800000] text-white flex-shrink-0">
+                Admin
+              </span>
+            )}
+            <span className="text-xs text-gray-400 flex-shrink-0">
+              {formatDate(comment.created_at)}
+            </span>
+            {comment.updated_at && comment.updated_at !== comment.created_at && (
+              <span className="text-[10px] text-gray-400 flex-shrink-0">(edited)</span>
+            )}
+          </div>
+          
+          {/* 3-dots menu */}
+          <CommentMenu
+            comment={comment}
+            session={session}
+            isAdmin={isAdmin}
+            onEdit={() => setIsEditing(true)}
+            onDelete={handleDelete}
+          />
+        </div>
+
+        {/* Comment Content */}
+        {isEditing ? (
+          <div className="mt-2 space-y-2">
+            <textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:border-[#800000] focus:ring-1 focus:ring-[#800000] outline-none resize-none"
+              rows={2}
+              placeholder="Edit your comment..."
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={handleEdit}
+                disabled={isSubmitting || !editContent.trim()}
+                className="px-3 py-1 text-xs bg-[#800000] text-white rounded-lg hover:bg-[#6a0000] transition disabled:opacity-50"
+              >
+                {isSubmitting ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                onClick={() => {
+                  setIsEditing(false);
+                  setEditContent(comment.content);
+                }}
+                className="px-3 py-1 text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-700 dark:text-gray-300 mt-1 whitespace-pre-wrap break-words">
+            {comment.content}
+          </p>
+        )}
+
+        {/* Reply Button */}
+        {!isEditing && (
+          <button
+            onClick={() => setShowReplyInput(!showReplyInput)}
+            className="mt-2 text-xs text-[#800000] hover:underline font-medium"
+          >
+            {showReplyInput ? 'Cancel Reply' : 'Reply'}
+          </button>
+        )}
+      </div>
+
+      {/* Reply Input */}
+      {showReplyInput && (
+        <div className="mt-2 ml-4 sm:ml-8">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={replyContent}
+              onChange={(e) => setReplyContent(e.target.value)}
+              placeholder="Write a reply..."
+              className="flex-1 px-3 py-1.5 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:border-[#800000] focus:ring-1 focus:ring-[#800000] outline-none"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleReply();
+                }
+              }}
+            />
+            <button
+              onClick={handleReply}
+              disabled={isSubmitting || !replyContent.trim()}
+              className="px-3 py-1.5 text-sm bg-[#800000] text-white rounded-lg hover:bg-[#6a0000] transition disabled:opacity-50 whitespace-nowrap"
+            >
+              {isSubmitting ? '...' : 'Reply'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Nested Replies */}
+      {comment.replies && comment.replies.length > 0 && (
+        <div className="mt-2 space-y-2">
+          {comment.replies.map((reply) => (
+            <CommentItem
+              key={reply.id}
+              comment={reply}
+              session={session}
+              isAdmin={isAdmin}
+              level={level + 1}
+              onAddComment={onAddComment}
+              onDeleteComment={onDeleteComment}
+              onEditComment={onEditComment}
+              announcementId={announcementId}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ==================== MAIN COMPONENT ====================
 export default function AnnouncementComments({
   announcementId,
   comments,
@@ -32,221 +309,83 @@ export default function AnnouncementComments({
   isAdmin = false,
   onAddComment,
   onDeleteComment,
+  onEditComment
 }: AnnouncementCommentsProps) {
-  const isSupabaseReady = Boolean(supabase);
-  const [commentContent, setCommentContent] = useState('');
-  const [replyContent, setReplyContent] = useState<Record<string, string>>({});
-  const [replyingTo, setReplyingTo] = useState<string | null>(null);
-  const [visibleCommentCount, setVisibleCommentCount] = useState<Record<string, number>>({});
-  const [visibleReplyCount, setVisibleReplyCount] = useState<Record<string, number>>({});
-  const [submitting, setSubmitting] = useState(false);
+  const [newComment, setNewComment] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const formatTimeAgo = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-    if (seconds < 60) return 'Just now';
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    if (days < 7) return `${days}d ago`;
-    return date.toLocaleDateString();
-  };
-
-  const handleAddComment = async (parentCommentId: string | null = null) => {
-    const content = parentCommentId ? replyContent[parentCommentId] : commentContent;
-    if (!content?.trim()) return;
-
-    setSubmitting(true);
+  const handleAddComment = async () => {
+    if (!newComment.trim() || isSubmitting) return;
+    setIsSubmitting(true);
     try {
-      await onAddComment(announcementId, content, parentCommentId);
-      if (parentCommentId) {
-        setReplyContent(prev => ({ ...prev, [parentCommentId]: '' }));
-        setReplyingTo(null);
-      } else {
-        setCommentContent('');
-      }
+      await onAddComment(announcementId, newComment, null);
+      setNewComment('');
     } finally {
-      setSubmitting(false);
+      setIsSubmitting(false);
     }
   };
 
-  const toggleReplyInput = (commentId: string) => {
-    if (replyingTo === commentId) {
-      setReplyingTo(null);
-      return;
-    }
-
-    setReplyingTo(commentId);
-    setReplyContent(prev => ({ ...prev, [commentId]: prev[commentId] ?? '' }));
-  };
-
-  const showMoreComments = () => {
-    setVisibleCommentCount(prev => ({
-      ...prev,
-      [announcementId]: (prev[announcementId] || 3) + 5,
-    }));
-  };
-
-  const showMoreReplies = (commentId: string) => {
-    setVisibleReplyCount(prev => ({
-      ...prev,
-      [commentId]: (prev[commentId] || 3) + 3,
-    }));
-  };
-
-  const renderComment = (comment: Comment, isReply = false) => {
-    const isCommentOwner = session?.user?.id === comment.user_id;
-    const canDelete = isAdmin || isCommentOwner;
-    const visibleReplies = (comment.replies || []).slice(0, visibleReplyCount[comment.id] || 3);
-    const hasMoreReplies = (comment.replies || []).length > visibleReplies.length;
-
+  if (loading) {
     return (
-      <div key={comment.id} className={`${isReply ? 'ml-6 sm:ml-10 mt-3' : 'mt-3'}`}>
-        <div className={`${isReply ? 'border-l-2 border-gray-200 dark:border-gray-700 pl-3 sm:pl-4' : ''}`}>
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-semibold text-sm text-gray-900 dark:text-white">
-                  {comment.full_name || 'Unknown Alumni'}
-                </span>
-                <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                  comment.role === 'Admin'
-                    ? 'bg-[#800000]/10 text-[#800000]'
-                    : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
-                }`}>
-                  {comment.role === 'Admin' ? '🛡️ Admin' : '🎓 Alumni'}
-                </span>
-                <span className="text-xs text-gray-400">{formatTimeAgo(comment.created_at)}</span>
-              </div>
-              <p className="text-sm text-gray-700 dark:text-gray-300 mt-1 break-words">
-                {comment.content}
-              </p>
-            </div>
-            {canDelete && (
-              <button
-                onClick={() => onDeleteComment(comment.id, announcementId)}
-                className="text-red-400 hover:text-red-600 text-xs flex-shrink-0"
-              >
-                Delete
-              </button>
-            )}
+      <div className="space-y-3">
+        {[1, 2].map(i => (
+          <div key={i} className="animate-pulse">
+            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/4 mb-2" />
+            <div className="h-10 bg-gray-200 dark:bg-gray-700 rounded" />
           </div>
-
-          <div className="mt-2 flex flex-wrap items-center gap-3">
-            <button
-              onClick={() => toggleReplyInput(comment.id)}
-              className="text-xs font-medium text-[#800000] hover:underline"
-            >
-              {replyingTo === comment.id ? 'Cancel' : 'Reply'}
-            </button>
-            {hasMoreReplies && (
-              <button
-                onClick={() => showMoreReplies(comment.id)}
-                className="text-xs font-medium text-gray-500 hover:text-[#800000]"
-              >
-                Show previous replies
-              </button>
-            )}
-          </div>
-
-          {replyingTo === comment.id && (
-            <div className="mt-2 flex gap-2">
-              <input
-                type="text"
-                value={replyContent[comment.id] || ''}
-                onChange={(e) => setReplyContent(prev => ({ ...prev, [comment.id]: e.target.value }))}
-                placeholder={`Reply to ${comment.full_name || 'this comment'}...`}
-                className="flex-1 px-3 py-1.5 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (replyContent[comment.id] || '').trim()) {
-                    e.preventDefault();
-                    handleAddComment(comment.id);
-                  }
-                }}
-              />
-              <button
-                onClick={() => handleAddComment(comment.id)}
-                disabled={submitting || !replyContent[comment.id]?.trim()}
-                className="px-3 py-1.5 text-sm bg-[#800000] text-white rounded-lg hover:bg-[#6a0000] disabled:opacity-50"
-              >
-                {submitting ? 'Posting...' : 'Post'}
-              </button>
-            </div>
-          )}
-
-          {visibleReplies.length > 0 && (
-            <div className="mt-2">
-              {visibleReplies.map(reply => renderComment(reply, true))}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  if (!isSupabaseReady || loading) {
-    return (
-      <div className="flex justify-center py-4">
-        <div className="w-5 h-5 border-2 border-[#800000]/20 border-t-[#800000] rounded-full animate-spin" />
+        ))}
       </div>
     );
   }
 
-  const visibleRootComments = comments.slice(0, visibleCommentCount[announcementId] || 3);
-  const hasMoreComments = comments.length > visibleRootComments.length;
-
   return (
-    <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-      <div className="flex items-center gap-2 mb-3">
-        <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-          💬 {comments.length} comment{comments.length !== 1 ? 's' : ''}
-        </span>
-      </div>
-
+    <div className="space-y-4">
+      {/* Comment Input */}
       <div className="flex gap-2">
         <input
           type="text"
-          value={commentContent}
-          onChange={(e) => setCommentContent(e.target.value)}
+          value={newComment}
+          onChange={(e) => setNewComment(e.target.value)}
           placeholder="Write a comment..."
-          className="flex-1 px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+          className="flex-1 px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:border-[#800000] focus:ring-1 focus:ring-[#800000] outline-none"
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && commentContent.trim()) {
+            if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               handleAddComment();
             }
           }}
         />
         <button
-          onClick={() => handleAddComment()}
-          disabled={submitting || !commentContent.trim()}
-          className="px-4 py-2 text-sm bg-[#800000] text-white rounded-lg hover:bg-[#6a0000] disabled:opacity-50"
+          onClick={handleAddComment}
+          disabled={isSubmitting || !newComment.trim()}
+          className="px-4 py-2 text-sm bg-[#800000] text-white rounded-lg hover:bg-[#6a0000] transition disabled:opacity-50 whitespace-nowrap"
         >
-          {submitting ? 'Posting...' : 'Post'}
+          {isSubmitting ? '...' : 'Comment'}
         </button>
       </div>
 
-      <div className="mt-3 max-h-96 overflow-y-auto pr-1">
-        {comments.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-4">No comments yet. Be the first to comment!</p>
-        ) : (
-          <>
-            {visibleRootComments.map(comment => renderComment(comment, false))}
-            {hasMoreComments && (
-              <button
-                onClick={showMoreComments}
-                className="mt-3 text-sm font-medium text-[#800000] hover:underline"
-              >
-                See more comments
-              </button>
-            )}
-          </>
-        )}
-      </div>
+      {/* Comments List */}
+      {comments.length === 0 ? (
+        <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+          No comments yet. Be the first to comment!
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {comments.map((comment) => (
+            <CommentItem
+              key={comment.id}
+              comment={comment}
+              session={session}
+              isAdmin={isAdmin}
+              level={0}
+              onAddComment={onAddComment}
+              onDeleteComment={onDeleteComment}
+              onEditComment={onEditComment}
+              announcementId={announcementId}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

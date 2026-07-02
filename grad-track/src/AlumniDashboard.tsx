@@ -57,6 +57,7 @@ interface AnnouncementComment {
   content: string;
   parent_comment_id: string | null;
   created_at: string;
+  updated_at?: string;
   full_name?: string;
   role?: string;
   replies?: AnnouncementComment[];
@@ -363,7 +364,19 @@ const AnnouncementPage: React.FC<{
   isAdmin: boolean;
   onAddComment: (announcementId: string, content: string, parentCommentId: string | null) => Promise<void>;
   onDeleteComment: (commentId: string, announcementId: string) => Promise<void>;
-}> = ({ announcements, loading, onMarkAsRead, commentsByAnnouncement, commentLoading, session, isAdmin, onAddComment, onDeleteComment }) => {
+  onEditComment: (commentId: string, announcementId: string, newContent: string) => Promise<void>;
+}> = ({
+  announcements,
+  loading,
+  onMarkAsRead,
+  commentsByAnnouncement,
+  commentLoading,
+  session,
+  isAdmin,
+  onAddComment,
+  onDeleteComment,
+  onEditComment
+}) => {
   const getCategoryBadge = (category: string) => {
     const badges: Record<string, string> = {
       alumni_events: 'bg-purple-100 text-purple-700',
@@ -453,6 +466,7 @@ const AnnouncementPage: React.FC<{
                 isAdmin={isAdmin}
                 onAddComment={onAddComment}
                 onDeleteComment={onDeleteComment}
+                onEditComment={onEditComment}
               />
             </div>
           </div>
@@ -930,6 +944,37 @@ export default function AlumniDashboard({ session }: { session: Session }) {
     }
   };
 
+  // ✅ EDIT COMMENT FUNCTION - ADDED HERE
+  const editComment = async (commentId: string, announcementId: string, newContent: string) => {
+    if (!newContent.trim()) return;
+
+    try {
+      console.log('✏️ Alumni editing comment:', { commentId, announcementId, newContent });
+
+      const { error } = await supabase
+        .from('announcement_comments')
+        .update({
+          content: newContent.trim(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', commentId)
+        .eq('user_id', session.user.id);
+
+      if (error) {
+        console.error('❌ Error editing comment:', error);
+        showToast('Failed to edit comment', 'error');
+        return;
+      }
+
+      console.log('✅ Comment updated successfully');
+      await fetchCommentsForAnnouncement(announcementId);
+      showToast('Comment updated successfully!', 'success');
+    } catch (error) {
+      console.error('❌ Error in editComment:', error);
+      showToast('Failed to edit comment', 'error');
+    }
+  };
+
   const addActivity = async (type: string, description: string) => {
     try {
       await supabase.from('alumni_activities').insert({
@@ -1182,27 +1227,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
     setSaveLoading(false);
   };
 
-  // ✅ TEST NOTIFICATION FUNCTION - ADDED HERE
-  const testNotification = async () => {
-    console.log('🧪 TEST: Sending career notification...');
-    try {
-      const result = await notifyCareerUpdated(
-        profile?.full_name || 'Test Alumni',
-        'Software Engineer',
-        'Google',
-        session.user.id
-      );
-      console.log('✅ Result:', result);
-      if (result) {
-        showToast('✅ Test notification sent! Check admin bell.', 'success');
-      } else {
-        showToast('❌ Notification failed - check console.', 'error');
-      }
-    } catch (error) {
-      console.error('❌ Test failed:', error);
-      showToast('❌ Error: ', 'error');
-    }
-  };
+  
 
   const getFirstName = (name: string | null | undefined) => name?.split(' ')[0] || 'Alumni';
   const unreadCount = announcements.filter(a => !a.viewed).length;
@@ -1284,14 +1309,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
               </div>
 
               {/* ✅ TEST NOTIFICATION BUTTON */}
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={testNotification}
-                className="hidden lg:inline-flex text-xs"
-              >
-                🧪 Test Notif
-              </Button>
+               
 
               {/* ✅ UPDATED: NotificationBell with proper props */}
               <NotificationBell
@@ -1569,6 +1587,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
                 isAdmin={isAdmin}
                 onAddComment={addComment}
                 onDeleteComment={deleteComment}
+                onEditComment={editComment}
               />
             </Card>
           </div>

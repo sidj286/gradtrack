@@ -14,8 +14,6 @@ import {
   notifyNewAnnouncement,
   notifyAnnouncementEdited,
   notifyAlumniVerified,
-  // ✅ REMOVED: notifyCareerUpdated, notifyProfileUpdated, notifyNewRegistration, notifyEmploymentStatusChanged, notifyMasterListImported
-  // These are used in AlumniDashboard or ImportMasterListModal, not here
 } from './lib/notificationUtils';
 
 // ==================== TYPES ====================
@@ -81,6 +79,7 @@ interface AnnouncementComment {
   content: string;
   parent_comment_id: string | null;
   created_at: string;
+  updated_at?: string;
   full_name?: string;
   role?: string;
   replies?: AnnouncementComment[];
@@ -552,7 +551,6 @@ export default function AdminDashboard({ session }: { session: Session }) {
     showSettingsToast('Master list refreshed', 'success');
   };
 
-
   const filteredMasterList = masterListData.filter((record: any) => {
     if (masterListSearch) {
       const searchLower = masterListSearch.toLowerCase();
@@ -620,7 +618,6 @@ export default function AdminDashboard({ session }: { session: Session }) {
 
       if (error) throw error;
 
-      // ✅ 9. ALUMNI VERIFIED - Notify when manually added (already verified)
       await notifyAlumniVerified(manualForm.full_name.trim(), '');
 
       showSettingsToast(`✅ Added ${manualForm.full_name} to master list`, 'success');
@@ -644,7 +641,6 @@ export default function AdminDashboard({ session }: { session: Session }) {
     setLoading(true);
 
     try {
-      // Fetch alumni profiles
       const { data: alumniData, error: alumniError } = await supabase
         .from('alumni_profiles')
         .select('*');
@@ -856,7 +852,6 @@ export default function AdminDashboard({ session }: { session: Session }) {
       .single();
 
     if (!error && inserted) {
-      // ✅ 6. NEW ANNOUNCEMENT - Notify target alumni
       let query = supabase
         .from('alumni_profiles')
         .select('user_id')
@@ -1075,91 +1070,84 @@ export default function AdminDashboard({ session }: { session: Session }) {
     }
   };
 
-const addComment = async (announcementId: string, content: string, parentCommentId: string | null = null) => {
-  if (!content.trim()) return;
+  const addComment = async (announcementId: string, content: string, parentCommentId: string | null = null) => {
+    if (!content.trim()) return;
 
-  try {
-    // 1. Insert the comment
-    const { error } = await supabase
-      .from('announcement_comments')
-      .insert({
-        announcement_id: announcementId,
-        user_id: session.user.id,
-        content: content.trim(),
-        parent_comment_id: parentCommentId
-      });
-
-    if (error) {
-      console.error('Error inserting comment:', error);
-      showSettingsToast('Failed to add comment', 'error');
-      return;
-    }
-
-    // 2. Get the commenter's name
-    const { data: profile } = await supabase
-      .from('alumni_profiles')
-      .select('full_name')
-      .eq('user_id', session.user.id)
-      .single();
-
-    const commenterName = profile?.full_name || 'An alumni';
-
-    // 3. Get the announcement title
-    const { data: ann } = await supabase
-      .from('announcements')
-      .select('title')
-      .eq('id', announcementId)
-      .single();
-
-    const announcementTitle = ann?.title || 'announcement';
-
-    // 4. SEND NOTIFICATION
-    if (parentCommentId) {
-      // REPLY - notify the alumni who wrote the parent comment
-      const { data: parentComment } = await supabase
+    try {
+      const { error } = await supabase
         .from('announcement_comments')
-        .select('user_id')
-        .eq('id', parentCommentId)
+        .insert({
+          announcement_id: announcementId,
+          user_id: session.user.id,
+          content: content.trim(),
+          parent_comment_id: parentCommentId
+        });
+
+      if (error) {
+        console.error('Error inserting comment:', error);
+        showSettingsToast('Failed to add comment', 'error');
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from('alumni_profiles')
+        .select('full_name')
+        .eq('user_id', session.user.id)
         .single();
 
-      if (parentComment) {
-        const adminName = session.user.user_metadata?.full_name || 'Admin';
-        await notifyReplyAdded(
-          parentComment.user_id,
-          adminName,
+      const commenterName = profile?.full_name || 'An alumni';
+
+      const { data: ann } = await supabase
+        .from('announcements')
+        .select('title')
+        .eq('id', announcementId)
+        .single();
+
+      const announcementTitle = ann?.title || 'announcement';
+
+      if (parentCommentId) {
+        const { data: parentComment } = await supabase
+          .from('announcement_comments')
+          .select('user_id')
+          .eq('id', parentCommentId)
+          .single();
+
+        if (parentComment) {
+          const adminName = session.user.user_metadata?.full_name || 'Admin';
+          await notifyReplyAdded(
+            parentComment.user_id,
+            adminName,
+            announcementTitle,
+            content,
+            announcementId
+          );
+        }
+      } else {
+        await notifyCommentAdded(
+          commenterName,
           announcementTitle,
           content,
-          announcementId
+          announcementId,
+          session.user.id
         );
       }
-    } else {
-      // COMMENT - notify ALL admins
-      await notifyCommentAdded(
-        commenterName,
-        announcementTitle,
-        content,
-        announcementId,
-        session.user.id
-      );
+
+      await fetchComments(announcementId);
+
+      await supabase.from('alumni_activities').insert({
+        user_id: session.user.id,
+        activity_type: 'announcement_comment',
+        description: `Commented on announcement: ${content.substring(0, 50)}...`,
+        metadata: { announcement_id: announcementId }
+      });
+
+      showSettingsToast('Comment added successfully!', 'success');
+    } catch (error) {
+      console.error('Error in addComment:', error);
+      showSettingsToast('Failed to add comment', 'error');
     }
+  };
 
-    // 5. Refresh comments
-    await fetchComments(announcementId);
-
-    // 6. Log activity
-    await supabase.from('alumni_activities').insert({
-      user_id: session.user.id,
-      activity_type: 'announcement_comment',
-      description: `Commented on announcement: ${content.substring(0, 50)}...`,
-      metadata: { announcement_id: announcementId }
-    });
-
-    showSettingsToast('Comment added successfully!', 'success');
-  } catch (error) {
-    console.error('Error in addComment:', error);
-    showSettingsToast('Failed to add comment', 'error');
-  }
-};
   const deleteComment = async (commentId: string, announcementId: string) => {
     if (!confirm('Are you sure you want to delete this comment?')) return;
 
@@ -1184,6 +1172,37 @@ const addComment = async (announcementId: string, content: string, parentComment
     }
   };
 
+  // ✅ EDIT COMMENT FUNCTION - ADDED HERE
+  const editComment = async (commentId: string, announcementId: string, newContent: string) => {
+    if (!newContent.trim()) return;
+
+    try {
+      console.log('✏️ Editing comment:', { commentId, announcementId, newContent });
+
+      const { error } = await supabase
+        .from('announcement_comments')
+        .update({
+          content: newContent.trim(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', commentId)
+        .eq('user_id', session.user.id);
+
+      if (error) {
+        console.error('❌ Error editing comment:', error);
+        showSettingsToast('Failed to edit comment', 'error');
+        return;
+      }
+
+      console.log('✅ Comment updated successfully');
+      await fetchComments(announcementId);
+      showSettingsToast('Comment updated successfully!', 'success');
+    } catch (error) {
+      console.error('❌ Error in editComment:', error);
+      showSettingsToast('Failed to edit comment', 'error');
+    }
+  };
+
   const handleEditAnnouncement = async () => {
     if (!editingAnnouncement) return;
 
@@ -1200,7 +1219,6 @@ const addComment = async (announcementId: string, content: string, parentComment
       .eq('id', editingAnnouncement.id);
 
     if (!error) {
-      // ✅ 8. ANNOUNCEMENT EDITED - Notify the admin who edited it
       await notifyAnnouncementEdited(
         session.user.id,
         editForm.title,
@@ -2656,8 +2674,10 @@ const addComment = async (announcementId: string, content: string, parentComment
                               comments={comments[ann.id] || []}
                               loading={commentLoading[ann.id] || false}
                               session={session}
+                              isAdmin={true}
                               onAddComment={addComment}
                               onDeleteComment={deleteComment}
+                              onEditComment={editComment}
                             />
                           </div>
                         )}
