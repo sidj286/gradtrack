@@ -1,12 +1,15 @@
+/* stylelint-disable */
+/* Tailwind CSS v4 imports */
 @import "tailwindcss";
 
+/* Custom theme variables */
 @theme {
   --color-maroon-900: #800000;
   --color-maroon-800: #a52a2a;
   --color-maroon-50: #fff5f5;
 }
 
-/* Dark mode styles - IMPORTANT! */
+/* Dark mode class */
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* Light mode (default) */
@@ -14,11 +17,12 @@
   color-scheme: light;
 }
 
-/* Dark mode class applied to html element */
+/* Dark mode applied to html element */
 .dark {
   color-scheme: dark;
 }
 
+/* Body background */
 body {
   background-color: #f9fafb;
 }
@@ -27,7 +31,9 @@ body {
   background-color: #000000;
 }
 
-/* Custom scrollbar for modals */
+/* ============================================================
+   CUSTOM SCROLLBAR - Unified
+   ============================================================ */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
 }
@@ -37,27 +43,31 @@ body {
   border-radius: 10px;
 }
 
-.dark .custom-scrollbar::-webkit-scrollbar-track {
-  background: #000000;
-}
-
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
+  background: #800000;
   border-radius: 10px;
 }
 
-.dark .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #6b7280;
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #a10000;
 }
 
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
+/* Dark mode scrollbar */
+.dark .custom-scrollbar::-webkit-scrollbar-track {
+  background: #374151;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #800000;
 }
 
 .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: #a10000;
 }
-/* Fade in animation for charts */
+
+/* ============================================================
+   ANIMATIONS
+   ============================================================ */
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -72,23 +82,3 @@ body {
 .animate-fade-in {
   animation: fadeIn 0.5s ease-out;
 }
-.custom-scrollbar::-webkit-scrollbar {
-    width: 6px;
-  }
-  .custom-scrollbar::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 10px;
-  }
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #800000;
-    border-radius: 10px;
-  }
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #a10000;
-  }
-  .dark .custom-scrollbar::-webkit-scrollbar-track {
-    background: #374151;
-  }
-  .dark .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #800000;
-  }

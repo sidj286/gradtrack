@@ -2828,7 +2828,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
                       {masterListStats.byCourse.length}
                     </p>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                      Courses
+                      Program Counts 
                     </p>
                   </div>
                   <div className="w-10 h-10 bg-purple-100 dark:bg-purple-800 rounded-full flex items-center justify-center text-purple-600 text-lg">
