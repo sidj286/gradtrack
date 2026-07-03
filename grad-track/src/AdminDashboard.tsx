@@ -2510,61 +2510,6 @@ export default function AdminDashboard({ session }: { session: Session }) {
             </div>
 
             {/* Filters */}
-            <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
-              <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
-                Filter Announcements
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                    {announcementFilterType === 'all' ? 'Program (Optional)' : announcementFilterType === 'course' ? 'Specific Program' : 'Program Filter'}
-                  </label>
-                  <select
-                    value={announcementFilterCourse}
-                    onChange={(e) => setAnnouncementFilterCourse(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
-                  >
-                    <option value="">All Programs</option>
-                    {courses.map(course => (
-                      <option key={course} value={course}>
-                        {course}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                    {announcementFilterType === 'all' ? 'Batch Year (Optional)' : announcementFilterType === 'batch_year' ? 'Specific Batch Year' : 'Batch Year Filter'}
-                  </label>
-                  <select
-                    value={announcementFilterBatchYear}
-                    onChange={(e) => setAnnouncementFilterBatchYear(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
-                  >
-                    <option value="">All Batch Years</option>
-                    {batchYears.map(year => (
-                      <option key={year} value={year}>
-                        {year}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              {(announcementFilterCourse || announcementFilterBatchYear || announcementFilterType !== 'all') && (
-                <div className="mt-3 text-right">
-                  <button
-                    onClick={() => {
-                      setAnnouncementFilterType('all');
-                      setAnnouncementFilterCourse('');
-                      setAnnouncementFilterBatchYear('');
-                    }}
-                    className="text-xs text-[#800000] hover:underline font-medium"
-                  >
-                    Clear All Filters
-                  </button>
-                </div>
-              )}
-            </div>
 
             {/* Announcements List */}
             <div className="space-y-4">
@@ -3468,111 +3413,20 @@ export default function AdminDashboard({ session }: { session: Session }) {
             <option value="seminars">📚 Seminars</option>
             <option value="career_opportunities">🎯 Career Opportunities</option>
           </select>
-          <select
-            value={newAnnouncement.target_type}
-            onChange={e => setNewAnnouncement({ ...newAnnouncement, target_type: e.target.value, target_course: '', target_batch_year: '' })}
-            className="w-full px-4 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
-          >
-            <option value="all">Send to All Alumni</option>
-            <option value="course">Send by Course</option>
-            <option value="batch_year">Send by Batch Year</option>
-          </select>
+           
 
-          {newAnnouncement.target_type === 'course' && (
-            <div className="space-y-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">
-                Advanced Targeting Options
-              </p>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Select Course *
-                </label>
-                <select
-                  value={newAnnouncement.target_course}
-                  onChange={e => setNewAnnouncement({ ...newAnnouncement, target_course: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
-                  required
-                >
-                  <option value="">Select a course</option>
-                  {courses.map(course => (
-                    <option key={course} value={course}>{course}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Batch Year (Optional)
-                </label>
-                <select
-                  value={newAnnouncement.target_batch_year}
-                  onChange={e => setNewAnnouncement({ ...newAnnouncement, target_batch_year: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
-                >
-                  <option value="">All Batch Years</option>
-                  {batchYears.map(year => (
-                    <option key={year} value={year}>{year}</option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-400 mt-1">
-                  Leave empty to send to all batch years of this course
-                </p>
-              </div>
-            </div>
-          )}
-
-          {newAnnouncement.target_type === 'batch_year' && (
-            <div className="space-y-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">
-                Advanced Targeting Options
-              </p>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Select Batch Year *
-                </label>
-                <select
-                  value={newAnnouncement.target_batch_year}
-                  onChange={e => setNewAnnouncement({ ...newAnnouncement, target_batch_year: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
-                  required
-                >
-                  <option value="">Select a batch year</option>
-                  {batchYears.map(year => (
-                    <option key={year} value={year}>{year}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Course (Optional)
-                </label>
-                <select
-                  value={newAnnouncement.target_course}
-                  onChange={e => setNewAnnouncement({ ...newAnnouncement, target_course: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
-                >
-                  <option value="">All Courses</option>
-                  {courses.map(course => (
-                    <option key={course} value={course}>{course}</option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-400 mt-1">
-                  Leave empty to send to all courses of this batch year
-                </p>
-              </div>
-            </div>
-          )}
 
           {newAnnouncement.target_type === 'all' && (
             <div className="space-y-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
               <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">
-                Advanced Filtering (Optional)
+                Advanced Filtering
               </p>
               <p className="text-xs text-gray-400 mb-2">
                 Leave both empty to send to ALL alumni
               </p>
               <div>
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Filter by Program (Optional)
+                  Filter by Program
                 </label>
                 <select
                   value={newAnnouncement.target_course}
@@ -3587,7 +3441,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Filter by Batch Year (Optional)
+                  Filter by Batch Year 
                 </label>
                 <select
                   value={newAnnouncement.target_batch_year}

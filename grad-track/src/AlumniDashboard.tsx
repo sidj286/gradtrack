@@ -1641,7 +1641,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
 
             {/* CAREER FIELDS - Only show if NOT Unemployed/Seasonal Worker */}
             {employmentForm.employment_status !== 'Unemployed' &&
-              employmentForm.employment_status !== 'Seasonal Worker' && (
+                (
                 <>
                   <Input
                     label="Job Title"
