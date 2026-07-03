@@ -7,7 +7,7 @@ OVERVIEW
 
 GradTrack is a full-stack web application designed to help educational institutions track alumni employment outcomes, automate career data collection, and provide AI-powered career alignment insights. The system features separate dashboards for administrators and alumni, real-time updates, and exportable reports.
 
-Live Demo: https://gradtrack.vercel.app
+Live Demo: https: https://cyncjgradtrack.vercel.app
 
 
 FEATURES
