@@ -830,7 +830,7 @@ export default function ReportsPanel() {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(100, 100, 100);
-    doc.text('Showing which departments have alumni in each specialization', 14, currentY);
+    doc.text('Showing Distribution of entities by category', 14, currentY);
     currentY += 10;
 
     if (specializationData && specializationData.length > 0) {
@@ -857,7 +857,7 @@ export default function ReportsPanel() {
 
       autoTable(doc, {
         startY: currentY,
-        head: [['Specialization', 'Departments', 'Total Count']],
+        head: [['Specialization', 'Department', 'Total Count']],
         body: specTableData,
         theme: 'striped',
         headStyles: {
@@ -1653,10 +1653,10 @@ export default function ReportsPanel() {
             <div className="flex justify-between items-start">
               <h4 className="font-bold text-gray-900 dark:text-white">{dept.department}</h4>
               <button
-                onClick={() => setShowExportModal(true)}
+                 
                 className="text-xs bg-[#800000] text-white px-2 py-1 rounded hover:bg-[#a10000] transition"
               >
-                Export
+                DEPARTMENT
               </button>
             </div>
             <div className="mt-2 space-y-1 text-sm">

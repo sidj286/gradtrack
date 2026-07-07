@@ -286,8 +286,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
   const [weeklyActivities, setWeeklyActivities] = useState<{ day: string; count: number }[]>([]);
 
   const [selectedDepartment, setSelectedDepartment] = useState<string>('CCS');
-  const [departmentBatchData, setDepartmentBatchData] = useState<{ batch: number; total: number; inField: number; rate: number }[]>([]);
-
+  const [departmentBatchData, setDepartmentBatchData] = useState<{ batch: number; total: number; inField: number; rate: number; trend: number | null }[]>([]);
   const [masterListData, setMasterListData] = useState<any[]>([]);
   const [masterListLoading, setMasterListLoading] = useState(false);
   const [masterListSearch, setMasterListSearch] = useState('');
@@ -787,20 +786,36 @@ export default function AdminDashboard({ session }: { session: Session }) {
   };
 
   const processDepartmentBatchData = (alumniData: AlumniProfile[], departmentCode: string) => {
-    const deptAlumni = alumniData.filter(a => a.department === departmentCode);
-    const batchYearsGroup = [...new Set(deptAlumni.map(a => a.batch_year).filter(Boolean))] as number[];
-    batchYearsGroup.sort((a, b) => b - a);
-
-    const batchData = batchYearsGroup.map(batch => {
-      const batchAlumni = deptAlumni.filter(a => a.batch_year === batch);
-      const total = batchAlumni.length;
-      const inField = batchAlumni.filter(a => a.career_alignment_status === 'In-Field').length;
-      const rate = total > 0 ? (inField / total) * 100 : 0;
-      return { batch: batch || 0, total, inField, rate };
-    });
-    setDepartmentBatchData(batchData);
-  };
-
+  const deptAlumni = alumniData.filter(a => a.department === departmentCode);
+  
+  // Get unique batch years and sort OLDEST to NEWEST
+  const batchYearsGroup = [...new Set(deptAlumni.map(a => a.batch_year).filter(Boolean))] as number[];
+  batchYearsGroup.sort((a, b) => a - b);
+  
+  // Calculate data with trends (oldest to newest)
+  const batchData: { batch: number; total: number; inField: number; rate: number; trend: number | null }[] = [];
+  
+  for (let idx = 0; idx < batchYearsGroup.length; idx++) {
+    const batch = batchYearsGroup[idx];
+    const batchAlumni = deptAlumni.filter(a => a.batch_year === batch);
+    const total = batchAlumni.length;
+    const inField = batchAlumni.filter(a => a.career_alignment_status === 'In-Field').length;
+    const rate = total > 0 ? (inField / total) * 100 : 0;
+    
+    let trend: number | null = null;
+    if (idx > 0) {
+      const prevRate = batchData[idx - 1]?.rate ?? 0;
+      trend = rate - prevRate;
+    }
+    
+    batchData.push({ batch, total, inField, rate, trend });
+  }
+  
+  // Reverse for display (newest first)
+  const displayData = batchData.reverse();
+  
+  setDepartmentBatchData(displayData);
+};
   const resetStats = () => {
     setStats({ total: 0, employed: 0, unemployed: 0, inField: 0, outOfField: 0 });
     setEmploymentChartData([
@@ -2291,8 +2306,8 @@ export default function AdminDashboard({ session }: { session: Session }) {
                     </div>
                   ) : (
                     departmentBatchData.map((batch, idx) => {
-                      const prevRate = idx > 0 ? departmentBatchData[idx - 1].rate : batch.rate;
-                      const trend = batch.rate - prevRate;
+                  
+                      
                       return (
                         <div
                           key={batch.batch}
@@ -2327,29 +2342,30 @@ export default function AdminDashboard({ session }: { session: Session }) {
                               Alignment Rate
                             </span>
                             <div className="flex items-center gap-3">
-                              <div className="flex-1 h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                                <div
-                                  className="h-full bg-[#800000] rounded-full"
-                                  style={{ width: `${batch.rate}%` }}
-                                />
-                              </div>
+                              {/*   */}
                               <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
                                 {batch.rate.toFixed(1)}%
                               </span>
                             </div>
                           </div>
                           <div className="flex justify-between md:block">
-                            <span className="md:hidden font-semibold text-gray-500 text-xs">
-                              Trend
-                            </span>
-                            <div>
-                              {idx > 0 && (
-                                <span className={`text-xs font-medium ${trend >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                                  {trend >= 0 ? '↑' : '↓'} {Math.abs(trend).toFixed(1)}%
-                                </span>
-                              )}
-                            </div>
-                          </div>
+  <span className="md:hidden font-semibold text-gray-500 text-xs">
+    Trend
+  </span>
+  <div>
+    {idx < departmentBatchData.length - 1 && batch.trend !== null ? (
+      <span className={`text-xs font-medium px-2 py-1 rounded-lg ${
+        batch.trend >= 0 
+          ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-400' 
+          : 'text-red-600 bg-red-50 dark:bg-red-900/30 dark:text-red-400'
+      }`}>
+        {batch.trend >= 0 ? '↑' : '↓'} {Math.abs(batch.trend).toFixed(1)}%
+      </span>
+    ) : (
+      <span className="text-xs text-gray-400">—</span>
+    )}
+  </div>
+</div>
                         </div>
                       );
                     })
