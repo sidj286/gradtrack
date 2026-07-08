@@ -36,6 +36,7 @@ interface AlumniProfile {
   avatar_url: string | null;
   registered_at?: string;
   updated_at?: string;
+   gender: 'Male' | 'Female' | null; 
 }
 
 interface Announcement {
@@ -2924,161 +2925,176 @@ export default function AdminDashboard({ session }: { session: Session }) {
               </div>
             </Card>
 
-            {/* Master List Table */}
-            <Card>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                  Graduate Records
-                </h3>
-                <div className="flex gap-2">
-                  <button
-                    onClick={refreshMasterList}
-                    className="text-sm text-gray-500 hover:text-[#800000] transition-colors flex items-center gap-1"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    Refresh
-                  </button>
-                   
-                </div>
-              </div>
+           {/* Master List Table */}
+<Card>
+  <div className="flex items-center justify-between mb-4">
+    <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+      Graduate Records
+    </h3>
+    <div className="flex gap-2">
+      <button
+        onClick={refreshMasterList}
+        className="text-sm text-gray-500 hover:text-[#800000] transition-colors flex items-center gap-1"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+        Refresh
+      </button>
+    </div>
+  </div>
 
-              <div className="overflow-x-auto">
+  <div className="overflow-x-auto">
 
-                {/* Header */}
-                <div className="hidden md:grid grid-cols-7 gap-6 px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-t-lg text-sm font-semibold text-gray-600 dark:text-gray-300">
-                  <div>Student ID</div>
-                  <div>Full Name</div>
-                  <div>Email</div>
-                  <div>Program</div>
-                  <div>Department</div>
-                  <div>Batch Year</div>
-                  <div>Status</div>
-                  
-                </div>
+    {/* Header */}
+    <div className="hidden md:grid grid-cols-8 gap-6 px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-t-lg text-sm font-semibold text-gray-600 dark:text-gray-300">
+      <div>Student ID</div>
+      <div>Full Name</div>
+      <div>Gender</div>
+      <div>Email</div>
+      <div>Program</div>
+      <div>Department</div>
+      <div>Batch Year</div>
+      <div>Status</div>
+    </div>
 
-                {/* Rows */}
-                <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {masterListLoading ? (
-                    <div className="px-4 py-12 text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        <div className="w-5 h-5 border-2 border-[#800000]/20 border-t-[#800000] rounded-full animate-spin" />
-                        <span className="text-gray-500">
-                          Loading master list...
-                        </span>
-                      </div>
-                    </div>
-                  ) : paginatedMasterList.length === 0 ? (
-                    <div className="px-4 py-12 text-center text-gray-500">
-                      No records found in master list. Click "Import New List" to add graduate records.
-                    </div>
-                  ) : (
-                    paginatedMasterList.map((record: any) => (
-                      <div
-                        key={record.id}
-                        className="grid grid-cols-1 md:grid-cols-7 gap-6 md:gap-4 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
-                      >
-                        <div className="flex justify-between md:block">
-                          <span className="md:hidden font-semibold text-gray-500 text-xs">
-                            Student ID
-                          </span>
-                          <span className="font-mono text-sm text-gray-900 dark:text-white">
-                            {record.student_id}
-                          </span>
-                        </div>
-                        <div className="flex justify-between md:block">
-                          <span className="md:hidden font-semibold text-gray-500 text-xs">
-                            Full Name
-                          </span>
-                          <span className="font-medium text-gray-900 dark:text-white">
-                            {record.full_name}
-                          </span>
-                        </div>
-                        <div className="flex justify-between md:block">
-                          <span className="md:hidden font-semibold text-gray-500 text-xs">
-                            Email
-                          </span>
-                          <span className="text-sm text-gray-600 dark:text-gray-400 break-words whitespace-normal">
-                            {record.email || ''}
-                          </span>
-                        </div>
-                        <div className="flex justify-between md:block">
-                          <span className="md:hidden font-semibold text-gray-500 text-xs">
-                            Course
-                          </span>
-                          <span className="text-sm text-gray-600 dark:text-gray-400">
-                            {record.course || '-'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between md:block">
-                          <span className="md:hidden font-semibold text-gray-500 text-xs">
-                            Department
-                          </span>
-                          <span className={`inline-block px-2 py-1 text-xs rounded-full ${record.department === 'CCS' ? 'bg-blue-100 text-blue-700' :
-                              record.department === 'CTE' ? 'bg-emerald-100 text-emerald-700' :
-                                record.department === 'CCJE' ? 'bg-red-100 text-red-700' :
-                                  record.department === 'CBE' ? 'bg-amber-100 text-amber-700' :
-                                    record.department === 'PSY' ? 'bg-purple-100 text-purple-700' :
-                                      'bg-gray-100 text-gray-700'
-                            }`}>
-                            {record.department || '—'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between md:block">
-                          <span className="md:hidden font-semibold text-gray-500 text-xs">
-                            Batch Year
-                          </span>
-                          <span className="text-sm text-gray-600 dark:text-gray-400">
-                            {record.batch_year || '-'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between md:block">
-                          <span className="md:hidden font-semibold text-gray-500 text-xs">
-                            Status
-                          </span>
-                          <span className={`px-2 py-1 text-xs font-semibold rounded-full ${record.verified
-                              ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                              : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
-                            }`}>
-                            {record.verified ? 'Verified' : 'Pending'}
-                          </span>
-                        </div>
-                         
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
+    {/* Rows */}
+    <div className="divide-y divide-gray-100 dark:divide-gray-700">
+      {masterListLoading ? (
+        <div className="px-4 py-12 text-center">
+          <div className="flex items-center justify-center gap-2">
+            <div className="w-5 h-5 border-2 border-[#800000]/20 border-t-[#800000] rounded-full animate-spin" />
+            <span className="text-gray-500">
+              Loading master list...
+            </span>
+          </div>
+        </div>
+      ) : paginatedMasterList.length === 0 ? (
+        <div className="px-4 py-12 text-center text-gray-500">
+          No records found in master list. Click "Import New List" to add graduate records.
+        </div>
+      ) : (
+        paginatedMasterList.map((record: any) => (
+          <div
+            key={record.id}
+            className="grid grid-cols-1 md:grid-cols-8 gap-6 md:gap-4 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
+          >
+            <div className="flex justify-between md:block">
+              <span className="md:hidden font-semibold text-gray-500 text-xs">
+                Student ID
+              </span>
+              <span className="font-mono text-sm text-gray-900 dark:text-white">
+                {record.student_id}
+              </span>
+            </div>
+            <div className="flex justify-between md:block">
+              <span className="md:hidden font-semibold text-gray-500 text-xs">
+                Full Name
+              </span>
+              <span className="font-medium text-gray-900 dark:text-white">
+                {record.full_name}
+              </span>
+            </div>
+            <div className="flex justify-between md:block">
+              <span className="md:hidden font-semibold text-gray-500 text-xs">
+                Gender
+              </span>
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                {record.gender ? (
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full ${
+                    record.gender === 'Male' 
+                
+                  }`}>
+                    {record.gender === 'Male' ? '' : ''} {record.gender}
+                  </span>
+                ) : (
+                  <span className="text-gray-400">—</span>
+                )}
+              </span>
+            </div>
+            <div className="flex justify-between md:block">
+              <span className="md:hidden font-semibold text-gray-500 text-xs">
+                Email
+              </span>
+              <span className="text-sm text-gray-600 dark:text-gray-400 break-words whitespace-normal">
+                {record.email || ''}
+              </span>
+            </div>
+            <div className="flex justify-between md:block">
+              <span className="md:hidden font-semibold text-gray-500 text-xs">
+                Course
+              </span>
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                {record.course || '-'}
+              </span>
+            </div>
+            <div className="flex justify-between md:block">
+              <span className="md:hidden font-semibold text-gray-500 text-xs">
+                Department
+              </span>
+              <span className={`inline-block px-2 py-1 text-xs rounded-full ${record.department === 'CCS' ? 'bg-blue-100 text-blue-700' :
+                  record.department === 'CTE' ? 'bg-emerald-100 text-emerald-700' :
+                    record.department === 'CCJE' ? 'bg-red-100 text-red-700' :
+                      record.department === 'CBE' ? 'bg-amber-100 text-amber-700' :
+                        record.department === 'PSY' ? 'bg-purple-100 text-purple-700' :
+                          'bg-gray-100 text-gray-700'
+                }`}>
+                {record.department || '—'}
+              </span>
+            </div>
+            <div className="flex justify-between md:block">
+              <span className="md:hidden font-semibold text-gray-500 text-xs">
+                Batch Year
+              </span>
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                {record.batch_year || '-'}
+              </span>
+            </div>
+            <div className="flex justify-between md:block">
+              <span className="md:hidden font-semibold text-gray-500 text-xs">
+                Status
+              </span>
+              <span className={`px-2 py-1 text-xs font-semibold rounded-full ${record.verified
+                  ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                  : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
+                }`}>
+                {record.verified ? 'Verified' : 'Pending'}
+              </span>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  </div>
 
-              {/* Pagination */}
-              {filteredMasterList.length > 0 && (
-                <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-                  <p className="text-sm text-gray-500">
-                    Showing {paginatedMasterList.length} of {filteredMasterList.length} records
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setMasterListPage(Math.max(1, masterListPage - 1))}
-                      disabled={masterListPage === 1}
-                      className="px-3 py-1 text-sm border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                    >
-                      Previous
-                    </button>
-                    <span className="px-3 py-1 text-sm text-gray-600 dark:text-gray-400">
-                      Page {masterListPage} of {Math.ceil(filteredMasterList.length / itemsPerPage)}
-                    </span>
-                    <button
-                      onClick={() => setMasterListPage(masterListPage + 1)}
-                      disabled={masterListPage === Math.ceil(filteredMasterList.length / itemsPerPage)}
-                      className="px-3 py-1 text-sm border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                    >
-                      Next
-                    </button>
-                  </div>
-                </div>
-              )}
-            </Card>
+  {/* Pagination */}
+  {filteredMasterList.length > 0 && (
+    <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+      <p className="text-sm text-gray-500">
+        Showing {paginatedMasterList.length} of {filteredMasterList.length} records
+      </p>
+      <div className="flex gap-2">
+        <button
+          onClick={() => setMasterListPage(Math.max(1, masterListPage - 1))}
+          disabled={masterListPage === 1}
+          className="px-3 py-1 text-sm border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+        >
+          Previous
+        </button>
+        <span className="px-3 py-1 text-sm text-gray-600 dark:text-gray-400">
+          Page {masterListPage} of {Math.ceil(filteredMasterList.length / itemsPerPage)}
+        </span>
+        <button
+          onClick={() => setMasterListPage(masterListPage + 1)}
+          disabled={masterListPage === Math.ceil(filteredMasterList.length / itemsPerPage)}
+          className="px-3 py-1 text-sm border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  )}
+</Card>
           </div>
         )}
         {activeMainTab === 'reports' && <ReportsPanel />}
@@ -3501,194 +3517,223 @@ export default function AdminDashboard({ session }: { session: Session }) {
         {selectedAlumni && (
           <div className="max-h-[80vh] overflow-y-auto pr-2 custom-scrollbar">
 
-            {/* Header Section with Profile Picture */}
-            <div className="flex items-center gap-4 pb-4 border-b border-gray-100 dark:border-gray-700">
+           {/* Header Section with Profile Picture */}
+<div className="flex items-center gap-4 pb-4 border-b border-gray-100 dark:border-gray-700">
 
-              {selectedAlumni.avatar_url ? (
-                <img
-                  src={selectedAlumni.avatar_url}
-                  alt={selectedAlumni.full_name || 'Alumni'}
-                  className="w-16 h-16 rounded-full object-cover border-2 border-[#800000] shadow-md"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = 'none';
-                    const parent = (e.target as HTMLImageElement).parentElement;
-                    if (parent) {
-                      const fallback = document.createElement('div');
-                      fallback.className = 'w-16 h-16 bg-gradient-to-br from-[#800000] to-[#a10000] rounded-full flex items-center justify-center text-white font-bold text-2xl shadow-md';
-                      fallback.textContent = selectedAlumni.full_name?.charAt(0).toUpperCase() || 'A';
-                      parent.appendChild(fallback);
-                    }
-                  }}
-                />
-              ) : (
-                <div className="w-16 h-16 bg-gradient-to-br from-[#800000] to-[#a10000] rounded-full flex items-center justify-center text-white font-bold text-2xl shadow-md">
-                  {selectedAlumni.full_name?.charAt(0).toUpperCase() || 'A'}
-                </div>
-              )}
+  {selectedAlumni.avatar_url ? (
+    <img
+      src={selectedAlumni.avatar_url}
+      alt={selectedAlumni.full_name || 'Alumni'}
+      className="w-16 h-16 rounded-full object-cover border-2 border-[#800000] shadow-md"
+      onError={(e) => {
+        (e.target as HTMLImageElement).style.display = 'none';
+        const parent = (e.target as HTMLImageElement).parentElement;
+        if (parent) {
+          const fallback = document.createElement('div');
+          fallback.className = 'w-16 h-16 bg-gradient-to-br from-[#800000] to-[#a10000] rounded-full flex items-center justify-center text-white font-bold text-2xl shadow-md';
+          fallback.textContent = selectedAlumni.full_name?.charAt(0).toUpperCase() || 'A';
+          parent.appendChild(fallback);
+        }
+      }}
+    />
+  ) : (
+    <div className="w-16 h-16 bg-gradient-to-br from-[#800000] to-[#a10000] rounded-full flex items-center justify-center text-white font-bold text-2xl shadow-md">
+      {selectedAlumni.full_name?.charAt(0).toUpperCase() || 'A'}
+    </div>
+  )}
 
-              <div>
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white">
-                  {selectedAlumni.full_name || 'Unknown'}
-                </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  User ID: {selectedAlumni.user_id?.slice(0, 8)}...
-                </p>
-                {selectedAlumni.career_alignment_status === 'In-Field' ? (
-                  <span className="inline-block mt-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-700">
-                    ✓ Career Aligned (In-Field)
-                  </span>
-                ) : selectedAlumni.career_alignment_status === 'Out-of-Field' ? (
-                  <span className="inline-block mt-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-700">
-                    ⚠️ Not Aligned (Out-of-Field)
-                  </span>
-                ) : (
-                  <span className="inline-block mt-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-gray-100 text-gray-500">
-                    ⏳ Pending Classification
-                  </span>
-                )}
-              </div>
-            </div>
+  <div className="flex-1">
+    <div className="flex flex-wrap items-center gap-2">
+      <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+        {selectedAlumni.full_name || 'Unknown'}
+      </h3>
+      {selectedAlumni.gender && (
+        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-semibold rounded-full ${
+          selectedAlumni.gender === 'Male' 
+            ? 'bg-blue-100 text-blue-700' 
+            : 'bg-pink-100 text-pink-700'
+        }`}>
+          {selectedAlumni.gender === 'Male' ? '' : ''} {selectedAlumni.gender}
+        </span>
+      )}
+    </div>
+    <p className="text-sm text-gray-500 dark:text-gray-400">
+      User ID: {selectedAlumni.user_id?.slice(0, 8)}...
+    </p>
+    {selectedAlumni.career_alignment_status === 'In-Field' ? (
+      <span className="inline-block mt-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-700">
+        ✓ Career Aligned (In-Field)
+      </span>
+    ) : selectedAlumni.career_alignment_status === 'Out-of-Field' ? (
+      <span className="inline-block mt-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-700">
+        ⚠️ Not Aligned (Out-of-Field)
+      </span>
+    ) : (
+      <span className="inline-block mt-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-gray-100 text-gray-500">
+        ⏳ Pending Classification
+      </span>
+    )}
+  </div>
+</div>
 
-            {/* Two Column Grid for Details */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+{/* Two Column Grid for Details */}
+<div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
 
-              {/* Left Column - Academic Information */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 pb-2 border-b border-gray-100 dark:border-gray-700">
-                  <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center text-xs">
-                    🎓
-                  </div>
-                  <h4 className="font-semibold text-gray-900 dark:text-white">
-                    Academic Information
-                  </h4>
-                </div>
+  {/* Left Column - Academic Information */}
+  <div className="space-y-4">
+    <div className="flex items-center gap-2 pb-2 border-b border-gray-100 dark:border-gray-700">
+      <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center text-xs">
+        🎓
+      </div>
+      <h4 className="font-semibold text-gray-900 dark:text-white">
+        Academic Information
+      </h4>
+    </div>
 
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      Full Name
-                    </label>
-                    <p className="text-sm text-gray-900 dark:text-white font-medium mt-1">
-                      {selectedAlumni.full_name || 'Not specified'}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      Course / Program
-                    </label>
-                    <p className="text-sm text-gray-900 dark:text-white mt-1">
-                      {selectedAlumni.course || 'Not specified'}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      Department
-                    </label>
-                    <p className="text-sm text-gray-900 dark:text-white mt-1">
-                      <span className={`inline-block px-2 py-0.5 text-xs rounded-full ${selectedAlumni.department === 'CCS' ? 'bg-blue-100 text-blue-700' :
-                          selectedAlumni.department === 'CTE' ? 'bg-emerald-100 text-emerald-700' :
-                            selectedAlumni.department === 'CCJE' ? 'bg-red-100 text-red-700' :
-                              selectedAlumni.department === 'CBE' ? 'bg-amber-100 text-amber-700' :
-                                selectedAlumni.department === 'PSY' ? 'bg-purple-100 text-purple-700' :
-                                  'bg-gray-100 text-gray-700'
-                        }`}>
-                        {selectedAlumni.department || 'Not assigned'}
-                      </span>
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      Batch Year
-                    </label>
-                    <p className="text-sm text-gray-900 dark:text-white mt-1">
-                      {selectedAlumni.batch_year || 'Not specified'}
-                    </p>
-                  </div>
-                </div>
-              </div>
+    <div className="space-y-3">
+      <div>
+        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+          Full Name
+        </label>
+        <p className="text-sm text-gray-900 dark:text-white font-medium mt-1">
+          {selectedAlumni.full_name || 'Not specified'}
+        </p>
+      </div>
+      <div>
+        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+          Gender
+        </label>
+        <p className="text-sm text-gray-900 dark:text-white mt-1 flex items-center gap-2">
+          {selectedAlumni.gender ? (
+            <>
+              <span className="text-base">
+                {selectedAlumni.gender === 'Male' ? '' : ''}
+              </span>
+              <span>{selectedAlumni.gender}</span>
+            </>
+          ) : (
+            <span className="text-gray-400">Not specified</span>
+          )}
+           
+        </p>
+      </div>
+      <div>
+        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+          Course / Program
+        </label>
+        <p className="text-sm text-gray-900 dark:text-white mt-1">
+          {selectedAlumni.course || 'Not specified'}
+        </p>
+      </div>
+      <div>
+        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+          Department
+        </label>
+        <p className="text-sm text-gray-900 dark:text-white mt-1">
+          <span className={`inline-block px-2 py-0.5 text-xs rounded-full ${selectedAlumni.department === 'CCS' ? 'bg-blue-100 text-blue-700' :
+              selectedAlumni.department === 'CTE' ? 'bg-emerald-100 text-emerald-700' :
+                selectedAlumni.department === 'CCJE' ? 'bg-red-100 text-red-700' :
+                  selectedAlumni.department === 'CBE' ? 'bg-amber-100 text-amber-700' :
+                    selectedAlumni.department === 'PSY' ? 'bg-purple-100 text-purple-700' :
+                      'bg-gray-100 text-gray-700'
+            }`}>
+            {selectedAlumni.department || 'Not assigned'}
+          </span>
+        </p>
+      </div>
+      <div>
+        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+          Batch Year
+        </label>
+        <p className="text-sm text-gray-900 dark:text-white mt-1">
+          {selectedAlumni.batch_year || 'Not specified'}
+        </p>
+      </div>
+    </div>
+  </div>
 
-              {/* Right Column - Career Information */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 pb-2 border-b border-gray-100 dark:border-gray-700">
-                  <div className="w-6 h-6 bg-emerald-100 rounded-lg flex items-center justify-center text-xs">
-                    💼
-                  </div>
-                  <h4 className="font-semibold text-gray-900 dark:text-white">
-                    Career Information
-                  </h4>
-                </div>
+  {/* Right Column - Career Information */}
+  <div className="space-y-4">
+    <div className="flex items-center gap-2 pb-2 border-b border-gray-100 dark:border-gray-700">
+      <div className="w-6 h-6 bg-emerald-100 rounded-lg flex items-center justify-center text-xs">
+        💼
+      </div>
+      <h4 className="font-semibold text-gray-900 dark:text-white">
+        Career Information
+      </h4>
+    </div>
 
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      Employment Status
-                    </label>
-                    <p className="text-sm text-gray-900 dark:text-white mt-1">
-                      <span className={`inline-block px-2 py-0.5 text-xs rounded-full ${selectedAlumni.employment_status === 'Employed' ? 'bg-emerald-100 text-emerald-700' :
-                          selectedAlumni.employment_status === 'Unemployed' ? 'bg-red-100 text-red-700' :
-                            'bg-gray-100 text-gray-700'
-                        }`}>
-                        {selectedAlumni.employment_status || 'Not specified'}
-                      </span>
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      Job Title
-                    </label>
-                    <p className="text-sm text-gray-900 dark:text-white mt-1">
-                      {selectedAlumni.job_title || 'Not specified'}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      Industry
-                    </label>
-                    <p className="text-sm text-gray-900 dark:text-white mt-1">
-                      {selectedAlumni.industry || 'Not specified'}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      Company
-                    </label>
-                    <p className="text-sm text-gray-900 dark:text-white mt-1">
-                      {selectedAlumni.company || 'Not specified'}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      Location
-                    </label>
-                    <p className="text-sm text-gray-900 dark:text-white mt-1">
-                      {selectedAlumni.location || 'Not specified'}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      LinkedIn Profile
-                    </label>
-                    {selectedAlumni.linkedin_url ? (
-                      <a
-                        href={selectedAlumni.linkedin_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-[#800000] hover:underline flex items-center gap-1 mt-1"
-                      >
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z" />
-                        </svg>
-                        View LinkedIn Profile
-                      </a>
-                    ) : (
-                      <p className="text-sm text-gray-500 mt-1">
-                        Not specified
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
+    <div className="space-y-3">
+      <div>
+        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+          Employment Status
+        </label>
+        <p className="text-sm text-gray-900 dark:text-white mt-1">
+          <span className={`inline-block px-2 py-0.5 text-xs rounded-full ${selectedAlumni.employment_status === 'Employed' ? 'bg-emerald-100 text-emerald-700' :
+              selectedAlumni.employment_status === 'Unemployed' ? 'bg-red-100 text-red-700' :
+                'bg-gray-100 text-gray-700'
+            }`}>
+            {selectedAlumni.employment_status || 'Not specified'}
+          </span>
+        </p>
+      </div>
+      <div>
+        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+          Job Title
+        </label>
+        <p className="text-sm text-gray-900 dark:text-white mt-1">
+          {selectedAlumni.job_title || 'Not specified'}
+        </p>
+      </div>
+      <div>
+        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+          Industry
+        </label>
+        <p className="text-sm text-gray-900 dark:text-white mt-1">
+          {selectedAlumni.industry || 'Not specified'}
+        </p>
+      </div>
+      <div>
+        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+          Company
+        </label>
+        <p className="text-sm text-gray-900 dark:text-white mt-1">
+          {selectedAlumni.company || 'Not specified'}
+        </p>
+      </div>
+      <div>
+        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+          Location
+        </label>
+        <p className="text-sm text-gray-900 dark:text-white mt-1">
+          {selectedAlumni.location || 'Not specified'}
+        </p>
+      </div>
+      <div>
+        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+          LinkedIn Profile
+        </label>
+        {selectedAlumni.linkedin_url ? (
+          <a
+            href={selectedAlumni.linkedin_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-[#800000] hover:underline flex items-center gap-1 mt-1"
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z" />
+            </svg>
+            View LinkedIn Profile
+          </a>
+        ) : (
+          <p className="text-sm text-gray-500 mt-1">
+            Not specified
+          </p>
+        )}
+      </div>
+    </div>
+  </div>
+</div>
 
             {/* AI Classification Section */}
             <div className="bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 rounded-xl p-4 border border-purple-100 dark:border-purple-800 mt-4">

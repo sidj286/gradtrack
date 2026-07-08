@@ -32,6 +32,7 @@ interface Profile {
   ai_confidence_score: number | null;
   profile_completion: number;
   avatar_url: string | null;
+  gender: 'Male' | 'Female' | null; 
 }
 
 interface Announcement {
@@ -700,96 +701,140 @@ export default function AlumniDashboard({ session }: { session: Session }) {
     setTimeout(() => setToast(null), 4000);
   };
 
-  const fetchProfile = async () => {
-    try {
-      console.log('Fetching profile for user:', session.user.id);
-      const { data, error } = await supabase
-        .from('alumni_profiles')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .maybeSingle();
+ const fetchProfile = async () => {
+  try {
+    console.log('Fetching profile for user:', session.user.id);
+    const { data, error } = await supabase
+      .from('alumni_profiles')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .maybeSingle();
 
-      if (error) {
-        console.error('Error fetching profile:', error);
+    if (error) {
+      console.error('Error fetching profile:', error);
+      setLoading(false);
+      return;
+    }
+
+    if (!data) {
+      console.log('No profile found, creating new profile...');
+      
+      // 🔍 Try to get gender from graduates_master
+      let genderFromMaster = null;
+      try {
+        const { data: gradData } = await supabase
+          .from('graduates_master')
+          .select('gender')
+          .eq('student_id', session.user.user_metadata?.student_id || '')
+          .maybeSingle();
+        
+        if (gradData && (gradData.gender === 'Male' || gradData.gender === 'Female')) {
+          genderFromMaster = gradData.gender;
+        }
+      } catch (err) {
+        console.warn('Could not fetch gender from master:', err);
+      }
+
+      const newProfile = {
+        user_id: session.user.id,
+        full_name: session.user.user_metadata?.full_name || '',
+        course: '',
+        batch_year: null,
+        company: '',
+        job_title: '',
+        industry: '',
+        location: '',
+        employment_status: 'Unemployed',
+        linkedin_url: '',
+        auto_sync_enabled: false,
+        career_alignment_bool: null,
+        ai_confidence_score: 0,
+        profile_completion: 15,
+        avatar_url: null,
+        gender: genderFromMaster || null,
+      };
+      
+      const { data: created, error: insertError } = await supabase
+        .from('alumni_profiles')
+        .insert(newProfile)
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('Error creating profile:', insertError);
         setLoading(false);
         return;
       }
 
-      if (!data) {
-        console.log('No profile found, creating new profile...');
-        const newProfile = {
-          user_id: session.user.id,
-          full_name: session.user.user_metadata?.full_name || '',
-          course: '',
-          batch_year: null,
-          company: '',
-          job_title: '',
-          industry: '',
-          location: '',
-          employment_status: 'Unemployed',
-          linkedin_url: '',
-          auto_sync_enabled: false,
-          career_alignment_bool: null,
-          ai_confidence_score: 0,
-          profile_completion: 15,
-          avatar_url: null,
-        };
-        const { data: created, error: insertError } = await supabase
-          .from('alumni_profiles')
-          .insert(newProfile)
-          .select()
-          .single();
+      await notifyNewRegistration(
+        created.full_name || 'New Alumni',
+        created.course || 'Course not set',
+        created.user_id
+      );
 
-        if (insertError) {
-          console.error('Error creating profile:', insertError);
-          setLoading(false);
-          return;
-        }
-
-        // ✅ #5 NEW REGISTRATION - Notify all admins when a new alumni registers
-        await notifyNewRegistration(
-          created.full_name || 'New Alumni',
-          created.course || 'Course not set',
-          created.user_id
-        );
-
-        setProfile(created);
-        console.log('Profile created successfully');
-      } else {
-        let avatarUrl = null;
-        if (data.avatar_url) {
-          const { data: publicUrlData } = supabase.storage
-            .from('profile-pictures')
-            .getPublicUrl(data.avatar_url);
-          avatarUrl = publicUrlData.publicUrl;
-        }
-        setProfile({ ...data, avatar_url: avatarUrl });
-        setEmploymentForm({
-          job_title: data.job_title || '',
-          company: data.company || '',
-          employment_status: data.employment_status || 'Unemployed',
-          industry: data.industry || '',
-          location: data.location || '',
-          linkedin_url: data.linkedin_url || '',
-        });
-
-        console.log('Profile loaded');
+      setProfile(created);
+      console.log('Profile created successfully');
+    } else {
+      let avatarUrl = null;
+      if (data.avatar_url) {
+        const { data: publicUrlData } = supabase.storage
+          .from('profile-pictures')
+          .getPublicUrl(data.avatar_url);
+        avatarUrl = publicUrlData.publicUrl;
       }
+      
+      let finalData = { ...data, avatar_url: avatarUrl };
+      
+      // 🔍 Sync gender from master if missing
+      if (!data.gender) {
+        try {
+          const { data: gradData } = await supabase
+            .from('graduates_master')
+            .select('gender')
+            .eq('student_id', data.student_id || '')
+            .maybeSingle();
+          
+          if (gradData?.gender && (gradData.gender === 'Male' || gradData.gender === 'Female')) {
+            await supabase
+              .from('alumni_profiles')
+              .update({ gender: gradData.gender })
+              .eq('id', data.id);
+            
+            finalData.gender = gradData.gender;
+            console.log('✅ Gender synced from master:', gradData.gender);
+          }
+        } catch (err) {
+          console.warn('Could not sync gender from master:', err);
+        }
+      }
+      
+      setProfile(finalData);
+      setEmploymentForm({
+        job_title: data.job_title || '',
+        company: data.company || '',
+        employment_status: data.employment_status || 'Unemployed',
+        industry: data.industry || '',
+        location: data.location || '',
+        linkedin_url: data.linkedin_url || '',
+      });
 
-      const { data: roleData } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', session.user.id)
-        .maybeSingle();
-
-      setIsAdmin(roleData?.role === 'Admin');
-    } catch (err) {
-      console.error('Unexpected error in fetchProfile:', err);
-    } finally {
-      setLoading(false);
-      console.log('fetchProfile finished, loading set to false');
+      console.log('Profile loaded');
     }
-  };
+
+    const { data: roleData } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', session.user.id)
+      .maybeSingle();
+
+    setIsAdmin(roleData?.role === 'Admin');
+  } catch (err) {
+    console.error('Unexpected error in fetchProfile:', err);
+  } finally {
+    setLoading(false);
+    console.log('fetchProfile finished, loading set to false');
+  }
+};
 
   const fetchCommentsForAnnouncement = async (announcementId: string) => {
     setCommentLoading(prev => ({ ...prev, [announcementId]: true }));
@@ -1347,62 +1392,67 @@ export default function AlumniDashboard({ session }: { session: Session }) {
               <p className="text-xs sm:text-sm text-gray-600 mt-1">Track your career journey and stay connected with your alma mater</p>
             </div>
 
-            {/* Profile Header Card */}
-            <Card className="p-4 sm:p-6 hover:shadow-xl transition-all duration-300">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-6">
-                <div className="flex items-center gap-4 sm:gap-6">
-                  <div className="relative group">
-                    <img
-                      src={profile?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.full_name || 'A')}&background=800000&color=fff&rounded=true&size=80`}
-                      alt="Profile"
-                      className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover shadow-lg ring-4 ring-white"
-                    />
-                    <div className="absolute inset-0 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                      <label className="cursor-pointer p-1 sm:p-1.5 bg-white rounded-full text-gray-700 hover:bg-gray-100 transition-colors text-xs sm:text-base">
-                        📷
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) uploadAvatar(file);
-                          }}
-                        />
-                      </label>
-                      {profile?.avatar_url && (
-                        <button
-                          onClick={removeAvatar}
-                          className="p-1 sm:p-1.5 bg-white rounded-full text-red-500 hover:bg-gray-100 transition-colors text-xs sm:text-base"
-                        >
-                          🗑️
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <h2 className="text-base sm:text-2xl font-bold text-gray-900">{profile?.full_name || 'Loading...'}</h2>
-                      <Badge variant="success">✓ Verified</Badge>
-                    </div>
-                    <p className="text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3">
-                      {profile?.course || 'Course not set'} • Class of {profile?.batch_year || '----'}
-                    </p>
-                    <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                      {profile?.employment_status && profile.employment_status !== 'Unemployed' && (
-                        <Badge variant="info">{profile.employment_status}</Badge>
-                      )}
-                      <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-lg bg-amber-50 text-amber-700">
-                        🔒 Verified from Master List
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <Button size="sm" onClick={() => setShowEmploymentModal(true)}>
-                  Update Career
-                </Button>
-              </div>
-            </Card>
+           {/* Profile Header Card */}
+<Card className="p-4 sm:p-6 hover:shadow-xl transition-all duration-300">
+  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-6">
+    <div className="flex items-center gap-4 sm:gap-6">
+      <div className="relative group">
+        <img
+          src={profile?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.full_name || 'A')}&background=800000&color=fff&rounded=true&size=80`}
+          alt="Profile"
+          className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover shadow-lg ring-4 ring-white"
+        />
+        <div className="absolute inset-0 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+          <label className="cursor-pointer p-1 sm:p-1.5 bg-white rounded-full text-gray-700 hover:bg-gray-100 transition-colors text-xs sm:text-base">
+            📷
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) uploadAvatar(file);
+              }}
+            />
+          </label>
+          {profile?.avatar_url && (
+            <button
+              onClick={removeAvatar}
+              className="p-1 sm:p-1.5 bg-white rounded-full text-red-500 hover:bg-gray-100 transition-colors text-xs sm:text-base"
+            >
+              🗑️
+            </button>
+          )}
+        </div>
+      </div>
+      <div>
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <h2 className="text-base sm:text-2xl font-bold text-gray-900">{profile?.full_name || 'Loading...'}</h2>
+          <Badge variant="success">✓ Verified</Badge>
+          {profile?.gender && (
+            <Badge variant={profile.gender === 'Male' ? 'info' : 'warning'}>
+              {profile.gender === 'Male' ? '' : ''} {profile.gender}
+            </Badge>
+          )}
+        </div>
+        <p className="text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3">
+          {profile?.course || 'Course not set'} • Class of {profile?.batch_year || '----'}
+        </p>
+        <div className="flex flex-wrap gap-1.5 sm:gap-2">
+          {profile?.employment_status && profile.employment_status !== 'Unemployed' && (
+            <Badge variant="info">{profile.employment_status}</Badge>
+          )}
+          <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-lg bg-amber-50 text-amber-700">
+             Verified from Master List
+          </span>
+        </div>
+      </div>
+    </div>
+    <Button size="sm" onClick={() => setShowEmploymentModal(true)}>
+      Update Career
+    </Button>
+  </div>
+</Card>
 
             {/* Stats Grid */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
@@ -1452,38 +1502,44 @@ export default function AlumniDashboard({ session }: { session: Session }) {
             </div>
 
             {/* Verified Information Section */}
-            <Card className="p-4 sm:p-6 bg-gradient-to-r from-amber-50/30 to-transparent border-amber-100">
-              <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-amber-100 rounded-lg sm:rounded-xl flex items-center justify-center text-base sm:text-lg">
-                  🔒
-                </div>
-                <div>
-                  <h3 className="text-sm sm:text-lg font-bold text-gray-900">Verified Academic Records</h3>
-                  <p className="text-[10px] sm:text-xs text-gray-500">From Master List - Contact admin for corrections</p>
-                </div>
-              </div>
+<Card className="p-4 sm:p-6 bg-gradient-to-r from-amber-50/30 to-transparent border-amber-100">
+  <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
+    <div className="w-8 h-8 sm:w-10 sm:h-10 bg-amber-100 rounded-lg sm:rounded-xl flex items-center justify-center text-base sm:text-lg">
+      🔒
+    </div>
+    <div>
+      <h3 className="text-sm sm:text-lg font-bold text-gray-900">Verified Academic Records</h3>
+      <p className="text-[10px] sm:text-xs text-gray-500">From Master List - Contact admin for corrections</p>
+    </div>
+  </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-6">
-                <InfoBox
-                  title="Full Name"
-                  value={profile?.full_name}
-                  icon="👤"
-                  hint="Official records - Contact admin"
-                />
-                <InfoBox
-                  title="Course / Program"
-                  value={profile?.course}
-                  icon="📚"
-                  hint="Official records - Contact admin"
-                />
-                <InfoBox
-                  title="Batch Year"
-                  value={profile?.batch_year}
-                  icon="🎓"
-                  hint="Official records - Contact admin"
-                />
-              </div>
-            </Card>
+  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
+    <InfoBox
+      title="Full Name"
+      value={profile?.full_name}
+      icon="👤"
+      hint="Official records - Contact admin"
+    />
+    <InfoBox
+      title="Gender"
+      value={profile?.gender || 'Not specified'}
+      icon={profile?.gender === 'Male' ? '' : profile?.gender === 'Female' ? '' : '🚻'}
+      hint="Official records - Contact admin"
+    />
+    <InfoBox
+      title="Course / Program"
+      value={profile?.course}
+      icon="📚"
+      hint="Official records - Contact admin"
+    />
+    <InfoBox
+      title="Batch Year"
+      value={profile?.batch_year}
+      icon="🎓"
+      hint="Official records - Contact admin"
+    />
+  </div>
+</Card>
 
             {/* Career Information Section */}
             <Card className="p-4 sm:p-6">
