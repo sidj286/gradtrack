@@ -355,13 +355,18 @@ export default function AnnouncementComments({
             }
           }}
         />
-        <button
-          onClick={handleAddComment}
-          disabled={isSubmitting || !newComment.trim()}
-          className="px-4 py-2 text-sm bg-[#800000] text-white rounded-lg hover:bg-[#6a0000] transition disabled:opacity-50 whitespace-nowrap"
-        >
-          {isSubmitting ? '...' : 'Comment'}
-        </button>
+       <button
+  onClick={handleAddComment}
+  disabled={isSubmitting || !newComment.trim()}
+  className="px-3 py-1 text-white bg-[#800000] rounded-lg hover:bg-[#6a0000] transition disabled:opacity-50 disabled:cursor-not-allowed"
+  aria-label="Send comment"
+>
+  {isSubmitting ? (
+    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+  ) : (
+    <span className="text-2xl leading-none">⮚</span>
+  )}
+</button>
       </div>
 
       {/* Comments List */}
