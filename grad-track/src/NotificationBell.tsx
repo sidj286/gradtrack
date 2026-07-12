@@ -28,12 +28,14 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const fetchNotifications = async () => {
+    if (!userId) return;
+    
     setLoading(true);
     try {
       const data = await getNotifications(userId);
-      setNotifications(data);
+      setNotifications(data || []);
       const count = await getUnreadCount(userId);
-      setUnreadCount(count);
+      setUnreadCount(count || 0);
     } catch (error) {
       console.error('Error fetching notifications:', error);
     } finally {
@@ -42,11 +44,15 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
   };
 
   useEffect(() => {
-    if (!userId) return;
-    
-    fetchNotifications();
+    if (userId) {
+      fetchNotifications();
+    }
+  }, [userId]);
 
-    // ✅ REAL-TIME SUBSCRIPTION FOR NOTIFICATIONS
+  // Real-time subscription
+  useEffect(() => {
+    if (!userId) return;
+
     const channel = supabase
       .channel(`notifications-${userId}`)
       .on(
@@ -58,7 +64,7 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
           filter: `user_id=eq.${userId}`,
         },
         (payload) => {
-          console.log(`🔔 New notification for user ${userId}:`, payload);
+          console.log('🔔 New notification received!', payload);
           fetchNotifications();
         }
       )
@@ -71,13 +77,11 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
           filter: `user_id=eq.${userId}`,
         },
         (payload) => {
-          console.log(`📝 Notification updated for user ${userId}:`, payload);
+          console.log('📝 Notification updated!', payload);
           fetchNotifications();
         }
       )
-      .subscribe((status) => {
-        console.log(`📡 Notification subscription status for ${userId}:`, status);
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -113,9 +117,13 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
     if (!notification.is_read) {
       handleMarkAsRead(notification.id);
     }
+    
+    // ✅ Call the parent callback if provided
     if (onNotificationClick) {
       onNotificationClick(notification);
     }
+    
+    // ✅ Close dropdown
     setIsOpen(false);
   };
 
@@ -159,11 +167,9 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 md:w-96 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden z-50">
-          <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-700 bg-gradient-to-r from-[#800000]/5 to-transparent">
-            <h3 className="font-bold text-gray-900 dark:text-white">
-              Notifications
-            </h3>
+        <div className="absolute right-0 mt-2 w-80 md:w-96 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden z-50 max-h-[500px] flex flex-col">
+          <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-700 bg-gradient-to-r from-[#800000]/5 to-transparent flex-shrink-0">
+            <h3 className="font-bold text-gray-900 dark:text-white">Notifications</h3>
             {unreadCount > 0 && (
               <button
                 onClick={handleMarkAllAsRead}
@@ -174,7 +180,7 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
             )}
           </div>
 
-          <div className="max-h-96 overflow-y-auto">
+          <div className="overflow-y-auto flex-1">
             {loading ? (
               <div className="flex items-center justify-center py-8">
                 <div className="w-6 h-6 border-2 border-[#800000]/20 border-t-[#800000] rounded-full animate-spin" />
@@ -224,6 +230,9 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
                       {!notification.is_read && (
                         <span className="w-2 h-2 bg-[#800000] rounded-full animate-pulse" />
                       )}
+                      {notification.link && (
+                        <span className="text-xs text-[#800000] font-medium">🔗 Tap to view</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -231,7 +240,7 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
             )}
           </div>
 
-          <div className="p-3 bg-gray-50 dark:bg-gray-900 border-t border-gray-100 dark:border-gray-700 text-center">
+          <div className="p-3 bg-gray-50 dark:bg-gray-900 border-t border-gray-100 dark:border-gray-700 text-center flex-shrink-0">
             <p className="text-[10px] text-gray-400 dark:text-gray-500">
               {notifications.length} notification{notifications.length !== 1 ? 's' : ''}
             </p>

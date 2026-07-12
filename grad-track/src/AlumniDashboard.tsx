@@ -427,6 +427,7 @@ const AnnouncementPage: React.FC<{
       {announcements.map(ann => (
         <article
           key={ann.id}
+          id={`announcement-${ann.id}`}  // ✅ ADDED THIS
           className={`rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition-all duration-300 hover:shadow-md sm:p-6 ${!ann.viewed ? 'bg-gradient-to-r from-blue-50/70 to-white' : ''}`}
         >
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-3">
@@ -1352,15 +1353,35 @@ export default function AlumniDashboard({ session }: { session: Session }) {
                 </button>
               </div>
 
-              {/* NotificationBell */}
-              <NotificationBell
-                userId={session.user.id}
-                onNotificationClick={(notification) => {
-                  if (notification.link) {
-                    console.log('🔔 Navigate to:', notification.link);
-                  }
-                }}
-              />
+              
+
+<NotificationBell
+  userId={session.user.id}
+  onNotificationClick={(notification) => {
+    if (notification.link) {
+      console.log('🔔 Notification clicked:', notification);
+      
+      // ✅ Extract announcement ID from link
+      const linkParts = notification.link.split('/');
+      const announcementId = linkParts[linkParts.length - 1];
+      
+      // ✅ Switch to announcements tab
+      setActiveTab('announcements');
+      
+      // ✅ Scroll to the specific announcement after a short delay
+      setTimeout(() => {
+        const element = document.getElementById(`announcement-${announcementId}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.classList.add('ring-2', 'ring-[#800000]', 'ring-offset-2');
+          setTimeout(() => {
+            element.classList.remove('ring-2', 'ring-[#800000]', 'ring-offset-2');
+          }, 3000);
+        }
+      }, 300);
+    }
+  }}
+/>
 
               {/* Sign Out Button with Confirmation */}
               <Button
