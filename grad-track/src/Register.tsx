@@ -517,9 +517,7 @@ const { error: profileError } = await supabase
             className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none transition-all"
             required
           />
-          {verifiedGraduate?.email && (
-            <p className="text-xs text-green-600 mt-1">✓ Email from master list: {verifiedGraduate.email}</p>
-          )}
+        
         </div>
 
         {/* Password */}
