@@ -73,7 +73,7 @@ export default function Register({ onSuccess }: RegisterProps) {
         fullName: graduate.full_name,
         batchYear: graduate.batch_year?.toString() || '',
         course: graduate.course || '',
-        email: graduate.email || prev.email,
+      
       }));
       
       setVerificationStatus('verified');
@@ -265,6 +265,7 @@ const { error: profileError } = await supabase
     course: formData.course,
     batch_year: parseInt(formData.batchYear),
     department: masterData?.department || 'N/A',
+    gender: (masterData as any)?.gender || '', 
     employment_status: 'Unemployed',
     profile_completion: 50,
     career_alignment_status: 'Pending'
@@ -371,7 +372,7 @@ const { error: profileError } = await supabase
         <div className="p-6 overflow-y-auto max-h-[60vh] space-y-4 text-gray-600">
           <div>
             <h4 className="font-semibold text-gray-900 mb-2">Information We Collect</h4>
-            <p className="text-sm">We collect personal information including your name, student ID, email, course, batch year, employment status, and career information provided by you.</p>
+            <p className="text-sm">We collect personal information including your name, student ID, email, program, batch year, employment status, and career information provided by you.</p>
           </div>
           <div>
             <h4 className="font-semibold text-gray-900 mb-2">How We Use Your Information</h4>
@@ -446,7 +447,7 @@ const { error: profileError } = await supabase
                 <span>✓</span> Verified Graduate: {verifiedGraduate.full_name}
               </p>
               <p className="text-green-600 text-xs mt-1">
-                Course: {verifiedGraduate.course} • Batch: {verifiedGraduate.batch_year}
+                Program: {verifiedGraduate.course} • Batch: {verifiedGraduate.batch_year}
               </p>
             </div>
           )}
@@ -476,7 +477,7 @@ const { error: profileError } = await supabase
         {/* Course - Read-only */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-2">
-            Course <span className="text-red-500">*</span>
+            Program <span className="text-red-500">*</span>
           </label>
           <input
             type="text"

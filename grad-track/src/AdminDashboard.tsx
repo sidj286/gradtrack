@@ -36,7 +36,7 @@ interface AlumniProfile {
   avatar_url: string | null;
   registered_at?: string;
   updated_at?: string;
-   gender: 'Male' | 'Female' | null; 
+  gender: 'Male' | 'Female' | null;
 }
 
 interface Announcement {
@@ -314,6 +314,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
   const [alumniSearchTerm, setAlumniSearchTerm] = useState('');
   const [selectedAlumni, setSelectedAlumni] = useState<AlumniProfile | null>(null);
   const [showProfileViewModal, setShowProfileViewModal] = useState(false);
+  const [alumniEmail, setAlumniEmail] = useState<string>('');
 
   // ============================================================
   // ANNOUNCEMENT COMMENTS STATE
@@ -327,6 +328,9 @@ export default function AdminDashboard({ session }: { session: Session }) {
   const [allCommentsLoading, setAllCommentsLoading] = useState(false);
   const [allCommentsFetched, setAllCommentsFetched] = useState(false);
   const [showComments, setShowComments] = useState<Record<string, boolean>>({});
+
+  // Sign Out Confirmation
+  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
 
   // ============================================================
   // SECTION 2: useEffect HOOKS
@@ -1355,6 +1359,29 @@ export default function AdminDashboard({ session }: { session: Session }) {
     return icons[type] || '📌';
   };
 
+  // ============================================================
+  // FETCH ALUMNI EMAIL
+  // ============================================================
+
+  const fetchAlumniEmail = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('email')
+        .eq('id', userId)
+        .single();
+      if (error) throw error;
+      setAlumniEmail(data?.email || '');
+    } catch (error) {
+      console.error('Error fetching alumni email:', error);
+      setAlumniEmail('');
+    }
+  };
+
+  // ============================================================
+  // SIGN OUT WITH CONFIRMATION
+  // ============================================================
+
   const handleSignOut = async () => {
     setSignOutLoading(true);
     try {
@@ -1547,9 +1574,9 @@ export default function AdminDashboard({ session }: { session: Session }) {
 
                         <div className="my-2 border-t border-gray-100 dark:border-gray-700" />
 
-                        {/* Sign Out Button */}
+                        {/* Sign Out Button (triggers confirmation) */}
                         <button
-                          onClick={handleSignOut}
+                          onClick={() => setShowSignOutConfirm(true)}
                           disabled={signOutLoading}
                           className="w-full flex items-center gap-3 px-3 py-2.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all duration-200 group"
                         >
@@ -2125,6 +2152,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
                         <button
                           onClick={() => {
                             setSelectedAlumni(alum);
+                            fetchAlumniEmail(alum.user_id); // ✅ Fetch email
                             setShowProfileViewModal(true);
                           }}
                           className="px-3 py-1.5 text-xs font-medium text-[#800000] bg-[#800000]/10 rounded-lg hover:bg-[#800000]/20 transition-colors flex items-center gap-1"
@@ -2947,11 +2975,10 @@ export default function AdminDashboard({ session }: { session: Session }) {
   <div className="overflow-x-auto">
 
     {/* Header */}
-    <div className="hidden md:grid grid-cols-8 gap-6 px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-t-lg text-sm font-semibold text-gray-600 dark:text-gray-300">
+    <div className="hidden md:grid grid-cols-7 gap-6 px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-t-lg text-sm font-semibold text-gray-600 dark:text-gray-300">
       <div>Student ID</div>
       <div>Full Name</div>
       <div>Gender</div>
-      <div>Email</div>
       <div>Program</div>
       <div>Department</div>
       <div>Batch Year</div>
@@ -2977,7 +3004,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
         paginatedMasterList.map((record: any) => (
           <div
             key={record.id}
-            className="grid grid-cols-1 md:grid-cols-8 gap-6 md:gap-4 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
+            className="grid grid-cols-1 md:grid-cols-7 gap-6 md:gap-4 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
           >
             <div className="flex justify-between md:block">
               <span className="md:hidden font-semibold text-gray-500 text-xs">
@@ -3003,23 +3030,17 @@ export default function AdminDashboard({ session }: { session: Session }) {
                 {record.gender ? (
                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full ${
                     record.gender === 'Male' 
-                
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'bg-pink-100 text-pink-700'
                   }`}>
-                    {record.gender === 'Male' ? '' : ''} {record.gender}
+                    {record.gender}
                   </span>
                 ) : (
                   <span className="text-gray-400">—</span>
                 )}
               </span>
             </div>
-            <div className="flex justify-between md:block">
-              <span className="md:hidden font-semibold text-gray-500 text-xs">
-                Email
-              </span>
-              <span className="text-sm text-gray-600 dark:text-gray-400 break-words whitespace-normal">
-                {record.email || ''}
-              </span>
-            </div>
+             
             <div className="flex justify-between md:block">
               <span className="md:hidden font-semibold text-gray-500 text-xs">
                 Course
@@ -3099,6 +3120,49 @@ export default function AdminDashboard({ session }: { session: Session }) {
         )}
         {activeMainTab === 'reports' && <ReportsPanel />}
       </main>
+
+      {/* ========================================================== */}
+      {/* BLOCK 4: SIGN OUT CONFIRMATION MODAL */}
+      {/* ========================================================== */}
+      {showSignOutConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl max-w-sm w-full mx-4 p-6 shadow-2xl border border-gray-200 dark:border-gray-700">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white">Sign Out</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                Are you sure you want to sign out? You'll need to log in again to access your dashboard.
+              </p>
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => setShowSignOutConfirm(false)}
+                  className="flex-1 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSignOut}
+                  disabled={signOutLoading}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {signOutLoading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Signing out...
+                    </>
+                  ) : (
+                    'Yes, Sign Out'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ========================================================== */}
       {/* MODALS */}
@@ -3510,6 +3574,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
         onClose={() => {
           setShowProfileViewModal(false);
           setSelectedAlumni(null);
+          setAlumniEmail(''); // Clear email on close
         }}
         title="Alumni Profile Details"
         size="lg"
@@ -3553,7 +3618,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
             ? 'bg-blue-100 text-blue-700' 
             : 'bg-pink-100 text-pink-700'
         }`}>
-          {selectedAlumni.gender === 'Male' ? '' : ''} {selectedAlumni.gender}
+          {selectedAlumni.gender}
         </span>
       )}
     </div>
@@ -3579,7 +3644,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
 {/* Two Column Grid for Details */}
 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
 
-  {/* Left Column - Academic Information */}
+  {/* Left Column - Academic Information + Email */}
   <div className="space-y-4">
     <div className="flex items-center gap-2 pb-2 border-b border-gray-100 dark:border-gray-700">
       <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center text-xs">
@@ -3597,6 +3662,15 @@ export default function AdminDashboard({ session }: { session: Session }) {
         </label>
         <p className="text-sm text-gray-900 dark:text-white font-medium mt-1">
           {selectedAlumni.full_name || 'Not specified'}
+        </p>
+      </div>
+      {/* ✅ Display Email */}
+      <div>
+        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+          Email
+        </label>
+        <p className="text-sm text-gray-900 dark:text-white mt-1">
+          {alumniEmail || 'Not available'}
         </p>
       </div>
       <div>
@@ -3817,6 +3891,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
                 onClick={() => {
                   setShowProfileViewModal(false);
                   setSelectedAlumni(null);
+                  setAlumniEmail('');
                 }}
                 className="flex-1 px-4 py-2 bg-gradient-to-r from-[#800000] to-[#a10000] text-white font-semibold rounded-lg hover:from-[#6a0000] hover:to-[#8a0000] transition-all"
               >
@@ -4112,7 +4187,6 @@ export default function AdminDashboard({ session }: { session: Session }) {
           showSettingsToast('Import completed successfully!', 'success');
         }}
         adminUserId={session.user.id}
-
       />
 
     </div>
