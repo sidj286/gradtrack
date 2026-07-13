@@ -33,7 +33,12 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
     setLoading(true);
     try {
       const data = await getNotifications(userId);
-      setNotifications(data || []);
+      // Clean up notification messages to hide admin names
+      const cleanedData = data?.map(notification => ({
+        ...notification,
+        message: notification.message?.replace(/^[^:]+:\s*/, '') || notification.message
+      }));
+      setNotifications(cleanedData || []);
       const count = await getUnreadCount(userId);
       setUnreadCount(count || 0);
     } catch (error) {
@@ -148,8 +153,14 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
     return `${days}d ago`;
   };
 
+  // Clean message to remove admin name
+  const cleanMessage = (message: string) => {
+    // Remove patterns like "Admin Name: message" or "Admin: message"
+    return message?.replace(/^[^:]+:\s*/, '') || message;
+  };
+
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className="relative inline-block" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="relative p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200"
@@ -165,13 +176,13 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] sm:w-80 md:w-96 max-w-[400px] bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden z-50 max-h-[80vh] sm:max-h-[500px] flex flex-col left-1/2 -translate-x-1/2 sm:left-auto sm:right-0 sm:translate-x-0">
+        <div className="fixed sm:absolute inset-x-4 sm:inset-x-auto top-16 sm:top-auto sm:right-0 sm:mt-2 w-auto sm:w-80 md:w-96 max-w-full sm:max-w-[400px] bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden z-50 max-h-[calc(100vh-8rem)] sm:max-h-[500px] flex flex-col">
           <div className="flex items-center justify-between p-3 sm:p-4 border-b border-gray-100 dark:border-gray-700 bg-gradient-to-r from-[#800000]/5 to-transparent flex-shrink-0">
             <h3 className="font-bold text-gray-900 dark:text-white text-sm sm:text-base">Notifications</h3>
             {unreadCount > 0 && (
               <button
                 onClick={handleMarkAllAsRead}
-                className="text-[10px] sm:text-xs text-[#800000] hover:underline font-medium"
+                className="text-[10px] sm:text-xs text-[#800000] hover:underline font-medium whitespace-nowrap"
               >
                 Mark all as read
               </button>
@@ -218,18 +229,18 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
                         </svg>
                       </button>
                     </div>
-                    <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
-                      {notification.message}
+                    <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 line-clamp-2 break-words">
+                      {cleanMessage(notification.message)}
                     </p>
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <span className="text-[10px] sm:text-xs text-gray-400">
+                      <span className="text-[10px] sm:text-xs text-gray-400 whitespace-nowrap">
                         {getTimeAgo(notification.created_at)}
                       </span>
                       {!notification.is_read && (
-                        <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-[#800000] rounded-full animate-pulse" />
+                        <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-[#800000] rounded-full animate-pulse flex-shrink-0" />
                       )}
                       {notification.link && (
-                        <span className="text-[10px] sm:text-xs text-[#800000] font-medium">🔗 Tap to view</span>
+                        <span className="text-[10px] sm:text-xs text-[#800000] font-medium whitespace-nowrap">🔗 Tap to view</span>
                       )}
                     </div>
                   </div>
