@@ -418,28 +418,28 @@ const { error: profileError } = await supabase
           <label className="block text-sm font-semibold text-gray-700 mb-2">
             Student ID <span className="text-red-500">*</span>
           </label>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={formData.studentId}
-              onChange={(e) => {
-                setFormData({ ...formData, studentId: e.target.value });
-                setVerificationStatus('idle');
-                setError('');
-              }}
-              placeholder="Enter your Student ID"
-              className="flex-1 px-4 py-2 border border-gray-200 rounded-xl focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none transition-all"
-              disabled={verificationStatus === 'verified'}
-            />
-            <button
-              type="button"
-              onClick={handleVerifyStudent}
-              disabled={verificationStatus === 'verifying' || verificationStatus === 'verified'}
-              className="px-6 py-2 bg-[#800000] text-white rounded-xl font-semibold hover:bg-[#6a0000] transition-all disabled:opacity-50"
-            >
-              {verificationStatus === 'verifying' ? 'Verifying...' : 'Verify'}
-            </button>
-          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+  <input
+    type="text"
+    value={formData.studentId}
+    onChange={(e) => {
+      setFormData({ ...formData, studentId: e.target.value });
+      setVerificationStatus('idle');
+      setError('');
+    }}
+    placeholder="Enter your Student ID"
+    className="flex-1 px-4 py-2 border border-gray-200 rounded-xl focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none transition-all"
+    disabled={verificationStatus === 'verified'}
+  />
+  <button
+    type="button"
+    onClick={handleVerifyStudent}
+    disabled={verificationStatus === 'verifying' || verificationStatus === 'verified'}
+    className="px-6 py-2 bg-[#800000] text-white rounded-xl font-semibold hover:bg-[#6a0000] transition-all disabled:opacity-50 sm:whitespace-nowrap"
+  >
+    {verificationStatus === 'verifying' ? 'Verifying...' : 'Verify'}
+  </button>
+</div>
           
           {verificationStatus === 'verified' && verifiedGraduate && (
             <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
