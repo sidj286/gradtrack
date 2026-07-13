@@ -118,12 +118,10 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
       handleMarkAsRead(notification.id);
     }
     
-    // ✅ Call the parent callback if provided
     if (onNotificationClick) {
       onNotificationClick(notification);
     }
     
-    // ✅ Close dropdown
     setIsOpen(false);
   };
 
@@ -156,24 +154,24 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
         onClick={() => setIsOpen(!isOpen)}
         className="relative p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200"
       >
-        <svg className="w-6 h-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-5 h-5 sm:w-6 sm:h-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
         </svg>
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center animate-pulse">
+          <span className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-red-500 text-white text-[10px] sm:text-xs font-bold rounded-full flex items-center justify-center animate-pulse">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 md:w-96 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden z-50 max-h-[500px] flex flex-col">
-          <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-700 bg-gradient-to-r from-[#800000]/5 to-transparent flex-shrink-0">
-            <h3 className="font-bold text-gray-900 dark:text-white">Notifications</h3>
+        <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] sm:w-80 md:w-96 max-w-[400px] bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden z-50 max-h-[80vh] sm:max-h-[500px] flex flex-col left-1/2 -translate-x-1/2 sm:left-auto sm:right-0 sm:translate-x-0">
+          <div className="flex items-center justify-between p-3 sm:p-4 border-b border-gray-100 dark:border-gray-700 bg-gradient-to-r from-[#800000]/5 to-transparent flex-shrink-0">
+            <h3 className="font-bold text-gray-900 dark:text-white text-sm sm:text-base">Notifications</h3>
             {unreadCount > 0 && (
               <button
                 onClick={handleMarkAllAsRead}
-                className="text-xs text-[#800000] hover:underline font-medium"
+                className="text-[10px] sm:text-xs text-[#800000] hover:underline font-medium"
               >
                 Mark all as read
               </button>
@@ -188,24 +186,24 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
             ) : notifications.length === 0 ? (
               <div className="text-center py-8">
                 <div className="text-4xl mb-2">🔕</div>
-                <p className="text-gray-500 dark:text-gray-400">No notifications</p>
-                <p className="text-xs text-gray-400 mt-1">You're all caught up!</p>
+                <p className="text-gray-500 dark:text-gray-400 text-sm sm:text-base">No notifications</p>
+                <p className="text-[10px] sm:text-xs text-gray-400 mt-1">You're all caught up!</p>
               </div>
             ) : (
               notifications.map((notification) => (
                 <div
                   key={notification.id}
                   onClick={() => handleNotificationClick(notification)}
-                  className={`flex items-start gap-3 p-4 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-all duration-200 border-b border-gray-100 dark:border-gray-700 group ${
+                  className={`flex items-start gap-2 sm:gap-3 p-3 sm:p-4 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-all duration-200 border-b border-gray-100 dark:border-gray-700 group ${
                     !notification.is_read ? 'bg-[#800000]/5 dark:bg-[#800000]/10' : ''
                   }`}
                 >
-                  <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-lg group-hover:bg-[#800000]/10 transition-colors">
+                  <div className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-base sm:text-lg group-hover:bg-[#800000]/10 transition-colors">
                     {getIcon(notification.type)}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                      <p className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white truncate">
                         {notification.title}
                       </p>
                       <button
@@ -215,23 +213,23 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
                         }}
                         className="flex-shrink-0 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all"
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                       </button>
                     </div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
+                    <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
                       {notification.message}
                     </p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs text-gray-400">
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <span className="text-[10px] sm:text-xs text-gray-400">
                         {getTimeAgo(notification.created_at)}
                       </span>
                       {!notification.is_read && (
-                        <span className="w-2 h-2 bg-[#800000] rounded-full animate-pulse" />
+                        <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-[#800000] rounded-full animate-pulse" />
                       )}
                       {notification.link && (
-                        <span className="text-xs text-[#800000] font-medium">🔗 Tap to view</span>
+                        <span className="text-[10px] sm:text-xs text-[#800000] font-medium">🔗 Tap to view</span>
                       )}
                     </div>
                   </div>
@@ -240,8 +238,8 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
             )}
           </div>
 
-          <div className="p-3 bg-gray-50 dark:bg-gray-900 border-t border-gray-100 dark:border-gray-700 text-center flex-shrink-0">
-            <p className="text-[10px] text-gray-400 dark:text-gray-500">
+          <div className="p-2 sm:p-3 bg-gray-50 dark:bg-gray-900 border-t border-gray-100 dark:border-gray-700 text-center flex-shrink-0">
+            <p className="text-[8px] sm:text-[10px] text-gray-400 dark:text-gray-500">
               {notifications.length} notification{notifications.length !== 1 ? 's' : ''}
             </p>
           </div>
