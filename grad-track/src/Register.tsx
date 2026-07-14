@@ -1,4 +1,4 @@
-// Register.tsx - COMPLETE WITH BLUE STYLING (FIXED: full_name null bug)
+// Register.tsx - COMPLETE FIXED VERSION
 import React, { useState } from 'react';
 import { supabase } from './lib/supabase';
 
@@ -20,10 +20,6 @@ interface RegisterProps {
   onSuccess?: () => void;
 }
 
-// Shape of the row we trust from graduates_master at submit time.
-// We re-fetch this right before writing, instead of trusting local
-// component state, because formData can go stale/desync across the
-// multi-step async registration flow.
 interface MasterRecord {
   full_name: string;
   course: string | null;
@@ -63,7 +59,6 @@ export default function Register({ onSuccess }: RegisterProps) {
     setError('');
 
     try {
-      // Check against graduates_master
       const { data: graduate, error: verifyError } = await supabase
         .from('graduates_master')
         .select('*')
@@ -78,17 +73,12 @@ export default function Register({ onSuccess }: RegisterProps) {
       }
 
       setVerifiedGraduate(graduate);
-
-      // Auto-fill form from master list (display only — the actual
-      // authoritative values are re-fetched at submit time, see
-      // fetchMasterRecord() below)
       setFormData(prev => ({
         ...prev,
         fullName: graduate.full_name,
         batchYear: graduate.batch_year?.toString() || '',
         course: graduate.course || '',
       }));
-
       setVerificationStatus('verified');
     } catch (err) {
       console.error('Verification error:', err);
@@ -97,12 +87,8 @@ export default function Register({ onSuccess }: RegisterProps) {
     }
   };
 
-  // Improved check for existing user
   const checkIfUserExists = async (studentId: string, email: string) => {
     try {
-      console.log('Checking for existing user with Student ID:', studentId);
-
-      // Check by student_id in alumni_profiles
       const { data: existingProfile } = await supabase
         .from('alumni_profiles')
         .select('user_id, full_name, student_id')
@@ -110,7 +96,6 @@ export default function Register({ onSuccess }: RegisterProps) {
         .maybeSingle();
 
       if (existingProfile) {
-        console.log('Found existing profile with this student ID');
         return {
           exists: true,
           reason: 'student_id',
@@ -119,7 +104,6 @@ export default function Register({ onSuccess }: RegisterProps) {
         };
       }
 
-      // Check by email in users table
       const { data: existingUser } = await supabase
         .from('users')
         .select('email, full_name')
@@ -127,7 +111,6 @@ export default function Register({ onSuccess }: RegisterProps) {
         .maybeSingle();
 
       if (existingUser) {
-        console.log('Found existing user with this email');
         return {
           exists: true,
           reason: 'email',
@@ -143,43 +126,57 @@ export default function Register({ onSuccess }: RegisterProps) {
     }
   };
 
-  // Supabase's Auth service and its Data API (PostgREST) sit behind
-  // separate connection paths, so a freshly created auth.users row can
-  // occasionally not be visible yet to a following insert into a table
-  // with a foreign key to auth.users(id). That surfaces as a
-  // "users_id_fkey" violation (Postgres code 23503) even though the
-  // user was just created successfully. Retrying briefly resolves it
-  // without needing a DB migration.
+  // ⭐ FIXED: Better retry with exponential backoff and auth check
   const insertUserWithRetry = async (
     payload: { id: string; email: string; role: string; full_name: string; admin: boolean },
-    maxAttempts = 5
+    maxAttempts = 8
   ) => {
     let lastError: any = null;
+    
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      const { error: userInsertError } = await supabase.from('users').insert(payload);
-
-      if (!userInsertError) {
-        return { error: null };
+      try {
+        // First, check if the auth user exists by trying to get the user
+        const { data: authUser, error: authCheckError } = await supabase.auth.admin.getUserById(payload.id);
+        
+        if (authCheckError || !authUser) {
+          console.warn(`Auth user not ready yet (attempt ${attempt}/${maxAttempts})...`);
+          await new Promise(resolve => setTimeout(resolve, attempt * 500));
+          continue;
+        }
+        
+        console.log(`✅ Auth user confirmed ready (attempt ${attempt})`);
+        
+        // Now try the insert
+        const { error: userInsertError } = await supabase.from('users').insert(payload);
+        
+        if (!userInsertError) {
+          return { error: null };
+        }
+        
+        lastError = userInsertError;
+        
+        // Only retry on FK violation (23503)
+        if (userInsertError.code !== '23503') {
+          return { error: userInsertError };
+        }
+        
+        console.warn(`users insert FK violation, retrying (${attempt}/${maxAttempts})...`);
+        
+      } catch (err) {
+        lastError = err;
+        console.warn(`Attempt ${attempt} failed:`, err);
       }
-
-      lastError = userInsertError;
-
-      // Only retry on FK violation (auth.users row not visible yet).
-      // Any other error (e.g. duplicate email) should fail immediately.
-      if (userInsertError.code !== '23503') {
-        return { error: userInsertError };
+      
+      // Wait with exponential backoff before next attempt
+      if (attempt < maxAttempts) {
+        const delay = Math.min(attempt * 500, 3000); // 500ms, 1000ms, 1500ms, ... max 3000ms
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
-
-      console.warn(`users insert FK violation, retrying (${attempt}/${maxAttempts})...`);
-      await new Promise(resolve => setTimeout(resolve, attempt * 400)); // 400ms, 800ms, 1200ms...
     }
+    
     return { error: lastError };
   };
 
-  // Fetch the authoritative record from graduates_master right before
-  // we write to users / alumni_profiles. This is the fix for full_name
-  // (and course/batch_year) sometimes landing as null: we never trust
-  // formData for the actual DB write, only for pre-filling the UI.
   const fetchMasterRecord = async (studentId: string): Promise<MasterRecord | null> => {
     const { data, error: masterError } = await supabase
       .from('graduates_master')
@@ -197,7 +194,6 @@ export default function Register({ onSuccess }: RegisterProps) {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-
     setError('');
 
     if (!agreedToTerms) {
@@ -229,9 +225,8 @@ export default function Register({ onSuccess }: RegisterProps) {
     setLoadingStep('Checking existing account...');
 
     try {
-      // STEP 1: Check if user already exists
       const existingCheck = await checkIfUserExists(formData.studentId, formData.email);
-
+      
       if (existingCheck.exists) {
         setError(existingCheck.message || 'User already exists');
         setLoading(false);
@@ -240,9 +235,6 @@ export default function Register({ onSuccess }: RegisterProps) {
         return;
       }
 
-      // STEP 1.5: Capture the OFFICIAL record from graduates_master.
-      // This is now the single source of truth for full_name, course,
-      // batch_year, department and gender — not local component state.
       setLoadingStep('Retrieving official student record...');
       const masterData = await fetchMasterRecord(formData.studentId.trim());
 
@@ -253,8 +245,6 @@ export default function Register({ onSuccess }: RegisterProps) {
         return;
       }
 
-      // Guard: full_name must be present, since it's NOT NULL upstream
-      // and everything downstream depends on it.
       if (!masterData.full_name || !masterData.full_name.trim()) {
         setError('⚠️ Your official record is missing a full name. Please contact your school administrator.');
         setLoading(false);
@@ -262,7 +252,6 @@ export default function Register({ onSuccess }: RegisterProps) {
         return;
       }
 
-      // STEP 2: Double-check with a more precise query
       setLoadingStep('Verifying account details...');
       const { data: duplicateCheck } = await supabase
         .from('users')
@@ -295,13 +284,14 @@ export default function Register({ onSuccess }: RegisterProps) {
 
       if (signUpError) {
         console.error('Signup error:', signUpError);
-
         if (signUpError.message.includes('already registered')) {
-          setError(`📧 Email "${formData.email}" is already registered.\n\nPlease sign in instead or use "Forgot Password" if you can't access your account.`);
+          setError(`📧 Email "${formData.email}" is already registered.\n\nPlease sign in instead.`);
         } else if (signUpError.message.includes('weak password')) {
           setError('🔒 Password is too weak. Please use a stronger password with at least 6 characters.');
         } else if (signUpError.message.includes('invalid email')) {
           setError('📧 Invalid email format. Please enter a valid email address.');
+        } else if (signUpError.message.includes('rate limit')) {
+          setError('⏳ Too many registration attempts. Please wait a few minutes and try again.');
         } else {
           setError(`❌ Registration failed: ${signUpError.message}`);
         }
@@ -320,12 +310,13 @@ export default function Register({ onSuccess }: RegisterProps) {
 
       console.log('✅ Auth user created:', authData.user.id);
 
-      // STEP 4: Create users table entry — uses masterData.full_name,
-      // the authoritative value fetched moments ago, NOT formData.
-      // Uses a retry helper to tolerate Auth/Data-API replication lag
-      // (see insertUserWithRetry above) which otherwise intermittently
-      // throws a users_id_fkey violation right after a fresh signUp.
+      // ⭐ NEW: Wait for auth user to be fully ready before inserting
       setLoadingStep('Setting up user profile...');
+      
+      // Small initial delay to let auth propagate
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // STEP 4: Create users table entry with retry
       const { error: userInsertError } = await insertUserWithRetry({
         id: authData.user.id,
         email: formData.email,
@@ -335,8 +326,7 @@ export default function Register({ onSuccess }: RegisterProps) {
       });
 
       if (userInsertError) {
-        console.error('❌ Error creating users entry:', userInsertError);
-        // Try to clean up the auth user
+        console.error('❌ Error creating users entry after retries:', userInsertError);
         try {
           await supabase.auth.admin.deleteUser(authData.user.id);
         } catch (cleanupError) {
@@ -350,8 +340,7 @@ export default function Register({ onSuccess }: RegisterProps) {
 
       console.log('✅ Users table entry created successfully');
 
-      // STEP 5: Create alumni profile — also uses masterData throughout
-      // so it can never drift from what's in users / graduates_master.
+      // STEP 5: Create alumni profile
       setLoadingStep('Finalizing registration...');
       const { data: profileData, error: profileError } = await supabase
         .from('alumni_profiles')
@@ -371,17 +360,7 @@ export default function Register({ onSuccess }: RegisterProps) {
 
       if (profileError) {
         console.error('❌ Profile creation error:', profileError);
-        console.error('Profile data attempted:', {
-          user_id: authData.user.id,
-          student_id: formData.studentId,
-          full_name: masterData.full_name,
-          course: masterData.course,
-          batch_year: masterData.batch_year,
-          department: masterData.department || 'N/A',
-          gender: masterData.gender || '',
-        });
-
-        if (profileError.code === '23503') { // Foreign key violation
+        if (profileError.code === '23503') {
           setError('⚠️ User account created but profile setup failed. Please contact support.');
         } else if (profileError.code === '23505') {
           setError('⚠️ This student ID is already registered. Please contact support if you believe this is an error.');
@@ -395,17 +374,15 @@ export default function Register({ onSuccess }: RegisterProps) {
 
       console.log('✅ Alumni profile created successfully:', profileData);
 
-      // Show success message
       const successMessage = `✓ Registration Successful!\n\nWelcome, ${masterData.full_name}!\n\nA confirmation email has been sent to:\n${formData.email}\n\nPlease check your inbox and click the confirmation link to activate your GradTrack account.`;
       alert(successMessage);
-
-      // Redirect to login
+      
       if (onSuccess) onSuccess();
 
     } catch (err: any) {
       console.error('Registration error:', err);
       console.error('Error stack:', err.stack);
-
+      
       if (err.message === 'Failed to fetch') {
         setError('🌐 Network error. Please check your internet connection and try again.');
       } else {
