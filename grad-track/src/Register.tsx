@@ -1,4 +1,4 @@
-// Register.tsx - COMPLETE FIXED VERSION
+// Register.tsx - COMPLETE FIXED VERSION (with proper full_name handling)
 import React, { useState } from 'react';
 import { supabase } from './lib/supabase';
 
@@ -126,37 +126,36 @@ export default function Register({ onSuccess }: RegisterProps) {
     }
   };
 
-  // ⭐ FIXED: Better retry with exponential backoff and auth check
+  // ⭐ FIXED: Better retry with proper full_name handling
   const insertUserWithRetry = async (
     payload: { id: string; email: string; role: string; full_name: string; admin: boolean },
-    maxAttempts = 8
+    maxAttempts = 10
   ) => {
     let lastError: any = null;
     
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        // First, check if the auth user exists by trying to get the user
-        const { data: authUser, error: authCheckError } = await supabase.auth.admin.getUserById(payload.id);
+        console.log(`Attempt ${attempt}/${maxAttempts} - Inserting user with full_name: "${payload.full_name}"`);
         
-        if (authCheckError || !authUser) {
-          console.warn(`Auth user not ready yet (attempt ${attempt}/${maxAttempts})...`);
-          await new Promise(resolve => setTimeout(resolve, attempt * 500));
-          continue;
-        }
-        
-        console.log(`✅ Auth user confirmed ready (attempt ${attempt})`);
-        
-        // Now try the insert
+        // Try the insert
         const { error: userInsertError } = await supabase.from('users').insert(payload);
         
         if (!userInsertError) {
+          console.log(`✅ User inserted successfully on attempt ${attempt}`);
           return { error: null };
         }
         
         lastError = userInsertError;
         
-        // Only retry on FK violation (23503)
+        // If it's a duplicate email, fail immediately
+        if (userInsertError.code === '23505') {
+          console.error('Duplicate email error:', userInsertError);
+          return { error: userInsertError };
+        }
+        
+        // Only retry on FK violation (23503) - auth user not ready yet
         if (userInsertError.code !== '23503') {
+          console.error('Non-retryable error:', userInsertError);
           return { error: userInsertError };
         }
         
@@ -169,11 +168,13 @@ export default function Register({ onSuccess }: RegisterProps) {
       
       // Wait with exponential backoff before next attempt
       if (attempt < maxAttempts) {
-        const delay = Math.min(attempt * 500, 3000); // 500ms, 1000ms, 1500ms, ... max 3000ms
+        const delay = Math.min(attempt * 600, 5000); // 600ms, 1200ms, 1800ms, ... max 5000ms
+        console.log(`Waiting ${delay}ms before retry...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
     
+    console.error('All retry attempts exhausted');
     return { error: lastError };
   };
 
@@ -189,6 +190,7 @@ export default function Register({ onSuccess }: RegisterProps) {
       return null;
     }
 
+    console.log('✅ Master record fetched:', data.full_name);
     return data as MasterRecord;
   };
 
@@ -252,6 +254,12 @@ export default function Register({ onSuccess }: RegisterProps) {
         return;
       }
 
+      console.log('✅ Master data confirmed:', {
+        full_name: masterData.full_name,
+        course: masterData.course,
+        batch_year: masterData.batch_year
+      });
+
       setLoadingStep('Verifying account details...');
       const { data: duplicateCheck } = await supabase
         .from('users')
@@ -268,7 +276,8 @@ export default function Register({ onSuccess }: RegisterProps) {
 
       // STEP 3: Create auth user
       setLoadingStep('Creating secure account...');
-      console.log('Creating auth user...');
+      console.log('Creating auth user with full_name:', masterData.full_name);
+      
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -310,20 +319,25 @@ export default function Register({ onSuccess }: RegisterProps) {
 
       console.log('✅ Auth user created:', authData.user.id);
 
-      // ⭐ NEW: Wait for auth user to be fully ready before inserting
+      // ⭐ CRITICAL: Wait for auth user to propagate
       setLoadingStep('Setting up user profile...');
+      console.log('Waiting for auth user to propagate...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // STEP 4: Create users table entry with full_name
+      console.log('Inserting into users table with full_name:', masterData.full_name);
       
-      // Small initial delay to let auth propagate
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // STEP 4: Create users table entry with retry
-      const { error: userInsertError } = await insertUserWithRetry({
+      const userPayload = {
         id: authData.user.id,
         email: formData.email,
         role: 'Alumni',
-        full_name: masterData.full_name,
+        full_name: masterData.full_name, // ⭐ CRITICAL: This MUST be set
         admin: false
-      });
+      };
+      
+      console.log('User payload:', userPayload);
+
+      const { error: userInsertError } = await insertUserWithRetry(userPayload);
 
       if (userInsertError) {
         console.error('❌ Error creating users entry after retries:', userInsertError);
@@ -338,24 +352,57 @@ export default function Register({ onSuccess }: RegisterProps) {
         return;
       }
 
-      console.log('✅ Users table entry created successfully');
+      console.log('✅ Users table entry created successfully with full_name:', masterData.full_name);
+
+      // Verify the user was inserted with the correct full_name
+      const { data: verifyUser, error: verifyError } = await supabase
+        .from('users')
+        .select('id, email, full_name')
+        .eq('id', authData.user.id)
+        .single();
+
+      if (verifyError) {
+        console.warn('Could not verify user creation:', verifyError);
+      } else {
+        console.log('✅ Verified user in database:', verifyUser);
+        if (!verifyUser.full_name) {
+          console.error('⚠️ WARNING: full_name is still null!');
+          // Try to update it directly
+          const { error: updateError } = await supabase
+            .from('users')
+            .update({ full_name: masterData.full_name })
+            .eq('id', authData.user.id);
+          
+          if (updateError) {
+            console.error('Failed to update full_name:', updateError);
+          } else {
+            console.log('✅ full_name updated successfully');
+          }
+        }
+      }
 
       // STEP 5: Create alumni profile
       setLoadingStep('Finalizing registration...');
+      console.log('Creating alumni profile with full_name:', masterData.full_name);
+      
+      const profilePayload = {
+        user_id: authData.user.id,
+        student_id: formData.studentId,
+        full_name: masterData.full_name,
+        course: masterData.course,
+        batch_year: masterData.batch_year,
+        department: masterData.department || 'N/A',
+        gender: masterData.gender || '',
+        employment_status: 'Unemployed',
+        profile_completion: 50,
+        career_alignment_status: 'Pending'
+      };
+      
+      console.log('Profile payload:', profilePayload);
+
       const { data: profileData, error: profileError } = await supabase
         .from('alumni_profiles')
-        .insert({
-          user_id: authData.user.id,
-          student_id: formData.studentId,
-          full_name: masterData.full_name,
-          course: masterData.course,
-          batch_year: masterData.batch_year,
-          department: masterData.department || 'N/A',
-          gender: masterData.gender || '',
-          employment_status: 'Unemployed',
-          profile_completion: 50,
-          career_alignment_status: 'Pending'
-        })
+        .insert(profilePayload)
         .select();
 
       if (profileError) {
