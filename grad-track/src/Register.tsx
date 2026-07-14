@@ -1,4 +1,4 @@
-// Register.tsx - COMPLETE WITH FIXED ALUMNI_PROFILES INSERTION
+// Register.tsx - COMPLETE WITH BLUE STYLING (FIXED)
 import React, { useState } from 'react';
 import { supabase } from './lib/supabase';
 
@@ -51,6 +51,7 @@ export default function Register({ onSuccess }: RegisterProps) {
     setError('');
 
     try {
+      // Check against graduates_master
       const { data: graduate, error: verifyError } = await supabase
         .from('graduates_master')
         .select('*')
@@ -65,12 +66,15 @@ export default function Register({ onSuccess }: RegisterProps) {
       }
 
       setVerifiedGraduate(graduate);
+      
+      // Auto-fill form from master list
       setFormData(prev => ({
         ...prev,
         fullName: graduate.full_name,
         batchYear: graduate.batch_year?.toString() || '',
         course: graduate.course || '',
       }));
+      
       setVerificationStatus('verified');
     } catch (err) {
       console.error('Verification error:', err);
@@ -79,8 +83,12 @@ export default function Register({ onSuccess }: RegisterProps) {
     }
   };
 
+  // Improved check for existing user
   const checkIfUserExists = async (studentId: string, email: string) => {
     try {
+      console.log('Checking for existing user with Student ID:', studentId);
+      
+      // Check by student_id in alumni_profiles
       const { data: existingProfile } = await supabase
         .from('alumni_profiles')
         .select('user_id, full_name, student_id')
@@ -88,6 +96,7 @@ export default function Register({ onSuccess }: RegisterProps) {
         .maybeSingle();
 
       if (existingProfile) {
+        console.log('Found existing profile with this student ID');
         return { 
           exists: true, 
           reason: 'student_id', 
@@ -96,6 +105,7 @@ export default function Register({ onSuccess }: RegisterProps) {
         };
       }
 
+      // Check by email in users table
       const { data: existingUser } = await supabase
         .from('users')
         .select('email, full_name')
@@ -103,6 +113,7 @@ export default function Register({ onSuccess }: RegisterProps) {
         .maybeSingle();
 
       if (existingUser) {
+        console.log('Found existing user with this email');
         return { 
           exists: true, 
           reason: 'email', 
@@ -120,6 +131,7 @@ export default function Register({ onSuccess }: RegisterProps) {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    
     setError('');
 
     if (!agreedToTerms) {
@@ -151,6 +163,7 @@ export default function Register({ onSuccess }: RegisterProps) {
     setLoadingStep('Checking existing account...');
 
     try {
+      // STEP 1: Check if user already exists
       const existingCheck = await checkIfUserExists(formData.studentId, formData.email);
       
       if (existingCheck.exists) {
@@ -161,10 +174,10 @@ export default function Register({ onSuccess }: RegisterProps) {
         return;
       }
 
-      // Get master data with gender
+      // STEP 1.5: Capture official student details from the master list
       const { data: masterData, error: masterError } = await supabase
         .from('graduates_master')
-        .select('department, gender')
+        .select('department, gender') // ✅ FIXED: Added gender here
         .eq('student_id', formData.studentId)
         .single();
 
@@ -176,6 +189,7 @@ export default function Register({ onSuccess }: RegisterProps) {
         return;
       }
 
+      // STEP 2: Double-check with a more precise query
       setLoadingStep('Verifying account details...');
       const { data: duplicateCheck } = await supabase
         .from('users')
@@ -208,6 +222,7 @@ export default function Register({ onSuccess }: RegisterProps) {
 
       if (signUpError) {
         console.error('Signup error:', signUpError);
+        
         if (signUpError.message.includes('already registered')) {
           setError(`📧 Email "${formData.email}" is already registered.\n\nPlease sign in instead or use "Forgot Password" if you can't access your account.`);
         } else if (signUpError.message.includes('weak password')) {
@@ -236,16 +251,17 @@ export default function Register({ onSuccess }: RegisterProps) {
       setLoadingStep('Setting up user profile...');
       const { error: userInsertError } = await supabase
         .from('users')
-        .insert({
+        .insert({ // ✅ FIXED: Use insert instead of upsert
           id: authData.user.id,
           email: formData.email,
           role: 'Alumni',
-          full_name: formData.fullName,
+          full_name: formData.fullName, // ✅ FIXED: Use formData.fullName directly
           admin: false 
         });
 
       if (userInsertError) {
         console.error('❌ Error creating users entry:', userInsertError);
+        // Try to clean up the auth user
         try {
           await supabase.auth.admin.deleteUser(authData.user.id);
         } catch (cleanupError) {
@@ -259,119 +275,55 @@ export default function Register({ onSuccess }: RegisterProps) {
 
       console.log('✅ Users table entry created successfully');
 
-      // ⭐ STEP 5: FIXED - Create alumni profile with proper authentication
+      // STEP 5: Create alumni profile
       setLoadingStep('Finalizing registration...');
-      
-      // IMPORTANT: The user might not be authenticated yet, so we need to
-      // either use the user's ID directly or sign them in first
-      
-      // Option A: Try to create profile using the user's ID directly
-      // This bypasses the auth.uid() check by using the actual user ID
-      const profileData = {
-        user_id: authData.user.id,
-        student_id: formData.studentId,
-        full_name: formData.fullName,
-        course: formData.course,
-        batch_year: parseInt(formData.batchYear),
-        department: masterData?.department || 'N/A',
-        gender: masterData?.gender || '',
-        employment_status: 'Unemployed',
-        profile_completion: 50,
-        career_alignment_status: 'Pending'
-      };
-
-      console.log('Creating profile with data:', profileData);
-
-      // Try insert without RLS restrictions by using the user's ID
-      const { data: profileResult, error: profileError } = await supabase
+      const { data: profileData, error: profileError } = await supabase
         .from('alumni_profiles')
-        .insert(profileData)
-        .select();
+        .insert({
+          user_id: authData.user.id,
+          student_id: formData.studentId,
+          full_name: formData.fullName,
+          course: formData.course,
+          batch_year: parseInt(formData.batchYear),
+          department: masterData?.department || 'N/A',
+          gender: masterData?.gender || '', // ✅ FIXED: Now correctly gets gender
+          employment_status: 'Unemployed',
+          profile_completion: 50,
+          career_alignment_status: 'Pending'
+        })
+        .select(); // ✅ FIXED: Added .select() to get the inserted data back
 
       if (profileError) {
         console.error('❌ Profile creation error:', profileError);
+        console.error('Profile data attempted:', {
+          user_id: authData.user.id,
+          student_id: formData.studentId,
+          full_name: formData.fullName,
+          course: formData.course,
+          batch_year: parseInt(formData.batchYear),
+          department: masterData?.department || 'N/A',
+          gender: masterData?.gender || '',
+        });
         
-        // If it's a permission error, try signing in the user first
-        if (profileError.code === '42501' || profileError.message.includes('permission')) {
-          console.log('Permission denied, attempting to sign in user first...');
-          
-          // Sign in the user to establish auth session
-          const { error: signInError } = await supabase.auth.signInWithPassword({
-            email: formData.email,
-            password: formData.password
-          });
-
-          if (signInError) {
-            console.error('Sign in error after registration:', signInError);
-            // Try a different approach - use the user ID directly
-            console.log('Trying insert with user ID only...');
-            const { error: finalError } = await supabase
-              .from('alumni_profiles')
-              .insert({
-                user_id: authData.user.id,
-                student_id: formData.studentId,
-                full_name: formData.fullName,
-                course: formData.course,
-                batch_year: parseInt(formData.batchYear),
-                department: masterData?.department || 'N/A',
-                gender: masterData?.gender || '',
-                employment_status: 'Unemployed',
-                profile_completion: 50,
-                career_alignment_status: 'Pending'
-              });
-
-            if (finalError) {
-              console.error('Final insert attempt failed:', finalError);
-              setError('Account created but profile setup failed. Please contact support.');
-              setLoading(false);
-              setLoadingStep('');
-              return;
-            }
-          } else {
-            // Successfully signed in, now try the insert again
-            console.log('User signed in successfully, retrying profile creation...');
-            const { data: retryData, error: retryError } = await supabase
-              .from('alumni_profiles')
-              .insert(profileData)
-              .select();
-
-            if (retryError) {
-              console.error('Retry profile creation failed:', retryError);
-              setError('Account created but profile setup failed. Please contact support.');
-              setLoading(false);
-              setLoadingStep('');
-              return;
-            }
-            console.log('✅ Profile created after sign in:', retryData);
-          }
+        if (profileError.code === '23503') { // Foreign key violation
+          setError('⚠️ User account created but profile setup failed. Please contact support.');
+        } else if (profileError.code === '23505') {
+          setError('⚠️ This student ID is already registered. Please contact support if you believe this is an error.');
         } else {
-          // Other error
           setError(`Profile creation failed: ${profileError.message}`);
-          setLoading(false);
-          setLoadingStep('');
-          return;
         }
-      } else {
-        console.log('✅ Alumni profile created successfully:', profileResult);
+        setLoading(false);
+        setLoadingStep('');
+        return;
       }
 
-      // Verify the profile was created
-      const { data: verifyData, error: verifyError } = await supabase
-        .from('alumni_profiles')
-        .select('*')
-        .eq('user_id', authData.user.id)
-        .single();
-
-      if (verifyError) {
-        console.warn('Could not verify profile creation:', verifyError);
-      } else if (verifyData) {
-        console.log('✅ Profile verified in database:', verifyData);
-      }
+      console.log('✅ Alumni profile created successfully:', profileData);
 
       // Show success message
       const successMessage = `✓ Registration Successful!\n\nWelcome, ${formData.fullName}!\n\nA confirmation email has been sent to:\n${formData.email}\n\nPlease check your inbox and click the confirmation link to activate your GradTrack account.`;
       alert(successMessage);
       
+      // Redirect to login
       if (onSuccess) onSuccess();
 
     } catch (err: any) {
