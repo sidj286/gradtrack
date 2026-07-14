@@ -1,4 +1,4 @@
-// src/components/NotificationBell.tsx
+// src/NotificationBell.tsx
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from './lib/supabase';
 import { getNotifications, getUnreadCount, markAsRead, markAllAsRead, deleteNotification } from './lib/notificationUtils';
@@ -28,17 +28,19 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
   const [currentUser, setCurrentUser] = useState<any>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Get current user role
+  // Get current user role - FIXED: use 'users' table and 'Admin' casing
   useEffect(() => {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
+        // ✅ FIX: Use 'users' table, not 'profiles'
+        const { data: userData } = await supabase
+          .from('users')
           .select('role')
           .eq('id', user.id)
           .single();
-        setCurrentUser({ ...user, role: profile?.role });
+        // ✅ FIX: Use 'Admin' with capital A
+        setCurrentUser({ ...user, role: userData?.role || 'Alumni' });
       }
     };
     getUser();
@@ -55,16 +57,14 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
       const processedData = data?.map(notification => {
         let processedMessage = notification.message;
         
-        // If current user is an admin, show alumni names
-        if (currentUser?.role === 'admin') {
-          // Keep the message as-is with the alumni name
+        // ✅ FIX: Use 'Admin' with capital A
+        if (currentUser?.role === 'Admin') {
           processedMessage = notification.message;
         } else {
-          // If current user is alumni, hide admin names and show "Admin"
           processedMessage = notification.message
-            ?.replace(/^[^:]+:\s*/, '') // Remove any name prefix
-            ?.replace(/Admin\s+[A-Za-z]+\s+[A-Za-z]+/g, 'Admin') // Replace "Admin John Doe" with "Admin"
-            ?.replace(/Admin\s+[A-Za-z]+/g, 'Admin'); // Replace "Admin John" with "Admin"
+            ?.replace(/^[^:]+:\s*/, '')
+            ?.replace(/Admin\s+[A-Za-z]+\s+[A-Za-z]+/g, 'Admin')
+            ?.replace(/Admin\s+[A-Za-z]+/g, 'Admin');
         }
         
         return {
@@ -188,22 +188,17 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
     return `${days}d ago`;
   };
 
-  // Clean message based on user role
+  // Clean message based on user role - FIXED: use 'Admin' casing
   const cleanMessage = (message: string) => {
     if (!message) return message;
     
-    // If user is admin, show full message with alumni names
-    if (currentUser?.role === 'admin') {
+    // ✅ FIX: Use 'Admin' with capital A
+    if (currentUser?.role === 'Admin') {
       return message;
     }
     
-    // If user is alumni, hide admin names
     let cleaned = message;
-    
-    // Remove any "Name: " prefix
     cleaned = cleaned.replace(/^[^:]+:\s*/, '');
-    
-    // Replace "Admin Name" with just "Admin"
     cleaned = cleaned.replace(/Admin\s+[A-Za-z]+\s+[A-Za-z]+/g, 'Admin');
     cleaned = cleaned.replace(/Admin\s+[A-Za-z]+/g, 'Admin');
     

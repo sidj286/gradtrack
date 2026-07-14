@@ -17,7 +17,6 @@ export async function sendNotification(
   try {
     console.log('📨 SEND NOTIFICATION:', { userId, type, title, message });
 
-    // Validate userId
     if (!userId) {
       console.error('❌ No userId provided!');
       return null;
@@ -44,7 +43,6 @@ export async function sendNotification(
 
     if (error) {
       console.error('❌ Supabase insert error:', error);
-      console.error('❌ Error details:', JSON.stringify(error, null, 2));
       return null;
     }
 
@@ -67,7 +65,6 @@ export async function sendNotificationToAllAdmins(
   try {
     console.log('📨 SENDING TO ALL ADMINS:', { type, title, message });
 
-    // Get all admin users
     const { data: admins, error } = await supabase
       .from('users')
       .select('id, email')
@@ -77,9 +74,6 @@ export async function sendNotificationToAllAdmins(
       console.error('❌ Error fetching admins:', error);
       return [];
     }
-
-    console.log('👥 Admins found:', admins?.length || 0);
-    console.log('👥 Admin IDs:', admins?.map(a => a.id) || []);
 
     if (!admins || admins.length === 0) {
       console.warn('⚠️ No admin users found!');
@@ -115,7 +109,6 @@ export async function getNotifications(userId: string) {
       console.error('❌ Error fetching notifications:', error);
       return [];
     }
-    console.log('📋 Notifications found:', data?.length || 0);
     return data || [];
   } catch (error) {
     console.error('❌ getNotifications error:', error);
@@ -193,7 +186,7 @@ export async function deleteNotification(notificationId: string) {
 }
 
 // ============================================================
-// NOTIFICATION GENERATORS (ALL 10 ACTIVITIES)
+// NOTIFICATION GENERATORS
 // ============================================================
 
 // 1. COMMENT ADDED - Alumni comments on announcement
@@ -205,13 +198,22 @@ export async function notifyCommentAdded(
   alumniId: string
 ) {
   console.log('🔔 notifyCommentAdded called!');
-  const message = `${alumniName} commented on "${announcementTitle}": "${commentContent.substring(0, 60)}${commentContent.length > 60 ? '...' : ''}"`;
+  console.log('📨 Alumni Name:', alumniName);
+  console.log('📨 Announcement:', announcementTitle);
+  console.log('📨 Comment:', commentContent);
+  
+  const message = `${alumniName} commented on announcement "${announcementTitle}"`;
+  
   return sendNotificationToAllAdmins(
     'comment',
     '💬 New Comment',
     message,
     `/admin/announcements/${announcementId}`,
-    { announcement_id: announcementId, alumni_id: alumniId, comment_preview: commentContent }
+    { 
+      announcement_id: announcementId, 
+      alumni_id: alumniId, 
+      comment_preview: commentContent 
+    }
   );
 }
 
@@ -224,46 +226,102 @@ export async function notifyReplyAdded(
   announcementId: string
 ) {
   console.log('🔔 notifyReplyAdded called!');
-  const message = `${adminName} replied to your comment on "${announcementTitle}": "${replyContent.substring(0, 60)}${replyContent.length > 60 ? '...' : ''}"`;
+  const message = `Admin replied to your comment on "${announcementTitle}"`;
   return sendNotification(
     alumniId,
     'reply',
-    '📩 Admin Replied to You',
+    '📩 New Reply',
     message,
     `/alumni/announcements/${announcementId}`,
-    { announcement_id: announcementId, reply_preview: replyContent }
+    { announcement_id: announcementId, reply_preview: replyContent, admin_name: adminName }
   );
 }
 
-// 3. CAREER UPDATED - Alumni updates job title or company
+// 3. CAREER UPDATED - Alumni updates job title or company (FIXED)
 export async function notifyCareerUpdated(
   alumniName: string,
   jobTitle: string,
   company: string,
-  alumniId: string
+  alumniId: string,
+  previousJobTitle?: string,
+  previousCompany?: string
 ) {
-  console.log('🔔 notifyCareerUpdated called!', { alumniName, jobTitle, company });
-  const message = `${alumniName} updated job title to "${jobTitle}" at ${company}`;
+  console.log('🔔 notifyCareerUpdated called!', { alumniName, jobTitle, company, previousJobTitle, previousCompany });
+  
+  const cleanJobTitle = jobTitle?.replace(/["']/g, '').trim() || '';
+  const cleanCompany = company?.replace(/["']/g, '').trim() || '';
+  const cleanPrevJobTitle = previousJobTitle?.replace(/["']/g, '').trim() || '';
+  const cleanPrevCompany = previousCompany?.replace(/["']/g, '').trim() || '';
+  
+  let message = '';
+  let notificationTitle = '📊 Career Update';
+  
+  // ✅ FIX: Remove the && cleanXxx guard - just compare directly
+  const jobTitleChanged = cleanJobTitle !== cleanPrevJobTitle;
+  const companyChanged = cleanCompany !== cleanPrevCompany;
+  
+  if (jobTitleChanged && companyChanged) {
+    message = `${alumniName} updated job title to "${cleanJobTitle}" at ${cleanCompany}`;
+    notificationTitle = '📊 Career Updated';
+  } else if (jobTitleChanged && !companyChanged) {
+    message = `${alumniName} updated job title to "${cleanJobTitle}"`;
+    notificationTitle = '💼 Job Title Updated';
+  } else if (!jobTitleChanged && companyChanged) {
+    message = `${alumniName} updated company to ${cleanCompany}`;
+    notificationTitle = '🏢 Company Updated';
+  } else {
+    message = `${alumniName} updated their career information`;
+    notificationTitle = '📊 Career Updated';
+  }
+  
   return sendNotificationToAllAdmins(
     'career_update',
-    '📊 Career Update',
+    notificationTitle,
     message,
     `/admin/alumni/${alumniId}`,
-    { alumni_id: alumniId, job_title: jobTitle, company: company }
+    { 
+      alumni_id: alumniId, 
+      job_title: cleanJobTitle, 
+      company: cleanCompany,
+      previous_job_title: cleanPrevJobTitle,
+      previous_company: cleanPrevCompany
+    }
   );
 }
 
-// 4. PROFILE UPDATED - Alumni updates profile picture or info
+// 4. PROFILE UPDATED - Alumni updates profile picture or info (FIXED)
 export async function notifyProfileUpdated(
   alumniName: string,
   alumniId: string,
   updateType: string = 'profile information'
 ) {
   console.log('🔔 notifyProfileUpdated called!', { alumniName, updateType });
-  const message = `${alumniName} updated their ${updateType}`;
+  
+  let message = '';
+  let title = '✏️ Profile Update';
+  
+  if (updateType === 'profile picture' || updateType === 'avatar') {
+    message = `${alumniName} updated their profile picture`;
+    title = '🖼️ Profile Picture Updated';
+  } else if (updateType === 'profile picture (removed)') {
+    // ✅ NEW CASE
+    message = `${alumniName} removed their profile picture`;
+    title = '🖼️ Profile Picture Removed';
+  } else if (updateType === 'contact information' || updateType === 'contact') {
+    message = `${alumniName} updated their contact information`;
+    title = '📱 Contact Info Updated';
+  } else if (updateType === 'career information') {
+    // ✅ NEW CASE
+    message = `${alumniName} updated additional career details (industry, location, or LinkedIn)`;
+    title = '📋 Career Details Updated';
+  } else {
+    message = `${alumniName} updated their profile information`;
+    title = '✏️ Profile Updated';
+  }
+  
   return sendNotificationToAllAdmins(
     'profile_update',
-    '✏️ Profile Update',
+    title,
     message,
     `/admin/alumni/${alumniId}`,
     { alumni_id: alumniId, update_type: updateType }
@@ -277,10 +335,10 @@ export async function notifyNewRegistration(
   alumniId: string
 ) {
   console.log('🔔 notifyNewRegistration called!', { alumniName, course });
-  const message = `${alumniName} (${course}) just registered on GradTrack`;
+  const message = `${alumniName} (${course}) registered on GradTrack`;
   return sendNotificationToAllAdmins(
     'registration',
-    '🎉 New Alumni Registered',
+    '🎉 New Alumni Registration',
     message,
     `/admin/alumni/${alumniId}`,
     { alumni_id: alumniId, course: course }
@@ -294,6 +352,12 @@ export async function notifyNewAnnouncement(
   announcementId: string
 ) {
   console.log('🔔 notifyNewAnnouncement called!', { alumniCount: alumniIds.length, title });
+  
+  if (!alumniIds || alumniIds.length === 0) {
+    console.warn('⚠️ No alumni to notify about announcement');
+    return [];
+  }
+  
   const notifications = alumniIds.map((userId) =>
     sendNotification(
       userId,
@@ -307,27 +371,52 @@ export async function notifyNewAnnouncement(
   return Promise.all(notifications);
 }
 
-// 7. EMPLOYMENT STATUS CHANGED - Alumni changes employment status
+// 7. EMPLOYMENT STATUS CHANGED - Alumni changes employment status (FIXED)
 export async function notifyEmploymentStatusChanged(
   alumniName: string,
   employmentStatus: string,
   company: string,
   jobTitle: string,
-  alumniId: string
+  alumniId: string,
+  previousStatus?: string
 ) {
-  console.log('🔔 notifyEmploymentStatusChanged called!', { alumniName, employmentStatus, company, jobTitle });
-  let message = `${alumniName} changed status to "${employmentStatus}"`;
-  if (company && jobTitle) {
-    message = `${alumniName} is now ${employmentStatus} at ${company} as ${jobTitle}`;
-  } else if (company) {
-    message = `${alumniName} is now ${employmentStatus} at ${company}`;
+  console.log('🔔 notifyEmploymentStatusChanged called!', { alumniName, employmentStatus, company, jobTitle, previousStatus });
+  
+  let message = '';
+  let title = '🔄 Status Changed';
+  
+  if (previousStatus && previousStatus !== employmentStatus) {
+    // ✅ Show "changed from X to Y"
+    if (company && jobTitle) {
+      message = `${alumniName} changed status from "${previousStatus}" to "${employmentStatus}" at ${company} as ${jobTitle}`;
+    } else if (company) {
+      message = `${alumniName} changed status from "${previousStatus}" to "${employmentStatus}" at ${company}`;
+    } else {
+      message = `${alumniName} changed status from "${previousStatus}" to "${employmentStatus}"`;
+    }
+  } else {
+    // ✅ Show "is now X"
+    if (company && jobTitle) {
+      message = `${alumniName} is now ${employmentStatus} at ${company} as ${jobTitle}`;
+    } else if (company) {
+      message = `${alumniName} is now ${employmentStatus} at ${company}`;
+    } else {
+      message = `${alumniName} changed status to "${employmentStatus}"`;
+    }
   }
+  
   return sendNotificationToAllAdmins(
     'career_update',
-    '🔄 Employment Status Changed',
+    title,
     message,
     `/admin/alumni/${alumniId}`,
-    { alumni_id: alumniId, employment_status: employmentStatus, company: company, job_title: jobTitle }
+    { 
+      alumni_id: alumniId, 
+      employment_status: employmentStatus, 
+      company: company, 
+      job_title: jobTitle,
+      previous_status: previousStatus
+    }
   );
 }
 
@@ -352,33 +441,61 @@ export async function notifyAnnouncementEdited(
 // 9. ALUMNI VERIFIED - Alumni verified from master list
 export async function notifyAlumniVerified(
   alumniName: string,
-  alumniId: string
+  alumniId: string,
+  verifierName?: string
 ) {
-  console.log('🔔 notifyAlumniVerified called!', { alumniName });
-  const message = `${alumniName} has been verified as a CRMC graduate`;
+  console.log('🔔 notifyAlumniVerified called!', { alumniName, verifierName });
+  const message = verifierName 
+    ? `${alumniName} has been verified by ${verifierName}`
+    : `${alumniName} has been verified as a CRMC graduate`;
   return sendNotificationToAllAdmins(
     'registration',
     '✅ Alumni Verified',
     message,
     `/admin/alumni/${alumniId}`,
-    { alumni_id: alumniId }
+    { alumni_id: alumniId, verifier: verifierName }
   );
 }
 
 // 10. MASTER LIST IMPORTED - Admin imports master list
 export async function notifyMasterListImported(
   adminId: string,
-  recordCount: number
+  recordCount: number,
+  adminName?: string
 ) {
-  console.log('🔔 notifyMasterListImported called!', { adminId, recordCount });
-  const message = `Master list imported: ${recordCount} new records added`;
+  console.log('🔔 notifyMasterListImported called!', { adminId, recordCount, adminName });
+  const message = adminName 
+    ? `${adminName} imported master list: ${recordCount} new records added`
+    : `Master list imported: ${recordCount} new records added`;
   return sendNotification(
     adminId,
     'announcement',
     '📥 Master List Imported',
     message,
     '/admin/masterlist',
-    { record_count: recordCount }
+    { record_count: recordCount, imported_by: adminName }
+  );
+}
+
+// 11. COMMENT DELETED - Admin deletes a comment
+export async function notifyCommentDeleted(
+  alumniId: string,
+  announcementTitle: string,
+  announcementId: string,
+  commentContent: string,
+  adminName?: string
+) {
+  console.log('🔔 notifyCommentDeleted called!', { alumniId, announcementTitle });
+  const message = adminName 
+    ? `${adminName} removed a comment on "${announcementTitle}"`
+    : `A comment was removed on "${announcementTitle}"`;
+  return sendNotification(
+    alumniId,
+    'comment',
+    '🗑️ Comment Removed',
+    message,
+    `/alumni/announcements/${announcementId}`,
+    { announcement_title: announcementTitle, comment_preview: commentContent }
   );
 }
 
@@ -403,5 +520,6 @@ export default {
   notifyEmploymentStatusChanged,
   notifyAnnouncementEdited,
   notifyAlumniVerified,
-  notifyMasterListImported
+  notifyMasterListImported,
+  notifyCommentDeleted,
 };

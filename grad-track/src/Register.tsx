@@ -244,7 +244,9 @@ const { error: userInsertError } = await supabase
     id: authData.user.id,
     email: formData.email,
     role: 'Alumni',
+    full_name: authData.user.user_metadata?.full_name || '',
     admin: false 
+    
   }, { onConflict: 'id' }); // This tells the code: "If user exists, it's okay, keep going."
 
 if (userInsertError) {

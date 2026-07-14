@@ -9,11 +9,12 @@ import ReportsPanel from './ReportsPanel';
 import AnnouncementComments from './AnnouncementComments';
 import NotificationBell from './NotificationBell';
 import {
-  notifyCommentAdded,
   notifyReplyAdded,
   notifyNewAnnouncement,
   notifyAnnouncementEdited,
   notifyAlumniVerified,
+  sendNotification,
+
 } from './lib/notificationUtils';
 
 // ==================== TYPES ====================
@@ -927,78 +928,71 @@ export default function AdminDashboard({ session }: { session: Session }) {
   // COMMENT FUNCTIONS (WITH NOTIFICATIONS)
   // ============================================================
 
-  const fetchComments = async (announcementId: string) => {
-    setCommentLoading(prev => ({ ...prev, [announcementId]: true }));
+ const fetchComments = async (announcementId: string) => {
+  setCommentLoading(prev => ({ ...prev, [announcementId]: true }));
 
-    try {
-      const { data: allCommentsData, error } = await supabase
-        .from('announcement_comments')
-        .select('*')
-        .eq('announcement_id', announcementId)
-        .order('created_at', { ascending: true });
+  try {
+    const { data: allCommentsData, error } = await supabase
+      .from('announcement_comments')
+      .select('*')
+      .eq('announcement_id', announcementId)
+      .order('created_at', { ascending: true });
 
-      if (error) throw error;
+    if (error) throw error;
 
-      const allComments = (allCommentsData as AnnouncementComment[] | null) || [];
+    const allComments = (allCommentsData as AnnouncementComment[] | null) || [];
 
-      if (allComments.length === 0) {
-        setComments(prev => ({ ...prev, [announcementId]: [] }));
-        return;
-      }
-
-      const userIds = [...new Set(allComments.map(comment => comment.user_id))];
-      let userMap: Record<string, { id: string; role?: string }> = {};
-      let nameMap: Record<string, string> = {};
-
-      if (userIds.length > 0) {
-        const { data: users } = await supabase
-          .from('users')
-          .select('id, role')
-          .in('id', userIds);
-
-        userMap = users?.reduce((acc, user) => ({ ...acc, [user.id]: user }), {}) || {};
-
-        const { data: alumni } = await supabase
-          .from('alumni_profiles')
-          .select('user_id, full_name')
-          .in('user_id', userIds);
-
-        nameMap = alumni?.reduce((acc, profile) => ({ ...acc, [profile.user_id]: profile.full_name }), {}) || {};
-      }
-
-      const commentMap: Record<string, AnnouncementComment & { replies: AnnouncementComment[]; showReplyInput: boolean }> = {};
-      const rootComments: (AnnouncementComment & { replies: AnnouncementComment[]; showReplyInput: boolean })[] = [];
-
-      allComments.forEach(comment => {
-        commentMap[comment.id] = {
-          ...comment,
-          full_name: nameMap[comment.user_id] || 'Unknown Alumni',
-          role: userMap[comment.user_id]?.role || 'alumni',
-          replies: [],
-          showReplyInput: false
-        };
-      });
-
-      allComments.forEach(comment => {
-        if (comment.parent_comment_id) {
-          const parentComment = commentMap[comment.parent_comment_id];
-          if (parentComment) {
-            parentComment.replies.push(commentMap[comment.id]);
-          }
-        } else {
-          rootComments.push(commentMap[comment.id]);
-        }
-      });
-
-      setComments(prev => ({ ...prev, [announcementId]: rootComments }));
-      setCommentCounts(prev => ({ ...prev, [announcementId]: allComments.length }));
-    } catch (error) {
-      console.error('Error fetching comments:', error);
-    } finally {
-      setCommentLoading(prev => ({ ...prev, [announcementId]: false }));
+    if (allComments.length === 0) {
+      setComments(prev => ({ ...prev, [announcementId]: [] }));
+      return;
     }
-  };
 
+    const userIds = [...new Set(allComments.map(comment => comment.user_id))];
+    let userMap: Record<string, { role?: string; full_name?: string }> = {};
+
+    if (userIds.length > 0) {
+      const { data: users } = await supabase
+        .from('users')
+        .select('id, role, full_name')
+        .in('id', userIds);
+
+      userMap = users?.reduce((acc, user) => ({ ...acc, [user.id]: user }), {}) || {};
+    }
+
+    const commentMap: Record<string, AnnouncementComment & { replies: AnnouncementComment[]; showReplyInput: boolean }> = {};
+    const rootComments: (AnnouncementComment & { replies: AnnouncementComment[]; showReplyInput: boolean })[] = [];
+
+    allComments.forEach(comment => {
+      const userRow = userMap[comment.user_id];
+      commentMap[comment.id] = {
+        ...comment,
+        // Admins see real names for both alumni and other admins.
+        full_name: userRow?.full_name || 'Unknown',
+        role: userRow?.role || 'Alumni',
+        replies: [],
+        showReplyInput: false
+      };
+    });
+
+    allComments.forEach(comment => {
+      if (comment.parent_comment_id) {
+        const parentComment = commentMap[comment.parent_comment_id];
+        if (parentComment) {
+          parentComment.replies.push(commentMap[comment.id]);
+        }
+      } else {
+        rootComments.push(commentMap[comment.id]);
+      }
+    });
+
+    setComments(prev => ({ ...prev, [announcementId]: rootComments }));
+    setCommentCounts(prev => ({ ...prev, [announcementId]: allComments.length }));
+  } catch (error) {
+    console.error('Error fetching comments:', error);
+  } finally {
+    setCommentLoading(prev => ({ ...prev, [announcementId]: false }));
+  }
+};
   const fetchAllComments = async () => {
     if (!announcements || announcements.length === 0) return;
     const announcementIds = announcements.map(a => a.id);
@@ -1091,82 +1085,99 @@ export default function AdminDashboard({ session }: { session: Session }) {
   };
 
   const addComment = async (announcementId: string, content: string, parentCommentId: string | null = null) => {
-    if (!content.trim()) return;
+  if (!content.trim()) return;
 
-    try {
-      const { error } = await supabase
+  try {
+    // Admin's name comes from component state / auth metadata —
+    // there is no `profiles` table, and `users` doesn't store full_name.
+    const adminName = adminProfile.full_name || session.user.user_metadata?.full_name || 'Admin';
+
+    // Insert the comment
+    const { error } = await supabase
+      .from('announcement_comments')
+      .insert({
+        announcement_id: announcementId,
+        user_id: session.user.id,
+        content: content.trim(),
+        parent_comment_id: parentCommentId,
+      });
+
+    if (error) throw error;
+
+    // Fetch announcement title
+    const { data: announcement } = await supabase
+      .from('announcements')
+      .select('title')
+      .eq('id', announcementId)
+      .single();
+
+    if (parentCommentId) {
+      // This is a REPLY — find who wrote the comment being replied to
+      const { data: parentComment } = await supabase
         .from('announcement_comments')
-        .insert({
-          announcement_id: announcementId,
-          user_id: session.user.id,
-          content: content.trim(),
-          parent_comment_id: parentCommentId
-        });
-
-      if (error) {
-        console.error('Error inserting comment:', error);
-        showSettingsToast('Failed to add comment', 'error');
-        return;
-      }
-
-      const { data: profile } = await supabase
-        .from('alumni_profiles')
-        .select('full_name')
-        .eq('user_id', session.user.id)
+        .select('user_id')
+        .eq('id', parentCommentId)
         .single();
 
-      const commenterName = profile?.full_name || 'An alumni';
-
-      const { data: ann } = await supabase
-        .from('announcements')
-        .select('title')
-        .eq('id', announcementId)
-        .single();
-
-      const announcementTitle = ann?.title || 'announcement';
-
-      if (parentCommentId) {
-        const { data: parentComment } = await supabase
-          .from('announcement_comments')
-          .select('user_id')
-          .eq('id', parentCommentId)
+      if (parentComment) {
+        // Role lives on `users`, not `profiles`
+        const { data: authorRow } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', parentComment.user_id)
           .single();
 
-        if (parentComment) {
-          const adminName = session.user.user_metadata?.full_name || 'Admin';
+        if (authorRow?.role === 'Admin') {
+          // Replying to another admin — send directly, real name visible
+          await sendNotification(
+            parentComment.user_id,
+            'reply',
+            '📩 New Reply',
+            `${adminName} replied to your comment on "${announcement?.title || 'announcement'}"`,
+            `/admin/announcements/${announcementId}`,
+            { announcement_id: announcementId, reply_preview: content.trim() }
+          );
+        } else {
+          // Replying to an alumni — admin name gets masked as "Admin"
           await notifyReplyAdded(
             parentComment.user_id,
             adminName,
-            announcementTitle,
-            content,
+            announcement?.title || 'announcement',
+            content.trim(),
             announcementId
           );
         }
-      } else {
-        await notifyCommentAdded(
-          commenterName,
-          announcementTitle,
-          content,
-          announcementId,
-          session.user.id
-        );
       }
+    } else {
+      // Root-level comment — notify all other admins
+      const { data: admins } = await supabase
+        .from('users')
+        .select('id')
+        .eq('role', 'Admin')
+        .neq('id', session.user.id);
 
-      await fetchComments(announcementId);
-
-      await supabase.from('alumni_activities').insert({
-        user_id: session.user.id,
-        activity_type: 'announcement_comment',
-        description: `Commented on announcement: ${content.substring(0, 50)}...`,
-        metadata: { announcement_id: announcementId }
-      });
-
-      showSettingsToast('Comment added successfully!', 'success');
-    } catch (error) {
-      console.error('Error in addComment:', error);
-      showSettingsToast('Failed to add comment', 'error');
+      if (admins && admins.length > 0) {
+        const notificationPromises = admins.map((admin) =>
+          sendNotification(
+            admin.id,
+            'comment',
+            '💬 New Comment',
+            `${adminName} commented on "${announcement?.title || 'announcement'}"`,
+            `/admin/announcements/${announcementId}`,
+            { announcement_id: announcementId, comment_preview: content.trim() }
+          )
+        );
+        await Promise.all(notificationPromises);
+      }
     }
-  };
+
+    await fetchComments(announcementId);
+    showSettingsToast('Comment added successfully!', 'success');
+  } catch (error) {
+    console.error('Error in addComment:', error);
+    showSettingsToast('Failed to add comment', 'error');
+  }
+};
 
   const deleteComment = async (commentId: string, announcementId: string) => {
     if (!confirm('Are you sure you want to delete this comment?')) return;

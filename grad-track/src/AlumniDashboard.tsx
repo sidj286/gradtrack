@@ -10,6 +10,7 @@ import {
   notifyProfileUpdated,
   notifyNewRegistration,
   notifyEmploymentStatusChanged,
+  notifyCommentAdded,
 } from './lib/notificationUtils';
 import NotificationBell from './NotificationBell';
 
@@ -838,68 +839,67 @@ export default function AlumniDashboard({ session }: { session: Session }) {
   }
 };
 
-  const fetchCommentsForAnnouncement = async (announcementId: string) => {
-    setCommentLoading(prev => ({ ...prev, [announcementId]: true }));
-    try {
-      const { data, error } = await supabase
-        .from('announcement_comments')
-        .select('*')
-        .eq('announcement_id', announcementId)
-        .order('created_at', { ascending: true });
+ const fetchCommentsForAnnouncement = async (announcementId: string) => {
+  setCommentLoading(prev => ({ ...prev, [announcementId]: true }));
+  try {
+    const { data, error } = await supabase
+      .from('announcement_comments')
+      .select('*')
+      .eq('announcement_id', announcementId)
+      .order('created_at', { ascending: true });
 
-      if (error) throw error;
+    if (error) throw error;
 
-      const comments = (data as AnnouncementComment[] | null) || [];
-      const userIds = [...new Set(comments.map(comment => comment.user_id))];
-      let userMap: Record<string, { role?: string }> = {};
-      let nameMap: Record<string, string> = {};
+    const comments = (data as AnnouncementComment[] | null) || [];
+    const userIds = [...new Set(comments.map(comment => comment.user_id))];
+    let userMap: Record<string, { role?: string; full_name?: string }> = {};
 
-      if (userIds.length > 0) {
-        const { data: usersData } = await supabase
-          .from('users')
-          .select('id, role')
-          .in('id', userIds);
+    if (userIds.length > 0) {
+      const { data: usersData } = await supabase
+        .from('users')
+        .select('id, role, full_name')
+        .in('id', userIds);
 
-        userMap = usersData?.reduce((acc, user) => ({ ...acc, [user.id]: user }), {}) || {};
-
-        const { data: alumniData } = await supabase
-          .from('alumni_profiles')
-          .select('user_id, full_name')
-          .in('user_id', userIds);
-
-        nameMap = alumniData?.reduce((acc, profile) => ({ ...acc, [profile.user_id]: profile.full_name || 'Unknown Alumni' }), {}) || {};
-      }
-
-      const commentMap: Record<string, AnnouncementComment & { replies: AnnouncementComment[] }> = {};
-      const rootComments: (AnnouncementComment & { replies: AnnouncementComment[] })[] = [];
-
-      comments.forEach(comment => {
-        commentMap[comment.id] = {
-          ...comment,
-          full_name: nameMap[comment.user_id] || 'Unknown Alumni',
-          role: userMap[comment.user_id]?.role || 'alumni',
-          replies: [],
-        };
-      });
-
-      comments.forEach(comment => {
-        if (comment.parent_comment_id) {
-          const parent = commentMap[comment.parent_comment_id];
-          if (parent) {
-            parent.replies.push(commentMap[comment.id]);
-          }
-        } else {
-          rootComments.push(commentMap[comment.id]);
-        }
-      });
-
-      setCommentsByAnnouncement(prev => ({ ...prev, [announcementId]: rootComments }));
-    } catch (error) {
-      console.error('Error fetching comments:', error);
-    } finally {
-      setCommentLoading(prev => ({ ...prev, [announcementId]: false }));
+      userMap = usersData?.reduce((acc, user) => ({ ...acc, [user.id]: user }), {}) || {};
     }
-  };
+
+    const commentMap: Record<string, AnnouncementComment & { replies: AnnouncementComment[] }> = {};
+    const rootComments: (AnnouncementComment & { replies: AnnouncementComment[] })[] = [];
+
+    comments.forEach(comment => {
+      const userRow = userMap[comment.user_id];
+      const role = userRow?.role || 'Alumni';
+      // Alumni always see "Admin" for admin commenters — real name never exposed here.
+      const displayName = role === 'Admin'
+        ? 'Admin'
+        : (userRow?.full_name || 'Unknown Alumni');
+
+      commentMap[comment.id] = {
+        ...comment,
+        full_name: displayName,
+        role,
+        replies: [],
+      };
+    });
+
+    comments.forEach(comment => {
+      if (comment.parent_comment_id) {
+        const parent = commentMap[comment.parent_comment_id];
+        if (parent) {
+          parent.replies.push(commentMap[comment.id]);
+        }
+      } else {
+        rootComments.push(commentMap[comment.id]);
+      }
+    });
+
+    setCommentsByAnnouncement(prev => ({ ...prev, [announcementId]: rootComments }));
+  } catch (error) {
+    console.error('Error fetching comments:', error);
+  } finally {
+    setCommentLoading(prev => ({ ...prev, [announcementId]: false }));
+  }
+};
 
   const fetchAnnouncements = async () => {
     setAnnouncementsLoading(true);
@@ -953,28 +953,48 @@ export default function AlumniDashboard({ session }: { session: Session }) {
     }
   };
 
-  const addComment = async (announcementId: string, content: string, parentCommentId: string | null = null) => {
-    if (!content.trim()) return;
+ // src/AlumniDashboard.tsx - REPLACE addComment function
 
-    try {
-      const { error } = await supabase
-        .from('announcement_comments')
-        .insert({
-          announcement_id: announcementId,
-          user_id: session.user.id,
-          content: content.trim(),
-          parent_comment_id: parentCommentId,
-        });
+// src/AdminDashboard.tsx - REPLACE addComment function
 
-      if (error) throw error;
-      await fetchCommentsForAnnouncement(announcementId);
-      showToast('Comment posted successfully.', 'success');
-    } catch (error) {
-      console.error('Error adding comment:', error);
-      showToast('Unable to post comment right now.', 'error');
-    }
-  };
+const addComment = async (announcementId: string, content: string, parentCommentId: string | null = null) => {
+  if (!content.trim()) return;
 
+  try {
+    const { error } = await supabase
+      .from('announcement_comments')
+      .insert({
+        announcement_id: announcementId,
+        user_id: session.user.id,
+        content: content.trim(),
+        parent_comment_id: parentCommentId,
+      });
+
+    if (error) throw error;
+
+    const { data: announcement } = await supabase
+      .from('announcements')
+      .select('title')
+      .eq('id', announcementId)
+      .single();
+
+    // Alumni commenting or replying — always notify all admins.
+    // (Admin-to-alumni replies are handled separately, in AdminDashboard.tsx.)
+    await notifyCommentAdded(
+      profile?.full_name || 'An alumni',
+      announcement?.title || 'announcement',
+      content.trim(),
+      announcementId,
+      session.user.id
+    );
+
+    await fetchCommentsForAnnouncement(announcementId);
+    showToast('Comment posted successfully.', 'success');
+  } catch (error) {
+    console.error('Error adding comment:', error);
+    showToast('Unable to post comment right now.', 'error');
+  }
+};
   const deleteComment = async (commentId: string, announcementId: string) => {
     if (!window.confirm('Delete this comment?')) return;
 
@@ -1228,25 +1248,28 @@ export default function AlumniDashboard({ session }: { session: Session }) {
       }
 
       // ✅ #3 CAREER UPDATED - Notify admins when job title or company changes
-      if (jobTitleChanged || companyChanged) {
-        await notifyCareerUpdated(
-          profile?.full_name || 'An alumni',
-          employmentForm.job_title || 'Not specified',
-          employmentForm.company || 'Not specified',
-          session.user.id
-        );
-      }
+     if (jobTitleChanged || companyChanged) {
+  await notifyCareerUpdated(
+    profile?.full_name || 'An alumni',
+    employmentForm.job_title || 'Not specified',
+    employmentForm.company || 'Not specified',
+    session.user.id,
+    oldValues.job_title,     // ✅ ADD THIS
+    oldValues.company        // ✅ ADD THIS
+  );
+}
 
       // ✅ #7 EMPLOYMENT STATUS CHANGED - Notify admins when employment status changes
-      if (statusChanged) {
-        await notifyEmploymentStatusChanged(
-          profile?.full_name || 'An alumni',
-          employmentForm.employment_status || 'Unemployed',
-          employmentForm.company || '',
-          employmentForm.job_title || '',
-          session.user.id
-        );
-      }
+     if (statusChanged) {
+  await notifyEmploymentStatusChanged(
+    profile?.full_name || 'An alumni',
+    employmentForm.employment_status || 'Unemployed',
+    employmentForm.company || '',
+    employmentForm.job_title || '',
+    session.user.id,
+    oldValues.employment_status     // ✅ ADD THIS
+  );
+}
 
       // ✅ #4 PROFILE UPDATED - Notify admins for any other profile updates
       if (!jobTitleChanged && !companyChanged && !statusChanged) {
