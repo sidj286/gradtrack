@@ -1,4 +1,4 @@
-// Register.tsx - COMPLETE FIXED VERSION (with proper full_name handling)
+// Register.tsx - COMPLETE FIXED VERSION (with upsert and duplicate handling)
 import React, { useState } from 'react';
 import { supabase } from './lib/supabase';
 
@@ -124,58 +124,6 @@ export default function Register({ onSuccess }: RegisterProps) {
       console.error('Error checking user:', err);
       return { exists: false };
     }
-  };
-
-  // ⭐ FIXED: Better retry with proper full_name handling
-  const insertUserWithRetry = async (
-    payload: { id: string; email: string; role: string; full_name: string; admin: boolean },
-    maxAttempts = 10
-  ) => {
-    let lastError: any = null;
-    
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        console.log(`Attempt ${attempt}/${maxAttempts} - Inserting user with full_name: "${payload.full_name}"`);
-        
-        // Try the insert
-        const { error: userInsertError } = await supabase.from('users').insert(payload);
-        
-        if (!userInsertError) {
-          console.log(`✅ User inserted successfully on attempt ${attempt}`);
-          return { error: null };
-        }
-        
-        lastError = userInsertError;
-        
-        // If it's a duplicate email, fail immediately
-        if (userInsertError.code === '23505') {
-          console.error('Duplicate email error:', userInsertError);
-          return { error: userInsertError };
-        }
-        
-        // Only retry on FK violation (23503) - auth user not ready yet
-        if (userInsertError.code !== '23503') {
-          console.error('Non-retryable error:', userInsertError);
-          return { error: userInsertError };
-        }
-        
-        console.warn(`users insert FK violation, retrying (${attempt}/${maxAttempts})...`);
-        
-      } catch (err) {
-        lastError = err;
-        console.warn(`Attempt ${attempt} failed:`, err);
-      }
-      
-      // Wait with exponential backoff before next attempt
-      if (attempt < maxAttempts) {
-        const delay = Math.min(attempt * 600, 5000); // 600ms, 1200ms, 1800ms, ... max 5000ms
-        console.log(`Waiting ${delay}ms before retry...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-    
-    console.error('All retry attempts exhausted');
-    return { error: lastError };
   };
 
   const fetchMasterRecord = async (studentId: string): Promise<MasterRecord | null> => {
@@ -324,23 +272,26 @@ export default function Register({ onSuccess }: RegisterProps) {
       console.log('Waiting for auth user to propagate...');
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // STEP 4: Create users table entry with full_name
-      console.log('Inserting into users table with full_name:', masterData.full_name);
+      // STEP 4: Create/Update users table entry using UPSERT
+      console.log('Upserting into users table with full_name:', masterData.full_name);
       
       const userPayload = {
         id: authData.user.id,
         email: formData.email,
         role: 'Alumni',
-        full_name: masterData.full_name, // ⭐ CRITICAL: This MUST be set
+        full_name: masterData.full_name,
         admin: false
       };
       
       console.log('User payload:', userPayload);
 
-      const { error: userInsertError } = await insertUserWithRetry(userPayload);
+      // ⭐ Use upsert to avoid duplicate key errors
+      const { error: userInsertError } = await supabase
+        .from('users')
+        .upsert(userPayload, { onConflict: 'id' });
 
       if (userInsertError) {
-        console.error('❌ Error creating users entry after retries:', userInsertError);
+        console.error('❌ Error creating users entry:', userInsertError);
         try {
           await supabase.auth.admin.deleteUser(authData.user.id);
         } catch (cleanupError) {
@@ -352,7 +303,7 @@ export default function Register({ onSuccess }: RegisterProps) {
         return;
       }
 
-      console.log('✅ Users table entry created successfully with full_name:', masterData.full_name);
+      console.log('✅ Users table entry created/updated successfully with full_name:', masterData.full_name);
 
       // Verify the user was inserted with the correct full_name
       const { data: verifyUser, error: verifyError } = await supabase
@@ -400,26 +351,60 @@ export default function Register({ onSuccess }: RegisterProps) {
       
       console.log('Profile payload:', profilePayload);
 
-      const { data: profileData, error: profileError } = await supabase
+      // ⭐ Check if profile already exists (to avoid duplicate)
+      const { data: existingProfile } = await supabase
         .from('alumni_profiles')
-        .insert(profilePayload)
-        .select();
+        .select('id')
+        .eq('user_id', authData.user.id)
+        .maybeSingle();
 
-      if (profileError) {
-        console.error('❌ Profile creation error:', profileError);
-        if (profileError.code === '23503') {
+      let profileResult;
+      if (existingProfile) {
+        console.log('Profile already exists, updating...');
+        const { data, error } = await supabase
+          .from('alumni_profiles')
+          .update(profilePayload)
+          .eq('user_id', authData.user.id)
+          .select();
+        profileResult = { data, error };
+      } else {
+        console.log('Creating new profile...');
+        const { data, error } = await supabase
+          .from('alumni_profiles')
+          .insert(profilePayload)
+          .select();
+        profileResult = { data, error };
+      }
+
+      if (profileResult.error) {
+        console.error('❌ Profile creation error:', profileResult.error);
+        if (profileResult.error.code === '23503') {
           setError('⚠️ User account created but profile setup failed. Please contact support.');
-        } else if (profileError.code === '23505') {
+        } else if (profileResult.error.code === '23505') {
           setError('⚠️ This student ID is already registered. Please contact support if you believe this is an error.');
         } else {
-          setError(`Profile creation failed: ${profileError.message}`);
+          setError(`Profile creation failed: ${profileResult.error.message}`);
         }
         setLoading(false);
         setLoadingStep('');
         return;
       }
 
-      console.log('✅ Alumni profile created successfully:', profileData);
+      console.log('✅ Alumni profile created/updated successfully:', profileResult.data);
+
+      // ⭐ NEW: Immediately sign in the user
+      setLoadingStep('Signing you in...');
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password
+      });
+
+      if (signInError) {
+        console.warn('Sign in warning:', signInError);
+        // Don't fail - user can sign in manually
+      } else {
+        console.log('✅ User signed in successfully');
+      }
 
       const successMessage = `✓ Registration Successful!\n\nWelcome, ${masterData.full_name}!\n\nA confirmation email has been sent to:\n${formData.email}\n\nPlease check your inbox and click the confirmation link to activate your GradTrack account.`;
       alert(successMessage);
