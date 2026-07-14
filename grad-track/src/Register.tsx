@@ -143,6 +143,39 @@ export default function Register({ onSuccess }: RegisterProps) {
     }
   };
 
+  // Supabase's Auth service and its Data API (PostgREST) sit behind
+  // separate connection paths, so a freshly created auth.users row can
+  // occasionally not be visible yet to a following insert into a table
+  // with a foreign key to auth.users(id). That surfaces as a
+  // "users_id_fkey" violation (Postgres code 23503) even though the
+  // user was just created successfully. Retrying briefly resolves it
+  // without needing a DB migration.
+  const insertUserWithRetry = async (
+    payload: { id: string; email: string; role: string; full_name: string; admin: boolean },
+    maxAttempts = 5
+  ) => {
+    let lastError: any = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const { error: userInsertError } = await supabase.from('users').insert(payload);
+
+      if (!userInsertError) {
+        return { error: null };
+      }
+
+      lastError = userInsertError;
+
+      // Only retry on FK violation (auth.users row not visible yet).
+      // Any other error (e.g. duplicate email) should fail immediately.
+      if (userInsertError.code !== '23503') {
+        return { error: userInsertError };
+      }
+
+      console.warn(`users insert FK violation, retrying (${attempt}/${maxAttempts})...`);
+      await new Promise(resolve => setTimeout(resolve, attempt * 400)); // 400ms, 800ms, 1200ms...
+    }
+    return { error: lastError };
+  };
+
   // Fetch the authoritative record from graduates_master right before
   // we write to users / alumni_profiles. This is the fix for full_name
   // (and course/batch_year) sometimes landing as null: we never trust
@@ -289,16 +322,17 @@ export default function Register({ onSuccess }: RegisterProps) {
 
       // STEP 4: Create users table entry — uses masterData.full_name,
       // the authoritative value fetched moments ago, NOT formData.
+      // Uses a retry helper to tolerate Auth/Data-API replication lag
+      // (see insertUserWithRetry above) which otherwise intermittently
+      // throws a users_id_fkey violation right after a fresh signUp.
       setLoadingStep('Setting up user profile...');
-      const { error: userInsertError } = await supabase
-        .from('users')
-        .insert({
-          id: authData.user.id,
-          email: formData.email,
-          role: 'Alumni',
-          full_name: masterData.full_name,
-          admin: false
-        });
+      const { error: userInsertError } = await insertUserWithRetry({
+        id: authData.user.id,
+        email: formData.email,
+        role: 'Alumni',
+        full_name: masterData.full_name,
+        admin: false
+      });
 
       if (userInsertError) {
         console.error('❌ Error creating users entry:', userInsertError);
