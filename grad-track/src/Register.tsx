@@ -1,4 +1,4 @@
-// Register.tsx - COMPLETE WITH BLUE STYLING (FIXED)
+// Register.tsx - COMPLETE WITH BLUE STYLING (FIXED: full_name null bug)
 import React, { useState } from 'react';
 import { supabase } from './lib/supabase';
 
@@ -18,6 +18,18 @@ const EyeSlashIcon = () => (
 
 interface RegisterProps {
   onSuccess?: () => void;
+}
+
+// Shape of the row we trust from graduates_master at submit time.
+// We re-fetch this right before writing, instead of trusting local
+// component state, because formData can go stale/desync across the
+// multi-step async registration flow.
+interface MasterRecord {
+  full_name: string;
+  course: string | null;
+  batch_year: number | null;
+  department: string | null;
+  gender: string | null;
 }
 
 export default function Register({ onSuccess }: RegisterProps) {
@@ -66,15 +78,17 @@ export default function Register({ onSuccess }: RegisterProps) {
       }
 
       setVerifiedGraduate(graduate);
-      
-      // Auto-fill form from master list
+
+      // Auto-fill form from master list (display only — the actual
+      // authoritative values are re-fetched at submit time, see
+      // fetchMasterRecord() below)
       setFormData(prev => ({
         ...prev,
         fullName: graduate.full_name,
         batchYear: graduate.batch_year?.toString() || '',
         course: graduate.course || '',
       }));
-      
+
       setVerificationStatus('verified');
     } catch (err) {
       console.error('Verification error:', err);
@@ -87,7 +101,7 @@ export default function Register({ onSuccess }: RegisterProps) {
   const checkIfUserExists = async (studentId: string, email: string) => {
     try {
       console.log('Checking for existing user with Student ID:', studentId);
-      
+
       // Check by student_id in alumni_profiles
       const { data: existingProfile } = await supabase
         .from('alumni_profiles')
@@ -97,9 +111,9 @@ export default function Register({ onSuccess }: RegisterProps) {
 
       if (existingProfile) {
         console.log('Found existing profile with this student ID');
-        return { 
-          exists: true, 
-          reason: 'student_id', 
+        return {
+          exists: true,
+          reason: 'student_id',
           message: `❌ Student ID "${studentId}" is already registered.\n\nPlease sign in to your existing account.`,
           suggestion: 'Go to Sign In'
         };
@@ -114,9 +128,9 @@ export default function Register({ onSuccess }: RegisterProps) {
 
       if (existingUser) {
         console.log('Found existing user with this email');
-        return { 
-          exists: true, 
-          reason: 'email', 
+        return {
+          exists: true,
+          reason: 'email',
           message: `❌ Email "${email}" is already registered.\n\nAccount holder: ${existingUser.full_name || 'Unknown'}\n\nPlease sign in to your account.`,
           suggestion: 'Go to Sign In'
         };
@@ -129,9 +143,28 @@ export default function Register({ onSuccess }: RegisterProps) {
     }
   };
 
+  // Fetch the authoritative record from graduates_master right before
+  // we write to users / alumni_profiles. This is the fix for full_name
+  // (and course/batch_year) sometimes landing as null: we never trust
+  // formData for the actual DB write, only for pre-filling the UI.
+  const fetchMasterRecord = async (studentId: string): Promise<MasterRecord | null> => {
+    const { data, error: masterError } = await supabase
+      .from('graduates_master')
+      .select('full_name, course, batch_year, department, gender')
+      .eq('student_id', studentId)
+      .single();
+
+    if (masterError || !data) {
+      console.error('Error fetching master data:', masterError);
+      return null;
+    }
+
+    return data as MasterRecord;
+  };
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     setError('');
 
     if (!agreedToTerms) {
@@ -165,7 +198,7 @@ export default function Register({ onSuccess }: RegisterProps) {
     try {
       // STEP 1: Check if user already exists
       const existingCheck = await checkIfUserExists(formData.studentId, formData.email);
-      
+
       if (existingCheck.exists) {
         setError(existingCheck.message || 'User already exists');
         setLoading(false);
@@ -174,16 +207,23 @@ export default function Register({ onSuccess }: RegisterProps) {
         return;
       }
 
-      // STEP 1.5: Capture official student details from the master list
-      const { data: masterData, error: masterError } = await supabase
-        .from('graduates_master')
-        .select('department, gender') // ✅ FIXED: Added gender here
-        .eq('student_id', formData.studentId)
-        .single();
+      // STEP 1.5: Capture the OFFICIAL record from graduates_master.
+      // This is now the single source of truth for full_name, course,
+      // batch_year, department and gender — not local component state.
+      setLoadingStep('Retrieving official student record...');
+      const masterData = await fetchMasterRecord(formData.studentId.trim());
 
-      if (masterError) {
-        console.error('Error fetching master data:', masterError);
+      if (!masterData) {
         setError('⚠️ Could not retrieve complete student data. Please try again.');
+        setLoading(false);
+        setLoadingStep('');
+        return;
+      }
+
+      // Guard: full_name must be present, since it's NOT NULL upstream
+      // and everything downstream depends on it.
+      if (!masterData.full_name || !masterData.full_name.trim()) {
+        setError('⚠️ Your official record is missing a full name. Please contact your school administrator.');
         setLoading(false);
         setLoadingStep('');
         return;
@@ -212,17 +252,17 @@ export default function Register({ onSuccess }: RegisterProps) {
         password: formData.password,
         options: {
           data: {
-            full_name: formData.fullName,
+            full_name: masterData.full_name,
             student_id: formData.studentId,
-            batch_year: parseInt(formData.batchYear),
-            course: formData.course,
+            batch_year: masterData.batch_year,
+            course: masterData.course,
           }
         }
       });
 
       if (signUpError) {
         console.error('Signup error:', signUpError);
-        
+
         if (signUpError.message.includes('already registered')) {
           setError(`📧 Email "${formData.email}" is already registered.\n\nPlease sign in instead or use "Forgot Password" if you can't access your account.`);
         } else if (signUpError.message.includes('weak password')) {
@@ -247,16 +287,17 @@ export default function Register({ onSuccess }: RegisterProps) {
 
       console.log('✅ Auth user created:', authData.user.id);
 
-      // STEP 4: Create users table entry
+      // STEP 4: Create users table entry — uses masterData.full_name,
+      // the authoritative value fetched moments ago, NOT formData.
       setLoadingStep('Setting up user profile...');
       const { error: userInsertError } = await supabase
         .from('users')
-        .insert({ // ✅ FIXED: Use insert instead of upsert
+        .insert({
           id: authData.user.id,
           email: formData.email,
           role: 'Alumni',
-          full_name: formData.fullName, // ✅ FIXED: Use formData.fullName directly
-          admin: false 
+          full_name: masterData.full_name,
+          admin: false
         });
 
       if (userInsertError) {
@@ -275,36 +316,37 @@ export default function Register({ onSuccess }: RegisterProps) {
 
       console.log('✅ Users table entry created successfully');
 
-      // STEP 5: Create alumni profile
+      // STEP 5: Create alumni profile — also uses masterData throughout
+      // so it can never drift from what's in users / graduates_master.
       setLoadingStep('Finalizing registration...');
       const { data: profileData, error: profileError } = await supabase
         .from('alumni_profiles')
         .insert({
           user_id: authData.user.id,
           student_id: formData.studentId,
-          full_name: formData.fullName,
-          course: formData.course,
-          batch_year: parseInt(formData.batchYear),
-          department: masterData?.department || 'N/A',
-          gender: masterData?.gender || '', // ✅ FIXED: Now correctly gets gender
+          full_name: masterData.full_name,
+          course: masterData.course,
+          batch_year: masterData.batch_year,
+          department: masterData.department || 'N/A',
+          gender: masterData.gender || '',
           employment_status: 'Unemployed',
           profile_completion: 50,
           career_alignment_status: 'Pending'
         })
-        .select(); // ✅ FIXED: Added .select() to get the inserted data back
+        .select();
 
       if (profileError) {
         console.error('❌ Profile creation error:', profileError);
         console.error('Profile data attempted:', {
           user_id: authData.user.id,
           student_id: formData.studentId,
-          full_name: formData.fullName,
-          course: formData.course,
-          batch_year: parseInt(formData.batchYear),
-          department: masterData?.department || 'N/A',
-          gender: masterData?.gender || '',
+          full_name: masterData.full_name,
+          course: masterData.course,
+          batch_year: masterData.batch_year,
+          department: masterData.department || 'N/A',
+          gender: masterData.gender || '',
         });
-        
+
         if (profileError.code === '23503') { // Foreign key violation
           setError('⚠️ User account created but profile setup failed. Please contact support.');
         } else if (profileError.code === '23505') {
@@ -320,16 +362,16 @@ export default function Register({ onSuccess }: RegisterProps) {
       console.log('✅ Alumni profile created successfully:', profileData);
 
       // Show success message
-      const successMessage = `✓ Registration Successful!\n\nWelcome, ${formData.fullName}!\n\nA confirmation email has been sent to:\n${formData.email}\n\nPlease check your inbox and click the confirmation link to activate your GradTrack account.`;
+      const successMessage = `✓ Registration Successful!\n\nWelcome, ${masterData.full_name}!\n\nA confirmation email has been sent to:\n${formData.email}\n\nPlease check your inbox and click the confirmation link to activate your GradTrack account.`;
       alert(successMessage);
-      
+
       // Redirect to login
       if (onSuccess) onSuccess();
 
     } catch (err: any) {
       console.error('Registration error:', err);
       console.error('Error stack:', err.stack);
-      
+
       if (err.message === 'Failed to fetch') {
         setError('🌐 Network error. Please check your internet connection and try again.');
       } else {
@@ -472,7 +514,7 @@ export default function Register({ onSuccess }: RegisterProps) {
               {verificationStatus === 'verifying' ? 'Verifying...' : 'Verify'}
             </button>
           </div>
-          
+
           {verificationStatus === 'verified' && verifiedGraduate && (
             <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
               <p className="text-green-700 text-sm font-medium flex items-center gap-2">
@@ -483,7 +525,7 @@ export default function Register({ onSuccess }: RegisterProps) {
               </p>
             </div>
           )}
-          
+
           {verificationStatus === 'error' && (
             <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-red-700 text-sm whitespace-pre-line">{error}</p>
@@ -637,7 +679,7 @@ export default function Register({ onSuccess }: RegisterProps) {
               </button>
             </label>
           </div>
-          
+
           <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
             <p className="text-xs text-gray-500">
               By registering, you confirm that the information provided is accurate and you consent to the collection and processing of your data for alumni tracking purposes.
@@ -647,7 +689,7 @@ export default function Register({ onSuccess }: RegisterProps) {
 
         {/* Error Display */}
         {error && (
-          <div 
+          <div
             id="error-message"
             className="rounded-xl p-4 bg-blue-50 border border-blue-200"
           >
@@ -659,7 +701,7 @@ export default function Register({ onSuccess }: RegisterProps) {
                 <p className="text-sm whitespace-pre-line text-blue-800">
                   {error}
                 </p>
-                
+
                 {(error.includes('already registered') || error.includes('already taken')) && (
                   <div className="mt-4 space-y-2">
                     <div className="flex justify-end">
@@ -676,7 +718,7 @@ export default function Register({ onSuccess }: RegisterProps) {
                     </p>
                   </div>
                 )}
-                
+
                 {!error.includes('already registered') && !error.includes('already taken') && (
                   <button
                     type="button"
