@@ -1,4 +1,4 @@
-// Register.tsx - COMPLETE WITH BLUE STYLING (ERRORS FIXED)
+// Register.tsx - COMPLETE WITH BLUE STYLING (FIXED)
 import React, { useState } from 'react';
 import { supabase } from './lib/supabase';
 
@@ -73,7 +73,6 @@ export default function Register({ onSuccess }: RegisterProps) {
         fullName: graduate.full_name,
         batchYear: graduate.batch_year?.toString() || '',
         course: graduate.course || '',
-      
       }));
       
       setVerificationStatus('verified');
@@ -171,18 +170,24 @@ export default function Register({ onSuccess }: RegisterProps) {
         setError(existingCheck.message || 'User already exists');
         setLoading(false);
         setLoadingStep('');
-        
-        // Scroll to error message
         document.getElementById('error-message')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
       }
+
       // STEP 1.5: Capture official student details from the master list
-// This ensures 'masterData' is available for Step 5 later on.
-const { data: masterData } = await supabase
-  .from('graduates_master')
-  .select('department')
-  .eq('student_id', formData.studentId)
-  .single();
+      const { data: masterData, error: masterError } = await supabase
+        .from('graduates_master')
+        .select('department, gender') // ✅ FIXED: Added gender here
+        .eq('student_id', formData.studentId)
+        .single();
+
+      if (masterError) {
+        console.error('Error fetching master data:', masterError);
+        setError('⚠️ Could not retrieve complete student data. Please try again.');
+        setLoading(false);
+        setLoadingStep('');
+        return;
+      }
 
       // STEP 2: Double-check with a more precise query
       setLoadingStep('Verifying account details...');
@@ -218,7 +223,6 @@ const { data: masterData } = await supabase
       if (signUpError) {
         console.error('Signup error:', signUpError);
         
-        // Better error messages for common scenarios
         if (signUpError.message.includes('already registered')) {
           setError(`📧 Email "${formData.email}" is already registered.\n\nPlease sign in instead or use "Forgot Password" if you can't access your account.`);
         } else if (signUpError.message.includes('weak password')) {
@@ -233,73 +237,99 @@ const { data: masterData } = await supabase
         return;
       }
 
-      if (authData.user) {
-        console.log('Auth user created:', authData.user.id);
-
-        // STEP 4: Create users table entry
-// STEP 4: Create/Sync users table entry
-const { error: userInsertError } = await supabase
-  .from('users')
-  .upsert({ // Changed from .insert to .upsert
-    id: authData.user.id,
-    email: formData.email,
-    role: 'Alumni',
-    full_name: authData.user.user_metadata?.full_name || '',
-    admin: false 
-    
-  }, { onConflict: 'id' }); // This tells the code: "If user exists, it's okay, keep going."
-
-if (userInsertError) {
-  console.error('Error creating users entry:', userInsertError);
-  setError('Registration failed at user initialization.');
-  setLoading(false);
-  return;
-}
-     // STEP 5: Create alumni profile
-// Now that student_id exists in your DB, this will work!
-setLoadingStep('Finalizing registration...');
-const { error: profileError } = await supabase
-  .from('alumni_profiles')
-  .insert({
-    user_id: authData.user.id,
-    student_id: formData.studentId, // Move student_id here
-    full_name: formData.fullName,   // Move full_name here
-    course: formData.course,
-    batch_year: parseInt(formData.batchYear),
-    department: masterData?.department || 'N/A',
-    gender: (masterData as any)?.gender || '', 
-    employment_status: 'Unemployed',
-    profile_completion: 50,
-    career_alignment_status: 'Pending'
-  });
-
-        if (profileError) {
-          console.error('Profile creation error:', profileError);
-          
-          // Specific error handling for profile creation
-          if (profileError.code === '23505') {
-            setError('⚠️ This student ID is already registered. Please contact support if you believe this is an error.');
-          } else {
-            setError('Account created but profile setup failed. Our team has been notified. Please try logging in.');
-          }
-          setLoading(false);
-          setLoadingStep('');
-          return;
-        }
-
-        console.log('Registration complete!');
-        
-        // Show success message
-        const successMessage = `✓ Registration Successful!\n\nWelcome, ${formData.fullName}!\n\nA confirmation email has been sent to:\n${formData.email}\n\nPlease check your inbox and click the confirmation link to activate your GradTrack account.`;
-        alert(successMessage);
-        
-        // Redirect to login
-        if (onSuccess) onSuccess();
+      if (!authData.user) {
+        console.error('No user data returned from auth');
+        setError('Failed to create account. Please try again.');
+        setLoading(false);
+        setLoadingStep('');
+        return;
       }
+
+      console.log('✅ Auth user created:', authData.user.id);
+
+      // STEP 4: Create users table entry
+      setLoadingStep('Setting up user profile...');
+      const { error: userInsertError } = await supabase
+        .from('users')
+        .insert({ // ✅ FIXED: Use insert instead of upsert
+          id: authData.user.id,
+          email: formData.email,
+          role: 'Alumni',
+          full_name: formData.fullName, // ✅ FIXED: Use formData.fullName directly
+          admin: false 
+        });
+
+      if (userInsertError) {
+        console.error('❌ Error creating users entry:', userInsertError);
+        // Try to clean up the auth user
+        try {
+          await supabase.auth.admin.deleteUser(authData.user.id);
+        } catch (cleanupError) {
+          console.error('Error cleaning up auth user:', cleanupError);
+        }
+        setError(`Failed to create user profile: ${userInsertError.message}`);
+        setLoading(false);
+        setLoadingStep('');
+        return;
+      }
+
+      console.log('✅ Users table entry created successfully');
+
+      // STEP 5: Create alumni profile
+      setLoadingStep('Finalizing registration...');
+      const { data: profileData, error: profileError } = await supabase
+        .from('alumni_profiles')
+        .insert({
+          user_id: authData.user.id,
+          student_id: formData.studentId,
+          full_name: formData.fullName,
+          course: formData.course,
+          batch_year: parseInt(formData.batchYear),
+          department: masterData?.department || 'N/A',
+          gender: masterData?.gender || '', // ✅ FIXED: Now correctly gets gender
+          employment_status: 'Unemployed',
+          profile_completion: 50,
+          career_alignment_status: 'Pending'
+        })
+        .select(); // ✅ FIXED: Added .select() to get the inserted data back
+
+      if (profileError) {
+        console.error('❌ Profile creation error:', profileError);
+        console.error('Profile data attempted:', {
+          user_id: authData.user.id,
+          student_id: formData.studentId,
+          full_name: formData.fullName,
+          course: formData.course,
+          batch_year: parseInt(formData.batchYear),
+          department: masterData?.department || 'N/A',
+          gender: masterData?.gender || '',
+        });
+        
+        if (profileError.code === '23503') { // Foreign key violation
+          setError('⚠️ User account created but profile setup failed. Please contact support.');
+        } else if (profileError.code === '23505') {
+          setError('⚠️ This student ID is already registered. Please contact support if you believe this is an error.');
+        } else {
+          setError(`Profile creation failed: ${profileError.message}`);
+        }
+        setLoading(false);
+        setLoadingStep('');
+        return;
+      }
+
+      console.log('✅ Alumni profile created successfully:', profileData);
+
+      // Show success message
+      const successMessage = `✓ Registration Successful!\n\nWelcome, ${formData.fullName}!\n\nA confirmation email has been sent to:\n${formData.email}\n\nPlease check your inbox and click the confirmation link to activate your GradTrack account.`;
+      alert(successMessage);
+      
+      // Redirect to login
+      if (onSuccess) onSuccess();
+
     } catch (err: any) {
       console.error('Registration error:', err);
+      console.error('Error stack:', err.stack);
       
-      // Handle network errors
       if (err.message === 'Failed to fetch') {
         setError('🌐 Network error. Please check your internet connection and try again.');
       } else {
@@ -421,27 +451,27 @@ const { error: profileError } = await supabase
             Student ID <span className="text-red-500">*</span>
           </label>
           <div className="flex flex-col sm:flex-row gap-2">
-  <input
-    type="text"
-    value={formData.studentId}
-    onChange={(e) => {
-      setFormData({ ...formData, studentId: e.target.value });
-      setVerificationStatus('idle');
-      setError('');
-    }}
-    placeholder="Enter your Student ID"
-    className="flex-1 px-4 py-2 border border-gray-200 rounded-xl focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none transition-all"
-    disabled={verificationStatus === 'verified'}
-  />
-  <button
-    type="button"
-    onClick={handleVerifyStudent}
-    disabled={verificationStatus === 'verifying' || verificationStatus === 'verified'}
-    className="px-6 py-2 bg-[#800000] text-white rounded-xl font-semibold hover:bg-[#6a0000] transition-all disabled:opacity-50 sm:whitespace-nowrap"
-  >
-    {verificationStatus === 'verifying' ? 'Verifying...' : 'Verify'}
-  </button>
-</div>
+            <input
+              type="text"
+              value={formData.studentId}
+              onChange={(e) => {
+                setFormData({ ...formData, studentId: e.target.value });
+                setVerificationStatus('idle');
+                setError('');
+              }}
+              placeholder="Enter your Student ID"
+              className="flex-1 px-4 py-2 border border-gray-200 rounded-xl focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none transition-all"
+              disabled={verificationStatus === 'verified'}
+            />
+            <button
+              type="button"
+              onClick={handleVerifyStudent}
+              disabled={verificationStatus === 'verifying' || verificationStatus === 'verified'}
+              className="px-6 py-2 bg-[#800000] text-white rounded-xl font-semibold hover:bg-[#6a0000] transition-all disabled:opacity-50 sm:whitespace-nowrap"
+            >
+              {verificationStatus === 'verifying' ? 'Verifying...' : 'Verify'}
+            </button>
+          </div>
           
           {verificationStatus === 'verified' && verifiedGraduate && (
             <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
@@ -519,7 +549,6 @@ const { error: profileError } = await supabase
             className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none transition-all"
             required
           />
-        
         </div>
 
         {/* Password */}
@@ -616,7 +645,7 @@ const { error: profileError } = await supabase
           </div>
         </div>
 
-        {/* Error Display with Blue Styling (matching verify ID section) */}
+        {/* Error Display */}
         {error && (
           <div 
             id="error-message"
@@ -631,7 +660,6 @@ const { error: profileError } = await supabase
                   {error}
                 </p>
                 
-                {/* Action buttons for existing users */}
                 {(error.includes('already registered') || error.includes('already taken')) && (
                   <div className="mt-4 space-y-2">
                     <div className="flex justify-end">
@@ -643,14 +671,12 @@ const { error: profileError } = await supabase
                         Sign In →
                       </button>
                     </div>
-                    
                     <p className="text-xs text-gray-500 text-center pt-2">
                       Forgot your password? Use the "Forgot Password" link on the sign in page.
                     </p>
                   </div>
                 )}
                 
-                {/* Retry button for other errors */}
                 {!error.includes('already registered') && !error.includes('already taken') && (
                   <button
                     type="button"
@@ -665,7 +691,7 @@ const { error: profileError } = await supabase
           </div>
         )}
 
-        {/* Submit Button with loading step */}
+        {/* Submit Button */}
         <button
           type="submit"
           disabled={loading || verificationStatus !== 'verified' || !agreedToTerms}
