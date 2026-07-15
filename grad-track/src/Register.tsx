@@ -1,4 +1,4 @@
-// Register.tsx - COMPLETE FIXED VERSION (with upsert and duplicate handling)
+// Register.tsx - COMPLETE FIXED VERSION (using RPC function)
 import React, { useState } from 'react';
 import { supabase } from './lib/supabase';
 
@@ -267,14 +267,11 @@ export default function Register({ onSuccess }: RegisterProps) {
 
       console.log('✅ Auth user created:', authData.user.id);
 
-      // ⭐ CRITICAL: Wait for auth user to propagate
+      // Wait for auth user to propagate
       setLoadingStep('Setting up user profile...');
-      console.log('Waiting for auth user to propagate...');
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // STEP 4: Create/Update users table entry using UPSERT
-      console.log('Upserting into users table with full_name:', masterData.full_name);
-      
+      // STEP 4: Create users table entry using UPSERT
       const userPayload = {
         id: authData.user.id,
         email: formData.email,
@@ -282,117 +279,49 @@ export default function Register({ onSuccess }: RegisterProps) {
         full_name: masterData.full_name,
         admin: false
       };
-      
-      console.log('User payload:', userPayload);
 
-      // ⭐ Use upsert to avoid duplicate key errors
       const { error: userInsertError } = await supabase
         .from('users')
         .upsert(userPayload, { onConflict: 'id' });
 
       if (userInsertError) {
         console.error('❌ Error creating users entry:', userInsertError);
-        try {
-          await supabase.auth.admin.deleteUser(authData.user.id);
-        } catch (cleanupError) {
-          console.error('Error cleaning up auth user:', cleanupError);
-        }
         setError(`Failed to create user profile: ${userInsertError.message}`);
         setLoading(false);
         setLoadingStep('');
         return;
       }
 
-      console.log('✅ Users table entry created/updated successfully with full_name:', masterData.full_name);
+      console.log('✅ Users table entry created');
 
-      // Verify the user was inserted with the correct full_name
-      const { data: verifyUser, error: verifyError } = await supabase
-        .from('users')
-        .select('id, email, full_name')
-        .eq('id', authData.user.id)
-        .single();
-
-      if (verifyError) {
-        console.warn('Could not verify user creation:', verifyError);
-      } else {
-        console.log('✅ Verified user in database:', verifyUser);
-        if (!verifyUser.full_name) {
-          console.error('⚠️ WARNING: full_name is still null!');
-          // Try to update it directly
-          const { error: updateError } = await supabase
-            .from('users')
-            .update({ full_name: masterData.full_name })
-            .eq('id', authData.user.id);
-          
-          if (updateError) {
-            console.error('Failed to update full_name:', updateError);
-          } else {
-            console.log('✅ full_name updated successfully');
-          }
-        }
-      }
-
-      // STEP 5: Create alumni profile
+      // ⭐ STEP 5: Create alumni profile using RPC function (bypasses RLS)
       setLoadingStep('Finalizing registration...');
-      console.log('Creating alumni profile with full_name:', masterData.full_name);
+      console.log('Creating alumni profile via RPC with full_name:', masterData.full_name);
       
-      const profilePayload = {
-        user_id: authData.user.id,
-        student_id: formData.studentId,
-        full_name: masterData.full_name,
-        course: masterData.course,
-        batch_year: masterData.batch_year,
-        department: masterData.department || 'N/A',
-        gender: masterData.gender || '',
-        employment_status: 'Unemployed',
-        profile_completion: 50,
-        career_alignment_status: 'Pending'
-      };
-      
-      console.log('Profile payload:', profilePayload);
-
-      // ⭐ Check if profile already exists (to avoid duplicate)
-      const { data: existingProfile } = await supabase
-        .from('alumni_profiles')
-        .select('id')
-        .eq('user_id', authData.user.id)
-        .maybeSingle();
-
-      let profileResult;
-      if (existingProfile) {
-        console.log('Profile already exists, updating...');
-        const { data, error } = await supabase
-          .from('alumni_profiles')
-          .update(profilePayload)
-          .eq('user_id', authData.user.id)
-          .select();
-        profileResult = { data, error };
-      } else {
-        console.log('Creating new profile...');
-        const { data, error } = await supabase
-          .from('alumni_profiles')
-          .insert(profilePayload)
-          .select();
-        profileResult = { data, error };
-      }
-
-      if (profileResult.error) {
-        console.error('❌ Profile creation error:', profileResult.error);
-        if (profileResult.error.code === '23503') {
-          setError('⚠️ User account created but profile setup failed. Please contact support.');
-        } else if (profileResult.error.code === '23505') {
-          setError('⚠️ This student ID is already registered. Please contact support if you believe this is an error.');
-        } else {
-          setError(`Profile creation failed: ${profileResult.error.message}`);
+      const { data: profileResult, error: profileError } = await supabase.rpc(
+        'create_alumni_profile',
+        {
+          p_user_id: authData.user.id,
+          p_student_id: formData.studentId,
+          p_full_name: masterData.full_name,
+          p_course: masterData.course || '',
+          p_batch_year: masterData.batch_year || 0,
+          p_department: masterData.department || 'N/A',
+          p_gender: masterData.gender || ''
         }
+      );
+
+      if (profileError) {
+        console.error('❌ Profile creation error:', profileError);
+        setError(`Profile creation failed: ${profileError.message}`);
         setLoading(false);
         setLoadingStep('');
         return;
       }
 
-      console.log('✅ Alumni profile created/updated successfully:', profileResult.data);
+      console.log('✅ Alumni profile created via RPC:', profileResult);
 
-      // ⭐ NEW: Immediately sign in the user
+      // Sign the user in
       setLoadingStep('Signing you in...');
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: formData.email,
@@ -401,7 +330,6 @@ export default function Register({ onSuccess }: RegisterProps) {
 
       if (signInError) {
         console.warn('Sign in warning:', signInError);
-        // Don't fail - user can sign in manually
       } else {
         console.log('✅ User signed in successfully');
       }
@@ -413,7 +341,6 @@ export default function Register({ onSuccess }: RegisterProps) {
 
     } catch (err: any) {
       console.error('Registration error:', err);
-      console.error('Error stack:', err.stack);
       
       if (err.message === 'Failed to fetch') {
         setError('🌐 Network error. Please check your internet connection and try again.');
