@@ -222,7 +222,7 @@ export default function Register({ onSuccess }: RegisterProps) {
         return;
       }
 
-      // STEP 3: Create auth user
+            // STEP 3: Create auth user
       setLoadingStep('Creating secure account...');
       console.log('Creating auth user with full_name:', masterData.full_name);
       
@@ -267,16 +267,42 @@ export default function Register({ onSuccess }: RegisterProps) {
 
       console.log('✅ Auth user created:', authData.user.id);
 
-      // Wait for auth user to propagate
-      setLoadingStep('Setting up user profile...');
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // ✅ FIXED: Wait for auth user metadata to actually save before proceeding
+      setLoadingStep('Verifying account profile...');
+      let userMetadata = authData.user.user_metadata;
+      let retries = 0;
+      
+      // Retry up to 6 times (6 seconds) to fetch the metadata from Auth
+      while ((!userMetadata || !userMetadata.full_name) && retries < 6) {
+        console.warn(`⚠️ Auth metadata not ready. Retry ${retries + 1}/6...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Re-fetch the user to get the absolute latest metadata
+        const { data: refreshedUser } = await supabase.auth.getUser();
+        if (refreshedUser?.user) {
+          userMetadata = refreshedUser.user.user_metadata;
+        }
+        retries++;
+      }
+
+      // Final safety check: If name is still missing, HALT registration!
+      let nameForDB = userMetadata?.full_name || null;
+      if (!nameForDB) {
+        console.error('❌ Failed to retrieve user metadata after 6 retries!');
+        setError('⚠️ Account creation failed because the authentication server is busy. Please wait 1 minute and try again.');
+        setLoading(false);
+        setLoadingStep('');
+        return;
+      }
+
+      console.log('✅ Auth metadata confirmed. Name:', nameForDB);
 
       // STEP 4: Create users table entry using UPSERT
       const userPayload = {
         id: authData.user.id,
         email: formData.email,
         role: 'Alumni',
-        full_name: masterData.full_name,
+        full_name: nameForDB, // 👈 USE the verified variable, NOT masterData
         admin: false
       };
 
