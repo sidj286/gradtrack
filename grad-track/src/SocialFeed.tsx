@@ -265,97 +265,120 @@ const ProfileModal: React.FC<{
   profile: AlumniFullProfile | null;
   onClose: () => void;
 }> = ({ loading, profile, onClose }) => {
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [onClose]);
+
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) onClose();
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden">
-        <div className="bg-gradient-to-r from-[#800000] to-[#a10000] h-20 relative">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fadeIn"
+      onClick={handleBackdropClick}
+    >
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden animate-scaleIn max-h-[90vh] overflow-y-auto">
+        <div className="bg-gradient-to-r from-[#800000] to-[#a10000] h-24 relative flex items-center justify-center">
+          <h2 className="text-white font-bold text-lg">Profile</h2>
           <button
             onClick={onClose}
-            className="absolute top-3 right-3 text-white/80 hover:text-white text-2xl leading-none"
+            className="absolute top-3 right-3 text-white/80 hover:text-white text-2xl leading-none w-8 h-8 rounded-full hover:bg-white/20 flex items-center justify-center transition"
           >
             ×
           </button>
         </div>
 
-        {loading || !profile ? (
-          <div className="p-6 space-y-3 animate-pulse">
-            <div className="w-20 h-20 rounded-full bg-gray-200 -mt-12 border-4 border-white" />
-            <div className="h-4 bg-gray-200 rounded w-1/2" />
-            <div className="h-3 bg-gray-200 rounded w-1/3" />
-            <div className="h-3 bg-gray-200 rounded w-2/3" />
-          </div>
-        ) : (
-          <div className="p-6">
-            <img
-              src={
-                profile.avatar_url ||
-                `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                  profile.full_name || 'A'
-                )}&background=800000&color=fff&rounded=true&size=80`
-              }
-              alt={profile.full_name || 'Alumni'}
-              className="w-20 h-20 rounded-full object-cover -mt-12 border-4 border-white shadow-md"
-            />
-            <h3 className="text-lg font-bold text-gray-900 mt-3">
-              {profile.full_name || 'Alumni'}
-            </h3>
-            <p className="text-sm text-gray-500">
-              {profile.course || 'Course not set'}
-              {profile.batch_year ? ` • Class of ${profile.batch_year}` : ''}
-            </p>
+        <div className="px-6 pb-6">
+          {loading || !profile ? (
+            <div className="space-y-3 animate-pulse">
+              <div className="w-20 h-20 rounded-full bg-gray-200 -mt-10 border-4 border-white mx-auto" />
+              <div className="h-4 bg-gray-200 rounded w-1/2 mx-auto" />
+              <div className="h-3 bg-gray-200 rounded w-1/3 mx-auto" />
+              <div className="h-3 bg-gray-200 rounded w-2/3 mx-auto" />
+            </div>
+          ) : (
+            <>
+              <div className="flex justify-center -mt-10">
+                <img
+                  src={
+                    profile.avatar_url ||
+                    `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                      profile.full_name || 'A'
+                    )}&background=800000&color=fff&rounded=true&size=80`
+                  }
+                  alt={profile.full_name || 'Alumni'}
+                  className="w-20 h-20 rounded-full object-cover border-4 border-white shadow-md"
+                />
+              </div>
 
-            <div className="grid grid-cols-1 gap-3 mt-4">
-              <div className="bg-gray-50 rounded-xl p-3">
-                <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
-                  Current Role
-                </p>
-                <p className="text-sm font-medium text-gray-900 mt-0.5">
-                  {profile.job_title || 'Not specified'}
-                  {profile.company ? ` at ${profile.company}` : ''}
+              <div className="text-center mt-3">
+                <h3 className="text-lg font-bold text-gray-900">
+                  {profile.full_name || 'Alumni'}
+                </h3>
+                <p className="text-sm text-gray-500">
+                  {profile.course || 'Course not set'}
+                  {profile.batch_year ? ` • Class of ${profile.batch_year}` : ''}
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 mt-4">
                 <div className="bg-gray-50 rounded-xl p-3">
                   <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
-                    Status
+                    Current Role
                   </p>
                   <p className="text-sm font-medium text-gray-900 mt-0.5">
-                    {profile.employment_status || 'Unemployed'}
+                    {profile.job_title || 'Not specified'}
+                    {profile.company ? ` at ${profile.company}` : ''}
                   </p>
                 </div>
-                <div className="bg-gray-50 rounded-xl p-3">
-                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
-                    Industry
-                  </p>
-                  <p className="text-sm font-medium text-gray-900 mt-0.5 truncate">
-                    {profile.industry || 'Not specified'}
-                  </p>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                      Status
+                    </p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">
+                      {profile.employment_status || 'Not specified'}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                      Industry
+                    </p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5 truncate">
+                      {profile.industry || 'Not specified'}
+                    </p>
+                  </div>
                 </div>
+
+                {profile.location && (
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                      Location
+                    </p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">{profile.location}</p>
+                  </div>
+                )}
+
+                {profile.linkedin_url && (
+                  <a
+                    href={profile.linkedin_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-[#800000] font-semibold hover:underline inline-flex items-center justify-center gap-1 bg-gray-50 rounded-xl p-3 transition hover:bg-gray-100"
+                  >
+                    🔗 View LinkedIn Profile →
+                  </a>
+                )}
               </div>
-
-              {profile.location && (
-                <div className="bg-gray-50 rounded-xl p-3">
-                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
-                    Location
-                  </p>
-                  <p className="text-sm font-medium text-gray-900 mt-0.5">{profile.location}</p>
-                </div>
-              )}
-
-              {profile.linkedin_url && (
-                <a
-                  href={profile.linkedin_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-[#800000] font-semibold hover:underline inline-flex items-center gap-1"
-                >
-                  🔗 View LinkedIn Profile →
-                </a>
-              )}
-            </div>
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -374,6 +397,8 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const [showPostModal, setShowPostModal] = useState(false);
 
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editingPostContent, setEditingPostContent] = useState('');
@@ -720,6 +745,7 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
       setNewPost('');
       setImageFile(null);
       setImagePreview(null);
+      setShowPostModal(false);
       await fetchPosts(true);
     } catch (error: any) {
       console.error('Error creating post:', error);
@@ -876,7 +902,6 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
           user_id: session.user.id,
         });
 
-        // ✅ NOTIFICATION: New Like added
         const currentUserFullName = profile?.full_name || 'Someone';
         if (post.user_id !== session.user.id) {
           await sendNotification(
@@ -1001,12 +1026,10 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
       setCommentText('');
       setShowCommentInput(null);
 
-      // ✅ NOTIFICATION: New Comment
       const currentUserFullName = profile?.full_name || 'Someone';
       const currentUserId = session.user.id;
       const post = posts.find(p => p.id === postId);
 
-      // 1. Notify Admins
       await notifyCommentAdded(
         currentUserFullName, 
         "Social Feed Post", 
@@ -1015,7 +1038,6 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
         currentUserId
       );
 
-      // 2. Notify the original Poster (if they aren't the commenter)
       if (post && post.user_id !== currentUserId) {
         await sendNotification(
           post.user_id, 
@@ -1089,14 +1111,10 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
       setReplyText('');
       setShowReplyInput(null);
 
-      // ✅ NOTIFICATION: New Reply
       const currentUserFullName = profile?.full_name || 'Someone';
       const post = posts.find(p => p.id === postId);
-      
-      // Find the comment to get the original comment author's ID
       const comment = post?.alumni_comments.find(c => c.id === commentId);
 
-      // Only notify the author of the original comment if they aren't replying to themselves
       if (comment && comment.user_id !== session.user.id) {
         await notifyReplyAdded(
           comment.user_id, 
@@ -1245,7 +1263,7 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ FACEBOOK-STYLE INFINITE SCROLL (Using Window)
+  // FACEBOOK-STYLE INFINITE SCROLL (Using Window)
   useEffect(() => {
     const handleScroll = () => {
       const scrollTop = window.scrollY || document.documentElement.scrollTop;
@@ -1261,7 +1279,7 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
     return () => window.removeEventListener('scroll', handleScroll);
   }, [hasMore, loading]);
 
-  // ✅ SCROLL TO TOP FUNCTION
+  // SCROLL TO TOP FUNCTION
   const scrollToTop = () => {
     window.scrollTo({
       top: 0,
@@ -1270,12 +1288,13 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
   };
 
   return (
-    // Main Page Wrapper
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-20 pt-4">
       
       <div className="max-w-2xl mx-auto px-3 sm:px-4 relative">
         
-        {/* Create Post Box - At the top of the feed, NOT sticky */}
+        {/* ============================================================ */}
+        {/* FACEBOOK-STYLE CREATE POST - Photo icon on same row */}
+        {/* ============================================================ */}
         <div className="mb-4">
           {error && (
             <Card className="p-4 mb-4 bg-red-50 border-red-200">
@@ -1290,7 +1309,8 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
           )}
 
           <Card className="p-4 shadow-md">
-            <div className="flex items-start gap-3">
+            {/* Single row: Avatar + "What's on your mind" + Photo icon */}
+            <div className="flex items-center gap-3">
               <img
                 src={
                   profile?.avatar_url ||
@@ -1299,65 +1319,152 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
                   )}&background=800000&color=fff&rounded=true&size=40`
                 }
                 alt="Profile"
-                className="w-10 h-10 rounded-full flex-shrink-0"
+                className="w-10 h-10 rounded-full flex-shrink-0 cursor-pointer"
+                onClick={() => openProfile(session.user.id)}
               />
-              <div className="flex-1">
+              
+              {/* Input with photo icon inside it - on the right */}
+              <div className="flex-1 relative">
+                <button
+                  onClick={() => setShowPostModal(true)}
+                  className="w-full text-left px-4 py-2.5 bg-gray-100 hover:bg-gray-200 rounded-full text-sm text-gray-500 transition-colors pr-12"
+                >
+                  What's on your mind, {profile?.full_name?.split(' ')[0] || 'Alumni'}?
+                </button>
+                {/* Photo icon - positioned inside the input on the right */}
+                <button
+                  onClick={() => {
+                    setShowPostModal(true);
+                    setTimeout(() => {
+                      const textarea = document.getElementById('modal-post-textarea');
+                      if (textarea) textarea.focus();
+                    }, 100);
+                  }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded-full hover:bg-gray-200 transition text-lg"
+                  title="Add Photo"
+                >
+                  📷
+                </button>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        {/* ============================================================ */}
+        {/* CREATE POST MODAL - Facebook Style */}
+        {/* ============================================================ */}
+        {showPostModal && (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fadeIn"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setShowPostModal(false);
+                setNewPost('');
+                setImageFile(null);
+                setImagePreview(null);
+              }
+            }}
+          >
+            <div className="max-w-lg w-full bg-white rounded-2xl shadow-2xl overflow-hidden animate-scaleIn max-h-[90vh] flex flex-col">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 flex-shrink-0">
+                <h3 className="text-lg font-bold text-gray-900">Create Post</h3>
+                <button
+                  onClick={() => {
+                    setShowPostModal(false);
+                    setNewPost('');
+                    setImageFile(null);
+                    setImagePreview(null);
+                  }}
+                  className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xl transition"
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* Modal Body - Scrollable */}
+              <div className="p-6 overflow-y-auto flex-1">
+                {/* User Info */}
+                <div className="flex items-center gap-3 mb-4">
+                  <img
+                    src={
+                      profile?.avatar_url ||
+                      `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                        profile?.full_name || 'A'
+                      )}&background=800000&color=fff&rounded=true&size=40`
+                    }
+                    alt="Profile"
+                    className="w-10 h-10 rounded-full flex-shrink-0"
+                  />
+                  <div>
+                    <p className="font-semibold text-sm">{profile?.full_name || 'Alumni'}</p>
+                    <div className="flex items-center gap-1 text-xs text-gray-500">
+                      <span>🌐 Public</span>
+                      <span>•</span>
+                      <span>📅</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Textarea */}
                 <textarea
+                  id="modal-post-textarea"
                   value={newPost}
                   onChange={(e) => setNewPost(e.target.value)}
                   placeholder={`What's on your mind, ${profile?.full_name?.split(' ')[0] || 'Alumni'}?`}
-                  className="w-full border-0 focus:ring-0 resize-none text-sm sm:text-base min-h-[60px] outline-none placeholder-gray-400 bg-transparent"
-                  rows={2}
+                  className="w-full border-0 focus:ring-0 resize-none text-lg min-h-[120px] outline-none placeholder-gray-400"
+                  rows={4}
+                  autoFocus
                 />
 
+                {/* Image Preview */}
                 {imagePreview && (
-                  <div className="relative mt-2">
-                    <img src={imagePreview} alt="Preview" className="max-h-48 rounded-lg" />
+                  <div className="relative mt-2 border border-gray-200 rounded-lg overflow-hidden">
+                    <img src={imagePreview} alt="Preview" className="w-full max-h-64 object-contain" />
                     <button
                       onClick={() => {
                         setImageFile(null);
                         setImagePreview(null);
                       }}
-                      className="absolute top-2 right-2 bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-black/70"
+                      className="absolute top-2 right-2 bg-black/60 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-black/80 transition"
                     >
                       ×
                     </button>
                   </div>
                 )}
 
-                <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-                  <div className="flex gap-2">
+                {/* Add to your post - Photo only */}
+                <div className="mt-4 border border-gray-200 rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-600">Add to your post</span>
                     <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="text-gray-500 hover:text-[#800000] transition text-sm flex items-center gap-1"
+                      onClick={() => {
+                        fileInputRef.current?.click();
+                      }}
+                      className="w-10 h-10 rounded-full hover:bg-gray-100 flex items-center justify-center text-2xl transition"
                     >
-                      <span className="text-lg">📷</span>
-                      <span className="hidden xs:inline">Photo</span>
+                      📷
                     </button>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleImageSelect}
-                    />
                   </div>
-                  <Button
-                    onClick={handleCreatePost}
-                    disabled={(!newPost.trim() && !imageFile) || submitting}
-                    loading={submitting}
-                    size="sm"
-                    className="!px-4 !py-1.5 text-sm"
-                  >
-                    Post
-                  </Button>
                 </div>
+
+                {/* Post Button */}
+                <Button
+                  onClick={handleCreatePost}
+                  disabled={(!newPost.trim() && !imageFile) || submitting}
+                  loading={submitting}
+                  className="w-full mt-4 !py-3 text-base"
+                >
+                  Post
+                </Button>
               </div>
             </div>
-          </Card>
-        </div>
+          </div>
+        )}
 
-        {/* ✅ SCROLLING FEED */}
+        {/* ============================================================ */}
+        {/* SCROLLING FEED */}
+        {/* ============================================================ */}
         <div className="space-y-4">
           
           {loading && posts.length === 0 ? (
@@ -1373,10 +1480,8 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
             </Card>
           ) : (
             <>
-              {/* INSERT ALUMNI DIRECTORY INSIDE THE FEED AS A CARD */}
               <AlumniDirectory entries={alumniDirectory} loading={directoryLoading} onSelect={openProfile} />
 
-              {/* Map through the posts */}
               {posts.map((post) => (
                 <Card key={post.id} className="p-4 hover:shadow-md transition">
                   {/* Post Header */}
@@ -1785,7 +1890,6 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
             <div className="text-center py-4">
               <p className="text-xs text-gray-400 mb-3">You've seen all posts 🎉</p>
               
-              {/* ✅ BACK TO TOP BUTTON */}
               <button
                 onClick={scrollToTop}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-[#800000] hover:bg-[#6a0000] text-white text-sm font-medium rounded-full shadow-md transition-all duration-200 hover:scale-105"
@@ -1797,10 +1901,45 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
         </div>
       </div>
 
-      {/* Profile view modal */}
+      {/* ============================================================ */}
+      {/* PROFILE VIEW MODAL */}
+      {/* ============================================================ */}
       {showProfileModal && (
         <ProfileModal loading={viewProfileLoading} profile={viewProfile} onClose={closeProfileModal} />
       )}
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleImageSelect}
+      />
+
+      {/* CSS Animations */}
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes scaleIn {
+          from { 
+            opacity: 0;
+            transform: scale(0.95) translateY(10px);
+          }
+          to { 
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.2s ease-out;
+        }
+        .animate-scaleIn {
+          animation: scaleIn 0.2s ease-out;
+        }
+      `}</style>
     </div>
   );
 }

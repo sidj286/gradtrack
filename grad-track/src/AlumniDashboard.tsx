@@ -708,6 +708,18 @@ export default function AlumniDashboard({ session }: { session: Session }) {
  const fetchProfile = async () => {
   try {
     console.log('Fetching profile for user:', session.user.id);
+     let dbName = '';
+    const { data: userRecord } = await supabase
+      .from('users')
+      .select('full_name')
+      .eq('id', session.user.id)
+      .single();
+    if (userRecord?.full_name) {
+      dbName = userRecord.full_name;
+    }
+
+
+
     const { data, error } = await supabase
       .from('alumni_profiles')
       .select('*')
@@ -741,7 +753,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
 
       const newProfile = {
         user_id: session.user.id,
-        full_name: session.user.user_metadata?.full_name || '',
+        full_name: dbName || session.user.user_metadata?.full_name || '',
         course: '',
         batch_year: null,
         company: '',
