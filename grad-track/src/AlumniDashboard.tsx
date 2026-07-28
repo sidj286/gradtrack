@@ -14,6 +14,7 @@ import {
 } from './lib/notificationUtils';
 import NotificationBell from './NotificationBell';
 import SocialFeed from './SocialFeed';
+import JobHistory from './JobHistory';
 
 // ==================== TYPES ====================
 interface Profile {
@@ -1171,141 +1172,174 @@ const addComment = async (announcementId: string, content: string, parentComment
   };
 
   const handleSaveEmployment = async () => {
-    setSaveLoading(true);
-    const completionScore = calculateCompletion(employmentForm);
+  setSaveLoading(true);
+  const completionScore = calculateCompletion(employmentForm);
 
-    const oldValues = {
-      job_title: profile?.job_title || '',
-      company: profile?.company || '',
-      employment_status: profile?.employment_status || '',
-      industry: profile?.industry || '',
-      location: profile?.location || '',
-      linkedin_url: profile?.linkedin_url || '',
-    };
-
-    const updateData: Record<string, unknown> = {
-      last_synced_at: new Date().toISOString(),
-      profile_completion: completionScore,
-    };
-
-    if (employmentForm.job_title !== undefined) updateData.job_title = employmentForm.job_title || null;
-    if (employmentForm.company !== undefined) updateData.company = employmentForm.company || null;
-    if (employmentForm.employment_status !== undefined) updateData.employment_status = employmentForm.employment_status || null;
-    if (employmentForm.industry !== undefined) updateData.industry = employmentForm.industry || null;
-    if (employmentForm.location !== undefined) updateData.location = employmentForm.location || null;
-    if (employmentForm.linkedin_url !== undefined) updateData.linkedin_url = employmentForm.linkedin_url || null;
-
-    let classificationResult = null;
-
-    // Always run classification if job title is not empty
-    if (employmentForm.job_title && employmentForm.job_title.trim() !== '') {
-      console.log('=== CLASSIFICATION TRIGGERED ===');
-      console.log('Course:', profile?.course);
-      console.log('Job Title:', employmentForm.job_title);
-
-      classificationResult = await classifyCareerAlignment(
-        profile?.course || '',
-        employmentForm.job_title,
-        ''
-      );
-
-      console.log('Classification Result:', classificationResult);
-
-      if (classificationResult) {
-        updateData.career_alignment_status = classificationResult.alignment_status;
-        updateData.ai_confidence_score = classificationResult.confidence_score;
-      }
-    }
-
-    const { error } = await supabase
-      .from('alumni_profiles')
-      .update(updateData)
-      .eq('user_id', session.user.id);
-
-    if (!error) {
-      let activityDescription = '';
-
-      // Check what changed for notification purposes
-      const jobTitleChanged = employmentForm.job_title !== oldValues.job_title;
-      const companyChanged = employmentForm.company !== oldValues.company;
-      const statusChanged = employmentForm.employment_status !== oldValues.employment_status;
-
-      if (jobTitleChanged) {
-        const oldVal = oldValues.job_title || 'not set';
-        const newVal = employmentForm.job_title || 'not set';
-        activityDescription += `changed job title from "${oldVal}" to "${newVal}". `;
-      }
-
-      if (companyChanged) {
-        const oldVal = oldValues.company || 'not set';
-        const newVal = employmentForm.company || 'not set';
-        activityDescription += `changed company from "${oldVal}" to "${newVal}". `;
-      }
-
-      if (statusChanged) {
-        const oldVal = oldValues.employment_status || 'not set';
-        const newVal = employmentForm.employment_status;
-        activityDescription += `changed employment status from "${oldVal}" to "${newVal}". `;
-      }
-
-      if (classificationResult && classificationResult.alignment_status !== 'Pending') {
-        activityDescription += ` AI classified as ${classificationResult.alignment_status} (${Math.round(classificationResult.confidence_score * 100)}% confidence).`;
-      }
-
-      if (!activityDescription) {
-        activityDescription = 'updated career information';
-      }
-
-      // ✅ #3 CAREER UPDATED - Notify admins when job title or company changes
-     if (jobTitleChanged || companyChanged) {
-  await notifyCareerUpdated(
-    profile?.full_name || 'An alumni',
-    employmentForm.job_title || 'Not specified',
-    employmentForm.company || 'Not specified',
-    session.user.id,
-    oldValues.job_title,     // ✅ ADD THIS
-    oldValues.company        // ✅ ADD THIS
-  );
-}
-
-      // ✅ #7 EMPLOYMENT STATUS CHANGED - Notify admins when employment status changes
-     if (statusChanged) {
-  await notifyEmploymentStatusChanged(
-    profile?.full_name || 'An alumni',
-    employmentForm.employment_status || 'Unemployed',
-    employmentForm.company || '',
-    employmentForm.job_title || '',
-    session.user.id,
-    oldValues.employment_status     // ✅ ADD THIS
-  );
-}
-
-      // ✅ #4 PROFILE UPDATED - Notify admins for any other profile updates
-      if (!jobTitleChanged && !companyChanged && !statusChanged) {
-        await notifyProfileUpdated(
-          profile?.full_name || 'An alumni',
-          session.user.id,
-          'career information'
-        );
-      }
-
-      await addActivity('employment_update', activityDescription.trim());
-
-      setProfile(prev => prev ? {
-        ...prev,
-        ...employmentForm,
-        career_alignment_status: classificationResult?.alignment_status || prev.career_alignment_status,
-        ai_confidence_score: classificationResult?.confidence_score || prev.ai_confidence_score
-      } : null);
-
-      setShowEmploymentModal(false);
-      showToast('Career information updated successfully!', 'success');
-    } else {
-      showToast('Error updating career information', 'error');
-    }
-    setSaveLoading(false);
+  const oldValues = {
+    job_title: profile?.job_title || '',
+    company: profile?.company || '',
+    employment_status: profile?.employment_status || '',
+    industry: profile?.industry || '',
+    location: profile?.location || '',
+    linkedin_url: profile?.linkedin_url || '',
   };
 
+  const jobTitleChanged = employmentForm.job_title !== oldValues.job_title;
+  const companyChanged = employmentForm.company !== oldValues.company;
+  const statusChanged = employmentForm.employment_status !== oldValues.employment_status;
+
+  // SAVE JOB HISTORY
+  if ((jobTitleChanged || companyChanged) && profile?.id) {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      
+      // 1. Find the current job
+      const { data: currentJobs } = await supabase
+        .from('alumni_job_history')
+        .select('*')
+        .eq('alumni_id', profile.id)
+        .eq('is_current', true);
+
+      // 2. End ALL current jobs
+      if (currentJobs && currentJobs.length > 0) {
+        for (const job of currentJobs) {
+          await supabase
+            .from('alumni_job_history')
+            .update({ 
+              end_date: today, 
+              is_current: false 
+            })
+            .eq('id', job.id);
+        }
+      }
+
+      // 3. Create the NEW current job
+      await supabase
+        .from('alumni_job_history')
+        .insert({
+          alumni_id: profile.id,
+          company: employmentForm.company || 'Unknown',
+          job_title: employmentForm.job_title || 'Unknown',
+          start_date: today,
+          end_date: null,
+          is_current: true,
+          industry: employmentForm.industry || null,
+          location: employmentForm.location || null,
+        });
+
+    } catch (err) {
+      console.error('Error saving job history:', err);
+    }
+  }
+
+  // Rest of your existing code...
+  const updateData: Record<string, unknown> = {
+    last_synced_at: new Date().toISOString(),
+    profile_completion: completionScore,
+  };
+
+  if (employmentForm.job_title !== undefined) updateData.job_title = employmentForm.job_title || null;
+  if (employmentForm.company !== undefined) updateData.company = employmentForm.company || null;
+  if (employmentForm.employment_status !== undefined) updateData.employment_status = employmentForm.employment_status || null;
+  if (employmentForm.industry !== undefined) updateData.industry = employmentForm.industry || null;
+  if (employmentForm.location !== undefined) updateData.location = employmentForm.location || null;
+  if (employmentForm.linkedin_url !== undefined) updateData.linkedin_url = employmentForm.linkedin_url || null;
+
+  let classificationResult = null;
+
+  if (employmentForm.job_title && employmentForm.job_title.trim() !== '') {
+    classificationResult = await classifyCareerAlignment(
+      profile?.course || '',
+      employmentForm.job_title,
+      ''
+    );
+
+    if (classificationResult) {
+      updateData.career_alignment_status = classificationResult.alignment_status;
+      updateData.ai_confidence_score = classificationResult.confidence_score;
+    }
+  }
+
+  const { error } = await supabase
+    .from('alumni_profiles')
+    .update(updateData)
+    .eq('user_id', session.user.id);
+
+  if (!error) {
+    let activityDescription = '';
+
+    if (jobTitleChanged) {
+      const oldVal = oldValues.job_title || 'not set';
+      const newVal = employmentForm.job_title || 'not set';
+      activityDescription += `changed job title from "${oldVal}" to "${newVal}". `;
+    }
+
+    if (companyChanged) {
+      const oldVal = oldValues.company || 'not set';
+      const newVal = employmentForm.company || 'not set';
+      activityDescription += `changed company from "${oldVal}" to "${newVal}". `;
+    }
+
+    if (statusChanged) {
+      const oldVal = oldValues.employment_status || 'not set';
+      const newVal = employmentForm.employment_status;
+      activityDescription += `changed employment status from "${oldVal}" to "${newVal}". `;
+    }
+
+    if (classificationResult && classificationResult.alignment_status !== 'Pending') {
+      activityDescription += ` AI classified as ${classificationResult.alignment_status} (${Math.round(classificationResult.confidence_score * 100)}% confidence).`;
+    }
+
+    if (!activityDescription) {
+      activityDescription = 'updated career information';
+    }
+
+    if (jobTitleChanged || companyChanged) {
+      await notifyCareerUpdated(
+        profile?.full_name || 'An alumni',
+        employmentForm.job_title || 'Not specified',
+        employmentForm.company || 'Not specified',
+        session.user.id,
+        oldValues.job_title,
+        oldValues.company
+      );
+    }
+
+    if (statusChanged) {
+      await notifyEmploymentStatusChanged(
+        profile?.full_name || 'An alumni',
+        employmentForm.employment_status || 'Unemployed',
+        employmentForm.company || '',
+        employmentForm.job_title || '',
+        session.user.id,
+        oldValues.employment_status
+      );
+    }
+
+    if (!jobTitleChanged && !companyChanged && !statusChanged) {
+      await notifyProfileUpdated(
+        profile?.full_name || 'An alumni',
+        session.user.id,
+        'career information'
+      );
+    }
+
+    await addActivity('employment_update', activityDescription.trim());
+
+    setProfile(prev => prev ? {
+      ...prev,
+      ...employmentForm,
+      career_alignment_status: classificationResult?.alignment_status || prev.career_alignment_status,
+      ai_confidence_score: classificationResult?.confidence_score || prev.ai_confidence_score
+    } : null);
+
+    setShowEmploymentModal(false);
+    showToast('Career information updated successfully!', 'success');
+  } else {
+    showToast('Error updating career information', 'error');
+  }
+  setSaveLoading(false);
+};
   const getFirstName = (name: string | null | undefined) => name?.split(' ')[0] || 'Alumni';
   const unreadCount = announcements.filter(a => !a.viewed).length;
 
@@ -1666,6 +1700,10 @@ const addComment = async (announcementId: string, content: string, parentComment
                 </div>
               </div>
             </Card>
+
+            <Card className="p-4 sm:p-6">
+  <JobHistory alumniId={profile?.id || ''} />
+</Card>
 
             {/* Recent Activity Section */}
             <Card className="p-4 sm:p-6">

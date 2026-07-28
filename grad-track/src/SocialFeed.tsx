@@ -96,6 +96,17 @@ interface SocialFeedProps {
   profile: any;
 }
 
+interface SearchResult {
+  user_id: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  course: string | null;
+  batch_year: number | null;
+  employment_status: string | null;
+  job_title: string | null;
+  company: string | null;
+}
+
 const Card: React.FC<{ children: React.ReactNode; className?: string }> = ({
   children,
   className = '',
@@ -259,7 +270,9 @@ const AlumniDirectory: React.FC<{
   );
 };
 
-// Profile Modal component
+// ============================================================
+// PROFILE MODAL - WITHOUT MAROON HEADER
+// ============================================================
 const ProfileModal: React.FC<{
   loading: boolean;
   profile: AlumniFullProfile | null;
@@ -279,31 +292,33 @@ const ProfileModal: React.FC<{
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fadeIn"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn"
       onClick={handleBackdropClick}
     >
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden animate-scaleIn max-h-[90vh] overflow-y-auto">
-        <div className="bg-gradient-to-r from-[#800000] to-[#a10000] h-24 relative flex items-center justify-center">
-          <h2 className="text-white font-bold text-lg">Profile</h2>
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl animate-scaleIn max-h-[90vh] overflow-y-auto">
+        {/* Close button - top right, no maroon header */}
+        <div className="sticky top-0 z-20 bg-white pt-4 px-4 flex justify-end">
           <button
             onClick={onClose}
-            className="absolute top-3 right-3 text-white/80 hover:text-white text-2xl leading-none w-8 h-8 rounded-full hover:bg-white/20 flex items-center justify-center transition"
+            className="text-gray-400 hover:text-gray-600 text-2xl leading-none w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition"
           >
             ×
           </button>
         </div>
 
+        {/* Profile Content */}
         <div className="px-6 pb-6">
           {loading || !profile ? (
             <div className="space-y-3 animate-pulse">
-              <div className="w-20 h-20 rounded-full bg-gray-200 -mt-10 border-4 border-white mx-auto" />
+              <div className="w-20 h-20 rounded-full bg-gray-200 mx-auto" />
               <div className="h-4 bg-gray-200 rounded w-1/2 mx-auto" />
               <div className="h-3 bg-gray-200 rounded w-1/3 mx-auto" />
               <div className="h-3 bg-gray-200 rounded w-2/3 mx-auto" />
             </div>
           ) : (
             <>
-              <div className="flex justify-center -mt-10">
+              {/* Avatar - Centered */}
+              <div className="flex justify-center">
                 <img
                   src={
                     profile.avatar_url ||
@@ -312,10 +327,11 @@ const ProfileModal: React.FC<{
                     )}&background=800000&color=fff&rounded=true&size=80`
                   }
                   alt={profile.full_name || 'Alumni'}
-                  className="w-20 h-20 rounded-full object-cover border-4 border-white shadow-md"
+                  className="w-20 h-20 rounded-full object-cover border-4 border-gray-200 shadow-md"
                 />
               </div>
 
+              {/* Name and Course */}
               <div className="text-center mt-3">
                 <h3 className="text-lg font-bold text-gray-900">
                   {profile.full_name || 'Alumni'}
@@ -326,6 +342,7 @@ const ProfileModal: React.FC<{
                 </p>
               </div>
 
+              {/* Profile Details */}
               <div className="grid grid-cols-1 gap-3 mt-4">
                 <div className="bg-gray-50 rounded-xl p-3">
                   <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
@@ -384,6 +401,178 @@ const ProfileModal: React.FC<{
   );
 };
 
+// ============================================================
+// SEARCH ALUMNI COMPONENT
+// ============================================================
+const SearchAlumni: React.FC<{
+  onSelect: (userId: string) => void;
+  currentUserId: string;
+}> = ({ onSelect, currentUserId }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+
+  // Close results when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowResults(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Debounced search
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      if (searchTerm.trim().length >= 2) {
+        performSearch(searchTerm.trim());
+      } else {
+        setResults([]);
+        setShowResults(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchTerm]);
+
+  const performSearch = async (term: string) => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('alumni_profiles')
+        .select('user_id, full_name, avatar_url, course, batch_year, employment_status, job_title, company')
+        .neq('user_id', currentUserId)
+        .or(`full_name.ilike.%${term}%,course.ilike.%${term}%,job_title.ilike.%${term}%,company.ilike.%${term}%`)
+        .limit(20);
+
+      if (error) throw error;
+
+      const resultsWithAvatars = data?.map((item: any) => ({
+        ...item,
+        avatar_url: item.avatar_url 
+          ? (item.avatar_url.startsWith('http') 
+              ? item.avatar_url 
+              : supabase.storage.from('profile-pictures').getPublicUrl(item.avatar_url).data.publicUrl)
+          : null
+      })) || [];
+
+      setResults(resultsWithAvatars);
+      setShowResults(true);
+    } catch (error) {
+      console.error('Error searching alumni:', error);
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSelect = (userId: string) => {
+    setSearchTerm('');
+    setResults([]);
+    setShowResults(false);
+    onSelect(userId);
+  };
+
+  return (
+    <div className="relative" ref={searchRef}>
+      {/* Search Input */}
+      <div className="relative">
+        <svg
+          className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          placeholder="Search alumni by name, course, job title, or company..."
+          className="w-full pl-10 pr-4 py-2.5 bg-gray-100 hover:bg-gray-200 focus:bg-white border border-transparent focus:border-[#800000] rounded-full text-sm text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-[#800000]/20 transition-all duration-200 outline-none"
+          onFocus={() => searchTerm.trim().length >= 2 && setShowResults(true)}
+        />
+        {loading && (
+          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+            <div className="w-4 h-4 border-2 border-[#800000]/20 border-t-[#800000] rounded-full animate-spin" />
+          </div>
+        )}
+        {searchTerm && !loading && (
+          <button
+            onClick={() => {
+              setSearchTerm('');
+              setResults([]);
+              setShowResults(false);
+            }}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+          >
+            ×
+          </button>
+        )}
+      </div>
+
+      {/* Search Results Dropdown */}
+      {showResults && (
+        <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-200 max-h-80 overflow-y-auto z-50">
+          {loading ? (
+            <div className="p-4 text-center text-gray-500">
+              <div className="inline-block w-5 h-5 border-2 border-[#800000]/20 border-t-[#800000] rounded-full animate-spin mr-2" />
+              Searching...
+            </div>
+          ) : results.length === 0 ? (
+            <div className="p-4 text-center text-gray-500">
+              {searchTerm.trim().length >= 2 ? 'No alumni found' : 'Type at least 2 characters to search'}
+            </div>
+          ) : (
+            <div className="py-2">
+              {results.map((result) => (
+                <button
+                  key={result.user_id}
+                  onClick={() => handleSelect(result.user_id)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors duration-150 text-left"
+                >
+                  <img
+                    src={
+                      result.avatar_url ||
+                      `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                        result.full_name || 'A'
+                      )}&background=800000&color=fff&rounded=true&size=40`
+                    }
+                    alt={result.full_name || 'Alumni'}
+                    className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">
+                      {result.full_name || 'Unknown Alumni'}
+                    </p>
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      {result.course && <span className="truncate">{result.course}</span>}
+                      {result.batch_year && <span>• Class of {result.batch_year}</span>}
+                    </div>
+                    {result.job_title && (
+                      <p className="text-xs text-gray-400 truncate">
+                        {result.job_title}{result.company ? ` at ${result.company}` : ''}
+                      </p>
+                    )}
+                  </div>
+                  <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function SocialFeed({ session, profile }: SocialFeedProps) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -421,6 +610,11 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
   const [viewProfile, setViewProfile] = useState<AlumniFullProfile | null>(null);
   const [viewProfileLoading, setViewProfileLoading] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+
+  // New state for search profile modal
+  const [showSearchProfileModal, setShowSearchProfileModal] = useState(false);
+  const [searchViewProfile, setSearchViewProfile] = useState<AlumniFullProfile | null>(null);
+  const [searchViewProfileLoading, setSearchViewProfileLoading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -707,6 +901,36 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
   const closeProfileModal = () => {
     setShowProfileModal(false);
     setViewProfile(null);
+  };
+
+  // OPEN PROFILE FROM SEARCH
+  const openSearchProfile = async (userId: string) => {
+    setShowSearchProfileModal(true);
+    setSearchViewProfile(null);
+    setSearchViewProfileLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('alumni_profiles')
+        .select(
+          'user_id, full_name, avatar_url, course, batch_year, employment_status, job_title, company, industry, location, linkedin_url, gender'
+        )
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data) {
+        setSearchViewProfile({ ...data, avatar_url: resolveAvatar(data.avatar_url) });
+      }
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+    } finally {
+      setSearchViewProfileLoading(false);
+    }
+  };
+
+  const closeSearchProfileModal = () => {
+    setShowSearchProfileModal(false);
+    setSearchViewProfile(null);
   };
 
   // CREATE POST
@@ -1292,6 +1516,16 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
       
       <div className="max-w-2xl mx-auto px-3 sm:px-4 relative">
         
+        {/* ============================================================ */}
+        {/* SEARCH BAR - Added above create post */}
+        {/* ============================================================ */}
+        <div className="mb-4">
+          <SearchAlumni 
+            onSelect={openSearchProfile} 
+            currentUserId={session.user.id}
+          />
+        </div>
+
         {/* ============================================================ */}
         {/* FACEBOOK-STYLE CREATE POST - Photo icon on same row */}
         {/* ============================================================ */}
@@ -1902,10 +2136,17 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
       </div>
 
       {/* ============================================================ */}
-      {/* PROFILE VIEW MODAL */}
+      {/* PROFILE VIEW MODAL - FROM POSTS/PEOPLE YOU MAY KNOW */}
       {/* ============================================================ */}
       {showProfileModal && (
         <ProfileModal loading={viewProfileLoading} profile={viewProfile} onClose={closeProfileModal} />
+      )}
+
+      {/* ============================================================ */}
+      {/* PROFILE VIEW MODAL - FROM SEARCH */}
+      {/* ============================================================ */}
+      {showSearchProfileModal && (
+        <ProfileModal loading={searchViewProfileLoading} profile={searchViewProfile} onClose={closeSearchProfileModal} />
       )}
 
       {/* Hidden file input */}

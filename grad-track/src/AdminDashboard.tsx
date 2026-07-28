@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import { PieChart, Pie, BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip, Legend, Cell } from 'recharts';
- 
+import SocialFeed from './SocialFeed';
 import ImportMasterListModal from './ImportMasterListModal';
 import ReportsPanel from './ReportsPanel';
 import AnnouncementComments from './AnnouncementComments';
@@ -213,7 +213,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [departmentStats, setDepartmentStats] = useState<DepartmentStat[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeMainTab, setActiveMainTab] = useState<"overview" | "departments" | "announcements" | "predictive" | "masterlist" | "reports">("overview");
+  const [activeMainTab, setActiveMainTab] = useState<"overview" | "departments" | "announcements" | "predictive" | "masterlist" | "reports"  | "feed">("overview");
 
   const [showImportModal, setShowImportModal] = useState(false);
 
@@ -253,6 +253,17 @@ export default function AdminDashboard({ session }: { session: Session }) {
     full_name: session.user.user_metadata?.full_name || 'Administrator',
     email: session.user.email || '',
   });
+
+  const adminProfileForFeed = {
+  ...adminProfile,
+  avatar_url: null,
+  course: 'Administrator',
+  batch_year: null,
+  employment_status: 'Employed',
+  job_title: 'Admin',
+  company: 'GradTrack'
+};
+
   const [notificationSettings, setNotificationSettings] = useState({
     emailAnnouncements: true,
     emailActivityDigest: false,
@@ -1662,7 +1673,17 @@ export default function AdminDashboard({ session }: { session: Session }) {
           </button>
           <button onClick={() => setActiveMainTab('reports')}
             className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${activeMainTab === 'reports' ? 'bg-[#800000] text-white shadow-md' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>📊 Reports</button>
+          <button
+  onClick={() => setActiveMainTab('feed')}
+  className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${activeMainTab === 'feed'
+      ? 'bg-[#800000] text-white shadow-md'
+      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+    }`}
+>
+  📱 Feed
+</button>
         </div>
+        
 
         {/* ======================================================== */}
         {/* TAB 1: OVERVIEW */}
@@ -3030,7 +3051,32 @@ export default function AdminDashboard({ session }: { session: Session }) {
             </div>
           </div>
         </div>
+
       )}
+      {/* ======================================================== */}
+{/* TAB 7: FEED - NEW */}
+{/* ======================================================== */}
+{activeMainTab === 'feed' && (
+  <div className="flex justify-center w-full">
+    <div className="w-full max-w-2xl">
+      {/* Header */}
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Alumni Feed</h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          View and manage all alumni posts from the community
+        </p>
+      </div>
+      
+      {/* Social Feed - Wrapped in card for consistent styling */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <SocialFeed 
+          session={session} 
+          profile={adminProfileForFeed}
+        />
+      </div>
+    </div>
+  </div>
+)}
 
       {/* ========================================================== */}
       {/* MODALS */}
