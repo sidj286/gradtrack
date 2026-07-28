@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import { PieChart, Pie, BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip, Legend, Cell } from 'recharts';
-import { getProgramPromotionRecommendations, getProgramStrengthAnalysis, getInstitutionalSummary } from './lib/gemini';
+ 
 import ImportMasterListModal from './ImportMasterListModal';
 import ReportsPanel from './ReportsPanel';
 import AnnouncementComments from './AnnouncementComments';
@@ -16,6 +16,8 @@ import {
   sendNotification,
 
 } from './lib/notificationUtils';
+// Add this at the top with other imports (around line 1-20)
+import PredictionDashboard from './PredictionDashboard';
 
 // ==================== TYPES ====================
 interface AlumniProfile {
@@ -211,15 +213,11 @@ export default function AdminDashboard({ session }: { session: Session }) {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [departmentStats, setDepartmentStats] = useState<DepartmentStat[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeMainTab, setActiveMainTab] = useState<"overview" | "departments" | "announcements" | "insights" | "masterlist" | "reports">("overview");
+  const [activeMainTab, setActiveMainTab] = useState<"overview" | "departments" | "announcements" | "predictive" | "masterlist" | "reports">("overview");
 
   const [showImportModal, setShowImportModal] = useState(false);
 
-  const [aiPromotionRecs, setAiPromotionRecs] = useState<string>('');
-  const [aiStrengthAnalysis, setAiStrengthAnalysis] = useState<string>('');
-  const [aiSummary, setAiSummary] = useState<string>('');
-  const [aiLoading, setAiLoading] = useState(false);
-
+   
   const [signOutLoading, setSignOutLoading] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
@@ -364,12 +362,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
     localStorage.setItem('adminNotificationSettings', JSON.stringify(notificationSettings));
   }, [notificationSettings]);
 
-  useEffect(() => {
-    if (activeMainTab === 'insights' && departmentStats.length > 0 && !aiPromotionRecs && !aiLoading) {
-      fetchAIInsights();
-    }
-  }, [activeMainTab, departmentStats]);
-
+   
   useEffect(() => {
     if (activeMainTab === 'masterlist') {
       fetchMasterList();
@@ -492,34 +485,8 @@ export default function AdminDashboard({ session }: { session: Session }) {
     }
   };
 
-  const fetchAIInsights = async () => {
-    if (departmentStats.length === 0) return;
-
-    setAiLoading(true);
-
-    try {
-      const promotions = await getProgramPromotionRecommendations(departmentStats);
-      setAiPromotionRecs(promotions.text);
-
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      const strength = await getProgramStrengthAnalysis(departmentStats);
-      setAiStrengthAnalysis(strength.text);
-
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      const summary = await getInstitutionalSummary(departmentStats);
-      setAiSummary(summary.text);
-
-      if (!promotions.success || !strength.success || !summary.success) {
-        console.log('Some insights using fallback (rate limit or API issue)');
-      }
-    } catch (error) {
-      console.error('AI insights error:', error);
-    } finally {
-      setAiLoading(false);
-    }
-  };
+  
+  
 
   const fetchMasterList = async () => {
     setMasterListLoading(true);
@@ -1675,15 +1642,15 @@ export default function AdminDashboard({ session }: { session: Session }) {
           >
             📢 Announcements
           </button>
-          <button
-            onClick={() => setActiveMainTab('insights')}
-            className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${activeMainTab === 'insights'
-                ? 'bg-[#800000] text-white shadow-md'
-                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-              }`}
-          >
-            🤖 Program Insights
-          </button>
+           <button
+    onClick={() => setActiveMainTab('predictive')}
+    className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${activeMainTab === 'predictive'
+        ? 'bg-[#800000] text-white shadow-md'
+        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+      }`}
+  >
+    🔮 Predictive Analytics
+  </button>
           <button
             onClick={() => setActiveMainTab('masterlist')}
             className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${activeMainTab === 'masterlist'
@@ -2693,123 +2660,13 @@ export default function AdminDashboard({ session }: { session: Session }) {
 
         {/* ======================================================== */}
         {/* TAB 4: PROGRAM INSIGHTS */}
-        {/* ======================================================== */}
-        {activeMainTab === 'insights' && (
-          <>
-            {/* AI Insights Header */}
-            <div className="mb-6">
-              <div className="bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 rounded-2xl p-6 border border-purple-100 dark:border-purple-800">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-500 rounded-xl flex items-center justify-center text-white text-lg shadow-md">
-                    🤖
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-                      AI-Assisted Program Insights
-                    </h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      Gemini AI analysis based on your alumni data
-                    </p>
-                  </div>
-                </div>
-                {aiLoading ? (
-                  <div className="flex items-center gap-3 py-4">
-                    <div className="w-5 h-5 border-2 border-purple-500/30 border-t-purple-500 rounded-full animate-spin" />
-                    <p className="text-sm text-gray-500">
-                      Generating insights from your data...
-                    </p>
-                  </div>
-                ) : aiSummary ? (
-                  <div className="bg-white/50 dark:bg-gray-800/50 rounded-xl p-4">
-                    <p className="text-gray-700 dark:text-gray-300 italic">
-                      "{aiSummary}"
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-500">
-                    Click refresh to generate AI insights based on your alumni data.
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* AI Insights Cards */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-              {/* Recommendations Card */}
-              <Card className="h-full">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-8 h-8 bg-amber-100 dark:bg-amber-900 rounded-lg flex items-center justify-center text-amber-600">
-                    🚀
-                  </div>
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                    Program Promotion Recommendations
-                  </h3>
-                </div>
-                <div className="prose prose-sm dark:prose-invert max-w-none">
-                  {aiLoading ? (
-                    <div className="flex items-center gap-2 py-8 justify-center">
-                      <div className="w-5 h-5 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
-                      <span className="text-gray-500">
-                        Analyzing program performance...
-                      </span>
-                    </div>
-                  ) : aiPromotionRecs ? (
-                    <div className="whitespace-pre-wrap text-gray-700 dark:text-gray-300 leading-relaxed">
-                      {aiPromotionRecs}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 text-gray-500">
-                      <p>No recommendations yet.</p>
-                      <button
-                        onClick={fetchAIInsights}
-                        className="mt-3 text-sm text-[#800000] hover:underline"
-                      >
-                        Generate Recommendations
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </Card>
-
-              {/* Strength Analysis Card */}
-              <Card className="h-full">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900 rounded-lg flex items-center justify-center text-emerald-600">
-                    📊
-                  </div>
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                    Program Strength Analysis
-                  </h3>
-                </div>
-                <div className="prose prose-sm dark:prose-invert max-w-none">
-                  {aiLoading ? (
-                    <div className="flex items-center gap-2 py-8 justify-center">
-                      <div className="w-5 h-5 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />
-                      <span className="text-gray-500">
-                        Analyzing program strength...
-                      </span>
-                    </div>
-                  ) : aiStrengthAnalysis ? (
-                    <div className="whitespace-pre-wrap text-gray-700 dark:text-gray-300 leading-relaxed">
-                      {aiStrengthAnalysis}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 text-gray-500">
-                      <p>No analysis available.</p>
-                      <button
-                        onClick={fetchAIInsights}
-                        className="mt-3 text-sm text-[#800000] hover:underline"
-                      >
-                        Generate Analysis
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </Card>
-            </div>
-          </>
-        )}
+      {activeMainTab === 'predictive' && (
+  <PredictionDashboard
+    alumni={alumni}
+    departmentStats={departmentStats}
+    selectedDepartment={selectedDepartment}
+  />
+)}
 
         {/* ======================================================== */}
         {/* TAB 5: MASTER LIST */}
