@@ -10,11 +10,14 @@ interface DepartmentStat {
   out_of_field_count: number;
   employment_rate: number;
   alignment_rate: number;
+  
 }
 
 // Track rate limiting
 let isRateLimited = false;
 let rateLimitResetTime = 0;
+
+const INDUSTRY_READINESS_TARGET = 80;
 
 async function callGemini(prompt: string): Promise<{ success: boolean; text: string }> {
   if (isRateLimited && Date.now() < rateLimitResetTime) {
@@ -75,10 +78,8 @@ export async function getProgramPromotionRecommendations(stats: DepartmentStat[]
     };
   }
 
-  // Filter out departments with zero alumni for more relevant analysis
   const departmentsWithAlumni = stats.filter(s => s.total_alumni > 0);
   
-  // If only one department has data, provide specific recommendation
   if (departmentsWithAlumni.length === 1) {
     const dept = departmentsWithAlumni[0];
     const deptName = getDepartmentName(dept.department);
@@ -108,7 +109,6 @@ Keep response concise, professional, and under 150 words.
   const result = await callGemini(prompt);
   
   if (!result.success) {
-    // IMPROVED FALLBACK: Only consider departments with data
     const validDepts = stats.filter(s => s.total_alumni > 0);
     if (validDepts.length === 0) {
       return {
@@ -173,7 +173,6 @@ Keep response professional and under 150 words.
     const bestDeptName = getDepartmentName(bestDept.department);
     const avgAlignment = validDepts.reduce((sum, d) => sum + d.alignment_rate, 0) / validDepts.length;
     
-    // Only mention "needs attention" if there's an actual underperformer with data
     const worstDept = validDepts.reduce((prev, current) => 
       (prev.alignment_rate < current.alignment_rate) ? prev : current
     );
@@ -247,8 +246,389 @@ Keep under 20 words, encouraging tone.
 }
 
 // ============================================================
-// HELPER FUNCTION: Get department full name
+// PREDICTION DASHBOARD - UPGRADED GEMINI PROMPT & FALLBACK
 // ============================================================
+
+export interface PredictionInsightRequest {
+  department: string;
+  departmentName: string;
+  totalAlumni: number;
+  employmentRate: number;
+  alignmentRate: number;
+  healthScore: number;
+  demandScore: number;
+  projection: number | null;
+  growth: number | null;
+  gap: number;
+  targetBatch: number | null;
+  latestBatch: number | null;
+  topIndustry: string | null;
+  topIndustryDemand: number | null;
+  industriesCount: number;
+  batchCount: number;
+  isSmallSample: boolean;
+  hasTrendData: boolean;
+  trendDescription: string;
+}
+
+export interface PredictionInsightResponse {
+  projection: string;
+  workforce: string;
+  industry: string;
+  health: string;
+  productivity: string;
+  summary: string;
+}
+
+/**
+ * Generates AI-powered interpretations for the PredictionDashboard
+ * Falls back to dynamic data-driven interpretations when AI is unavailable
+ */
+export async function getPredictionInsights(request: PredictionInsightRequest): Promise<{ success: boolean; insights: PredictionInsightResponse }> {
+  const {
+    department,
+    departmentName,
+    totalAlumni,
+    employmentRate,
+    alignmentRate,
+    healthScore,
+    demandScore,
+    projection,
+    growth,
+    gap,
+    targetBatch,
+    latestBatch: _latestBatchData,
+    topIndustry,
+    topIndustryDemand,
+    industriesCount,
+    batchCount,
+    isSmallSample,
+    hasTrendData: _hasTrendData,
+    trendDescription: _trendDescription,
+  } = request;
+
+  // If no data, return empty insights
+  if (totalAlumni === 0) {
+    return {
+      success: false,
+      insights: {
+        projection: `No alumni data available for ${departmentName}. Begin tracking graduates to enable workforce projections.`,
+        workforce: `Workforce analysis unavailable. ${departmentName} needs alumni employment data.`,
+        industry: `Industry demand analysis unavailable. Encourage alumni to update industry information.`,
+        health: `${departmentName} health assessment pending. ${totalAlumni} alumni records needed for meaningful analysis.`,
+        productivity: `Productivity assessment pending. ${departmentName} requires at least 5 alumni records for reliable insights.`,
+        summary: `${departmentName}: 0 alumni tracked. Begin data collection for workforce insights.`
+      }
+    };
+  }
+
+  // If small sample, use improved data-driven fallback
+  if (isSmallSample || batchCount < 2) {
+    const insights = generateImprovedFallback(request);
+    return { success: false, insights };
+  }
+
+  // ============================================================
+  // UPGRADED GEMINI PROMPT
+  // ============================================================
+  const prompt = `
+You are a senior data analyst for GradTrack, an alumni career tracking system at Cebu Roosevelt Memorial Colleges (CRMC). Your role is to generate professional, data-driven insights for academic program evaluation and workforce planning.
+
+DEPARTMENT CONTEXT:
+- Department: ${departmentName} (${department})
+- Total Alumni Tracked: ${totalAlumni}
+- Latest Batch with Data: ${_latestBatchData !== null ? 'Batch ' + _latestBatchData : 'N/A'}
+- Target Batch: ${targetBatch !== null ? 'Batch ' + targetBatch : 'Next batch'}
+- Batches Analyzed: ${batchCount} (${batchCount >= 3 ? 'sufficient for trend analysis' : 'limited, trends may not be statistically significant'})
+
+PERFORMANCE METRICS:
+- Employment Rate: ${employmentRate}% of graduates are employed
+- Career Alignment Rate: ${alignmentRate}% of graduates work in their field
+- Health Score: ${healthScore}% (composite of employment and alignment)
+- Demand Score: ${demandScore}% (industry demand indicator)
+- Projected Alignment: ${projection !== null ? projection + '%' : 'Insufficient data for projection'}
+- Growth Trend: ${growth !== null ? (growth > 0 ? '+' : '') + growth + '%' : 'Insufficient data'}
+- Graduate Gap: ${gap > 0 ? gap + ' additional graduates needed' : gap < 0 ? 'Supply exceeds demand by ' + Math.abs(gap) : 'Balanced'}
+
+INDUSTRY CONTEXT:
+- Top Industry: ${topIndustry || 'N/A'} ${topIndustryDemand !== null ? `(${topIndustryDemand}% demand)` : ''}
+- Number of Industries: ${industriesCount}
+- Trend: ${_trendDescription || 'stable'}
+
+INSTRUCTION FORMAT:
+Generate 6 professional insights in the exact format below. Each insight must be:
+- A single, complete sentence
+- Under 25 words
+- Direct and professional
+- Data-driven (reference specific numbers)
+- No emojis
+- No marketing language
+- Start with the department name or code
+
+FORMAT:
+PROJECTION: [One sentence about the projection]
+WORKFORCE: [One sentence about workforce supply and demand]
+INDUSTRY: [One sentence about industry demand]
+HEALTH: [One sentence about department health]
+PRODUCTIVITY: [One sentence about graduate productivity]
+SUMMARY: [One comprehensive summary sentence]
+
+EXAMPLES:
+PROJECTION: Computer Studies (CCS) alignment is projected to improve from 72% to 76.5% for Batch 2027, a 4.2% increase.
+WORKFORCE: IT sector demand requires 15 additional CCS graduates for Batch 2027, indicating a workforce supply gap.
+INDUSTRY: Strong demand exists in IT (92%) and BPO (78%) sectors for CCS graduates, with 5 industries represented.
+HEALTH: CCS department health is 79% (Very Good), with employment at 82% and alignment at 76%.
+PRODUCTIVITY: 98 of 128 CCS graduates (76%) are industry-ready for Batch 2027, exceeding the 80% target.
+SUMMARY: CCS shows strong workforce demand and improving alignment, with a moderate graduate supply gap for Batch 2027.
+
+Now generate 6 insights for ${departmentName} (${department}) based on the provided data:
+`;
+
+  const result = await callGemini(prompt);
+
+  // If Gemini fails, use IMPROVED data-driven fallback
+  if (!result.success) {
+    const fallback = generateImprovedFallback(request);
+    return { success: false, insights: fallback };
+  }
+
+  // Parse the response
+  const text = result.text;
+  const lines = text.split('\n').filter(line => line.trim().length > 0);
+  
+  let insights: PredictionInsightResponse = {
+    projection: generateImprovedProjection(request),
+    workforce: generateImprovedWorkforce(request),
+    industry: generateImprovedIndustry(request),
+    health: generateImprovedHealth(request),
+    productivity: generateImprovedProductivity(request),
+    summary: generateImprovedSummary(request)
+  };
+
+  try {
+    const projectionLine = lines.find(l => l.toLowerCase().includes('projection'));
+    const workforceLine = lines.find(l => l.toLowerCase().includes('workforce'));
+    const industryLine = lines.find(l => l.toLowerCase().includes('industry'));
+    const healthLine = lines.find(l => l.toLowerCase().includes('health'));
+    const productivityLine = lines.find(l => l.toLowerCase().includes('productivity'));
+    const summaryLine = lines.find(l => l.toLowerCase().includes('summary'));
+
+    if (projectionLine) insights.projection = projectionLine.replace(/^[A-Z]+:\s*/i, '').trim();
+    if (workforceLine) insights.workforce = workforceLine.replace(/^[A-Z]+:\s*/i, '').trim();
+    if (industryLine) insights.industry = industryLine.replace(/^[A-Z]+:\s*/i, '').trim();
+    if (healthLine) insights.health = healthLine.replace(/^[A-Z]+:\s*/i, '').trim();
+    if (productivityLine) insights.productivity = productivityLine.replace(/^[A-Z]+:\s*/i, '').trim();
+    if (summaryLine) insights.summary = summaryLine.replace(/^[A-Z]+:\s*/i, '').trim();
+  } catch (e) {
+    console.warn('Error parsing Gemini response:', e);
+  }
+
+  return { success: true, insights };
+}
+
+// ============================================================
+// IMPROVED FALLBACK INTERPRETATIONS - NATURAL & PROFESSIONAL
+// ============================================================
+
+function generateImprovedFallback(request: PredictionInsightRequest): PredictionInsightResponse {
+  return {
+    projection: generateImprovedProjection(request),
+    workforce: generateImprovedWorkforce(request),
+    industry: generateImprovedIndustry(request),
+    health: generateImprovedHealth(request),
+    productivity: generateImprovedProductivity(request),
+    summary: generateImprovedSummary(request)
+  };
+}
+
+function generateImprovedProjection(request: PredictionInsightRequest): string {
+  const { departmentName, projection, growth, alignmentRate, targetBatch, batchCount, totalAlumni } = request;
+
+  if (batchCount === 0) {
+    return `${departmentName} has ${totalAlumni} alumni but no batch data recorded. Add batch_year to alumni records to enable projections.`;
+  }
+
+  if (batchCount === 1) {
+    return `${departmentName} has ${totalAlumni} alumni with ${alignmentRate}% career alignment. With only one batch recorded, trend analysis requires additional data.`;
+  }
+
+  if (projection === null || growth === null) {
+    return `${departmentName} currently shows ${alignmentRate}% career alignment based on ${batchCount} batches. More historical data would improve projection accuracy.`;
+  }
+
+  const direction = growth > 0 ? 'improving' : growth < 0 ? 'declining' : 'stable';
+  const absGrowth = Math.abs(growth);
+  const batchLabel = targetBatch !== null ? `Batch ${targetBatch}` : 'Next batch';
+
+  let insight = `Based on ${batchCount} batches of data, ${departmentName} alignment is ${direction} `;
+  insight += `from ${alignmentRate}% to ${projection}% for ${batchLabel} (${growth > 0 ? '+' : ''}${absGrowth}%).`;
+
+  if (growth > 5) {
+    insight += ' This positive trend suggests effective program strategies and strong graduate outcomes.';
+  } else if (growth > 0) {
+    insight += ' Gradual improvement indicates steady progress in graduate preparation.';
+  } else if (growth < -10) {
+    insight += ' This significant decline warrants immediate review of program curriculum and support services.';
+  } else if (growth < 0) {
+    insight += ' This decline suggests a need for curriculum review and enhanced career preparation.';
+  } else {
+    insight += ' Stable performance indicates consistent graduate outcomes over time.';
+  }
+
+  return insight;
+}
+
+function generateImprovedWorkforce(request: PredictionInsightRequest): string {
+  const { departmentName, gap, targetBatch, topIndustry, topIndustryDemand, industriesCount, totalAlumni } = request;
+
+  if (industriesCount === 0) {
+    return `${departmentName} has ${totalAlumni} alumni but no industry data reported. Encouraging graduates to update employment information would improve workforce analysis.`;
+  }
+
+  const batchLabel = targetBatch !== null ? `Batch ${targetBatch}` : 'Next batch';
+
+  let insight = `${departmentName} graduates work across ${industriesCount} different industry sectors.`;
+
+  if (topIndustry && topIndustryDemand !== null) {
+    insight += ` The primary employer is ${topIndustry}, representing ${topIndustryDemand}% of demand.`;
+  }
+
+  if (gap > 0) {
+    insight += ` For ${batchLabel}, we anticipate needing ${gap} more graduates to meet employer demand.`;
+    if (topIndustry && topIndustryDemand !== null && topIndustryDemand > 70) {
+      insight += ` Strong demand in ${topIndustry} suggests this sector is actively recruiting.`;
+    }
+  } else if (gap < 0) {
+    insight += ` For ${batchLabel}, graduate supply exceeds demand by ${Math.abs(gap)}.`;
+    if (topIndustry && topIndustryDemand !== null && topIndustryDemand < 50) {
+      insight += ` Lower demand in ${topIndustry} may be a contributing factor to this surplus.`;
+    }
+  } else {
+    insight += ` For ${batchLabel}, graduate supply and demand are currently balanced.`;
+  }
+
+  return insight;
+}
+
+function generateImprovedIndustry(request: PredictionInsightRequest): string {
+  const { departmentName, demandScore, topIndustry, topIndustryDemand, industriesCount } = request;
+
+  if (industriesCount === 0) {
+    return `${departmentName} graduates have not yet reported industry information. Alumni engagement in updating profiles would provide valuable insights.`;
+  }
+
+  let demandDesc = 'moderate';
+  if (demandScore >= 70) demandDesc = 'strong';
+  else if (demandScore < 40) demandDesc = 'limited';
+
+  let insight = `${departmentName} graduates demonstrate ${demandDesc} demand in the job market with a score of ${demandScore}%.`;
+
+  if (topIndustry && topIndustryDemand !== null) {
+    insight += ` ${topIndustry} is the leading sector with ${topIndustryDemand}% demand.`;
+  }
+
+  if (industriesCount >= 3) {
+    insight += ` With ${industriesCount} industries represented, graduates have diverse employment options.`;
+  } else if (industriesCount === 1) {
+    insight += ` Graduates are concentrated in a single industry, which may limit opportunities.`;
+  }
+
+  if (demandScore >= 70) {
+    insight += ' This high demand validates the department\'s curriculum and graduate quality.';
+  } else if (demandScore < 50) {
+    insight += ' Strengthening industry partnerships and curriculum relevance may improve demand.';
+  }
+
+  return insight;
+}
+
+function generateImprovedHealth(request: PredictionInsightRequest): string {
+  const { departmentName, healthScore, employmentRate, alignmentRate, totalAlumni } = request;
+
+  const status = healthScore >= 80 ? 'excellent' : healthScore >= 70 ? 'very good' : healthScore >= 60 ? 'good' : healthScore >= 50 ? 'fair' : 'needs improvement';
+
+  let insight = `${departmentName} has a health score of ${healthScore}%, which is ${status}.`;
+
+  if (employmentRate >= 70 && alignmentRate >= 70) {
+    insight += ` Both employment (${employmentRate}%) and alignment (${alignmentRate}%) are strong.`;
+  } else if (employmentRate >= 70) {
+    insight += ` Employment (${employmentRate}%) is strong, but alignment (${alignmentRate}%) lags behind.`;
+  } else if (alignmentRate >= 70) {
+    insight += ` Alignment (${alignmentRate}%) is strong, but employment (${employmentRate}%) needs attention.`;
+  } else {
+    insight += ` Both employment (${employmentRate}%) and alignment (${alignmentRate}%) need improvement.`;
+  }
+
+  if (healthScore >= 70) {
+    insight += ' The department is performing well and should maintain its current trajectory.';
+  } else if (healthScore >= 50) {
+    insight += ' Targeted improvements in placement and curriculum alignment could boost outcomes.';
+  } else {
+    insight += ' Urgent intervention is recommended to address underlying issues.';
+  }
+
+  if (totalAlumni < 10) {
+    insight += ' Note: This assessment is based on a small sample size.';
+  }
+
+  return insight;
+}
+
+function generateImprovedProductivity(request: PredictionInsightRequest): string {
+  const { departmentName, alignmentRate, totalAlumni, targetBatch } = request;
+
+  const readyCount = Math.round((alignmentRate / 100) * totalAlumni);
+  const batchLabel = targetBatch !== null ? `Batch ${targetBatch}` : 'Next batch';
+
+  let insight = `${readyCount} of ${totalAlumni} ${departmentName} graduates are currently working in their field.`;
+
+  if (alignmentRate >= 80) {
+    insight += ' This excellent alignment indicates the department is producing highly industry-ready graduates.';
+  } else if (alignmentRate >= 70) {
+    insight += ' Strong performance suggests graduates are well-prepared for the workforce.';
+  } else if (alignmentRate >= 60) {
+    insight += ' Moderate alignment shows room for improvement in industry readiness.';
+  } else {
+    insight += ' The department should review curriculum and career preparation strategies.';
+  }
+
+  if (alignmentRate < INDUSTRY_READINESS_TARGET) {
+    const neededInField = Math.ceil((INDUSTRY_READINESS_TARGET / 100) * totalAlumni);
+    const shortfall = Math.max(0, neededInField - readyCount);
+    insight += ` To reach the ${INDUSTRY_READINESS_TARGET}% target for ${batchLabel}, ${shortfall} more graduates need to secure field-aligned positions.`;
+  }
+
+  return insight;
+}
+
+function generateImprovedSummary(request: PredictionInsightRequest): string {
+  const { departmentName, totalAlumni, employmentRate, alignmentRate, healthScore, gap, targetBatch } = request;
+
+  const batchLabel = targetBatch !== null ? `Batch ${targetBatch}` : 'Next batch';
+
+  let gapText = 'balanced';
+  if (gap > 0) gapText = `short by ${gap} graduates`;
+  else if (gap < 0) gapText = `exceeds demand by ${Math.abs(gap)} graduates`;
+
+  let insight = `${departmentName}: ${totalAlumni} alumni, ${employmentRate}% employed, `;
+  insight += `${alignmentRate}% aligned, ${healthScore}% health. Based on latest data, `;
+  insight += `workforce supply ${gapText} for ${batchLabel}.`;
+
+  if (healthScore >= 70 && employmentRate >= 70 && alignmentRate >= 70) {
+    insight += ' Overall, the department is in good standing.';
+  } else if (healthScore >= 50) {
+    insight += ' Some areas require attention to optimize outcomes.';
+  } else {
+    insight += ' Immediate action is recommended to address performance gaps.';
+  }
+
+  return insight;
+}
+
+// ============================================================
+// HELPER FUNCTIONS
+// ============================================================
+
 function getDepartmentName(code: string): string {
   const names: Record<string, string> = {
     'CCS': 'Computer Studies',
@@ -259,7 +639,14 @@ function getDepartmentName(code: string): string {
   };
   return names[code] || code;
 }
-// Add this at the bottom of your gemini.ts file
+
+// function classifyHealth(score: number): string {
+//   if (score >= 80) return 'Excellent';
+//   if (score >= 70) return 'Very Good';
+//   if (score >= 60) return 'Good';
+//   if (score >= 50) return 'Fair';
+//   return 'Needs Improvement';
+// }
 
 // ============================================================
 // EXPORT FOR CAREER CLASSIFIER

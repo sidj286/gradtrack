@@ -1,5 +1,7 @@
 // src/components/PredictionDashboard.tsx
-import  { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
+import type { PredictionInsightRequest } from './lib/gemini';
+import { getPredictionInsights } from './lib/gemini';
 
 interface PredictionDashboardProps {
   alumni: any[];
@@ -7,47 +9,105 @@ interface PredictionDashboardProps {
   selectedDepartment?: string;
 }
 
-/* ============================================================
-   CONSTANTS
-   ============================================================ */
-
-const PROJECTION_YEAR = 2028;
-
+// Department logos from public folder with department-specific colors
 const DEPARTMENTS = [
-  { code: 'CCS', name: 'Computer Studies', color: '#3b82f6' },
-  { code: 'CTE', name: 'Teacher Education', color: '#10b981' },
-  { code: 'CCJE', name: 'Criminal Justice', color: '#ef4444' },
-  { code: 'CBE', name: 'Business Education', color: '#f59e0b' },
-  { code: 'PSY', name: 'Psychology', color: '#8b5cf6' },
+  { 
+    code: 'CCS', 
+    name: 'Computer Studies', 
+    color: '#4b1503',
+    bgColor: '#4b1503',
+    textColor: '#ffffff',
+    logo: '/images/departments/ccs-logo.png',
+    fullName: 'College of Computer Studies'
+  },
+  { 
+    code: 'CTE', 
+    name: 'Teacher Education', 
+    color: '#00bbf9',
+    bgColor: '#00bbf9',
+    textColor: '#ffffff',
+    logo: '/images/departments/cte-logo.png',
+    fullName: 'College of Teacher Education'
+  },
+  { 
+    code: 'CCJE', 
+    name: 'Criminal Justice', 
+    color: '#09ce03',
+    bgColor: '#09ce03',
+    textColor: '#ffffff',
+    logo: '/images/departments/ccje-logo.png',
+    fullName: 'Criminal Justice Education'
+  },
+  { 
+    code: 'CBE', 
+    name: 'Business Education', 
+    color: '#ffee00',
+    bgColor: '#ffee00',
+    textColor: '#000000',
+    logo: '/images/departments/cbe-logo.png',
+    fullName: 'College of Business Education'
+  },
+  { 
+    code: 'PSY', 
+    name: 'Psychology', 
+    color: '#ff8800',
+    bgColor: '#ff8800',
+    textColor: '#ffffff',
+    logo: '/images/departments/psych-logo.png',
+    fullName: 'Psychology Program'
+  },
 ];
 
-type TabKey = 'overview' | 'workforce' | 'industry' | 'health';
+type TabKey = 'workforce' | 'industry' | 'health';
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'overview', label: 'Overview' },
   { key: 'workforce', label: 'Workforce' },
-  { key: 'industry', label: 'Industry' },
-  { key: 'health', label: 'Health' },
+  { key: 'industry', label: 'Industry Demand' },
+  { key: 'health', label: 'Department Health' },
 ];
 
-/* ============================================================
-   HELPERS
-   ============================================================ */
+const INDUSTRY_READINESS_TARGET = 80;
+const MIN_BATCH_SAMPLE_SIZE = 3;
+const SMALL_SAMPLE_THRESHOLD = 10;
+const CURRENT_CALENDAR_YEAR = new Date().getFullYear();
+const MIN_PLAUSIBLE_BATCH_YEAR = CURRENT_CALENDAR_YEAR - 60;
+const MAX_PLAUSIBLE_BATCH_YEAR = CURRENT_CALENDAR_YEAR + 3;
 
-const isEmployed = (a: any): boolean => Boolean(a) && a.employment_status === 'Employed';
-const isInField = (a: any): boolean => Boolean(a) && a.career_alignment_status === 'In-Field';
+function toBatchYear(value: any): number | null {
+  let parsed: number | null = null;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    parsed = value;
+  } else if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value.trim());
+    if (Number.isFinite(n)) parsed = n;
+  }
+  if (parsed === null) return null;
+  if (!Number.isInteger(parsed)) return null;
+  if (parsed < MIN_PLAUSIBLE_BATCH_YEAR || parsed > MAX_PLAUSIBLE_BATCH_YEAR) return null;
+  return parsed;
+}
+
+function normalizeStatus(value: any): string {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+const isEmployed = (a: any): boolean => normalizeStatus(a?.employment_status) === 'employed';
+const isInField = (a: any): boolean => {
+  const s = normalizeStatus(a?.career_alignment_status);
+  return s === 'in-field' || s === 'in field' || s === 'infield';
+};
 
 const normalizedDept = (a: any): string =>
   typeof a?.department === 'string' ? a.department.trim().toUpperCase() : '';
 
 const round1 = (n: number): number => Math.round(n * 10) / 10;
 
-const classifyHealth = (score: number): string => {
+function classifyHealth(score: number): string {
   if (score >= 80) return 'Excellent';
   if (score >= 70) return 'Very Good';
   if (score >= 60) return 'Good';
   if (score >= 50) return 'Fair';
   return 'Needs Improvement';
-};
+}
 
 const healthColor = (score: number): string => {
   if (score >= 80) return '#10b981';
@@ -57,13 +117,23 @@ const healthColor = (score: number): string => {
   return '#ef4444';
 };
 
-const classifyDemand = (score: number): 'High Demand' | 'Moderate Demand' | 'Low Demand' => {
+type DemandLabel = 'High Demand' | 'Moderate Demand' | 'Low Demand';
+
+const classifyDemand = (score: number): DemandLabel => {
   if (score >= 70) return 'High Demand';
   if (score >= 40) return 'Moderate Demand';
   return 'Low Demand';
 };
 
-function linearRegression(x: number[], y: number[]): { slope: number; intercept: number } | null {
+type Confidence = 'High' | 'Moderate' | 'Low';
+
+function classifyConfidence(usableBatchCount: number, r2: number): Confidence {
+  if (usableBatchCount >= 4 && r2 >= 0.5) return 'High';
+  if (usableBatchCount >= 3 && r2 >= 0.3) return 'Moderate';
+  return 'Low';
+}
+
+function linearRegression(x: number[], y: number[]): { slope: number; intercept: number; r2: number } | null {
   const n = x.length;
   if (n < 2) return null;
   let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
@@ -77,27 +147,48 @@ function linearRegression(x: number[], y: number[]): { slope: number; intercept:
   if (denominator === 0) return null;
   const slope = (n * sumXY - sumX * sumY) / denominator;
   const intercept = (sumY - slope * sumX) / n;
-  return { slope, intercept };
+
+  const meanY = sumY / n;
+  let ssTot = 0;
+  let ssRes = 0;
+  for (let i = 0; i < n; i++) {
+    const predicted = slope * x[i] + intercept;
+    ssTot += (y[i] - meanY) ** 2;
+    ssRes += (y[i] - predicted) ** 2;
+  }
+  const r2 = ssTot > 0 ? Math.max(0, 1 - ssRes / ssTot) : 1;
+  return { slope, intercept, r2 };
 }
 
-/* ============================================================
-   METRICS COMPUTATION (single source of truth, used by cards,
-   the detail panel, and every tab)
-   ============================================================ */
+function getTargetBatch(alumni: any[]): number | null {
+  const batchYears = [...new Set(alumni.map((a) => toBatchYear(a?.batch_year)).filter((y): y is number => y !== null))];
+  if (batchYears.length === 0) return null;
+  return Math.max(...batchYears) + 1;
+}
+
+function getLatestBatch(alumni: any[]): number | null {
+  const batchYears = [...new Set(alumni.map((a) => toBatchYear(a?.batch_year)).filter((y): y is number => y !== null))];
+  if (batchYears.length === 0) return null;
+  return Math.max(...batchYears);
+}
 
 interface IndustryRow {
   industry: string;
   count: number;
   employmentRate: number;
   demandScore: number;
-  demandLabel: 'High Demand' | 'Moderate Demand' | 'Low Demand';
+  demandLabel: DemandLabel;
   shareOfDept: number;
 }
 
 interface DeptMetrics {
   code: string;
   name: string;
+  fullName: string;
   color: string;
+  bgColor: string;
+  textColor: string;
+  logo?: string;
   total: number;
   employed: number;
   inField: number;
@@ -106,12 +197,18 @@ interface DeptMetrics {
   demandScore: number;
   healthScore: number;
   batchCount: number;
+  usableBatchCount: number;
   projection: number | null;
   growth: number | null;
+  confidence: Confidence | null;
+  isSmallSample: boolean;
   industries: IndustryRow[];
   supply: number;
   demand: number;
   gap: number;
+  latestBatch: number | null;
+  targetBatch: number | null;
+  trendDescription: string;
 }
 
 function computeIndustries(deptAlumni: any[]): IndustryRow[] {
@@ -127,10 +224,8 @@ function computeIndustries(deptAlumni: any[]): IndustryRow[] {
   return Array.from(groups.entries())
     .map(([industry, records]) => {
       const employed = records.filter(isEmployed).length;
-      const inField = records.filter(isInField).length;
       const employmentRate = records.length > 0 ? round1((employed / records.length) * 100) : 0;
-      const alignmentRate = records.length > 0 ? (inField / records.length) * 100 : 0;
-      const demandScore = round1(employmentRate * 0.6 + alignmentRate * 0.4);
+      const demandScore = round1(employmentRate * 0.6 + 0.4);
       return {
         industry,
         count: records.length,
@@ -143,7 +238,7 @@ function computeIndustries(deptAlumni: any[]): IndustryRow[] {
     .sort((a, b) => b.count - a.count);
 }
 
-function computeDeptMetrics(alumni: any[], dept: (typeof DEPARTMENTS)[number]): DeptMetrics {
+function computeDeptMetrics(alumni: any[], dept: typeof DEPARTMENTS[0], targetBatch: number | null, latestBatch: number | null): DeptMetrics {
   const deptAlumni = alumni.filter((a) => normalizedDept(a) === dept.code);
   const total = deptAlumni.length;
   const employed = deptAlumni.filter(isEmployed).length;
@@ -153,27 +248,43 @@ function computeDeptMetrics(alumni: any[], dept: (typeof DEPARTMENTS)[number]): 
   const demandScore = round1(employmentRate * 0.6 + alignmentRate * 0.4);
   const healthScore = round1((employmentRate + alignmentRate) / 2);
 
-  const batchYears = Array.from(
-    new Set(deptAlumni.map((a) => a.batch_year).filter((y) => typeof y === 'number' && Number.isFinite(y)))
-  ).sort((a, b) => a - b) as number[];
+  const batchGroups = new Map<number, any[]>();
+  deptAlumni.forEach((a) => {
+    const year = toBatchYear(a?.batch_year);
+    if (year === null) return;
+    const bucket = batchGroups.get(year) ?? [];
+    bucket.push(a);
+    batchGroups.set(year, bucket);
+  });
+
+  const allBatchYears = Array.from(batchGroups.keys()).sort((a, b) => a - b);
+  const usableBatchYears = allBatchYears.filter((year) => (batchGroups.get(year)?.length ?? 0) >= MIN_BATCH_SAMPLE_SIZE);
 
   let projection: number | null = null;
   let growth: number | null = null;
+  let confidence: Confidence | null = null;
+  let slope = 0;
 
-  if (batchYears.length >= 2) {
-    const rates = batchYears.map((year) => {
-      const batchAlumni = deptAlumni.filter((a) => a.batch_year === year);
-      return batchAlumni.length > 0
-        ? (batchAlumni.filter(isInField).length / batchAlumni.length) * 100
-        : 0;
+  if (targetBatch !== null && usableBatchYears.length >= 2) {
+    const rates = usableBatchYears.map((year) => {
+      const batchAlumni = batchGroups.get(year) ?? [];
+      return batchAlumni.length > 0 ? (batchAlumni.filter(isInField).length / batchAlumni.length) * 100 : 0;
     });
-    const regression = linearRegression(batchYears, rates);
+    const regression = linearRegression(usableBatchYears, rates);
     if (regression) {
-      const predicted = regression.slope * PROJECTION_YEAR + regression.intercept;
+      slope = regression.slope;
+      const predicted = regression.slope * targetBatch + regression.intercept;
       projection = round1(Math.max(0, Math.min(100, predicted)));
       growth = round1(projection - alignmentRate);
+      confidence = classifyConfidence(usableBatchYears.length, regression.r2);
     }
   }
+
+  let trendDescription = 'stable';
+  if (slope > 1) trendDescription = 'improving';
+  else if (slope > 2) trendDescription = 'strongly improving';
+  else if (slope < -1) trendDescription = 'declining';
+  else if (slope < -2) trendDescription = 'strongly declining';
 
   const industries = computeIndustries(deptAlumni);
   const supply = total;
@@ -182,7 +293,11 @@ function computeDeptMetrics(alumni: any[], dept: (typeof DEPARTMENTS)[number]): 
   return {
     code: dept.code,
     name: dept.name,
+    fullName: dept.fullName,
     color: dept.color,
+    bgColor: dept.bgColor,
+    textColor: dept.textColor,
+    logo: dept.logo,
     total,
     employed,
     inField,
@@ -190,158 +305,257 @@ function computeDeptMetrics(alumni: any[], dept: (typeof DEPARTMENTS)[number]): 
     alignmentRate,
     demandScore,
     healthScore,
-    batchCount: batchYears.length,
+    batchCount: allBatchYears.length,
+    usableBatchCount: usableBatchYears.length,
     projection,
     growth,
+    confidence,
+    isSmallSample: total > 0 && total < SMALL_SAMPLE_THRESHOLD,
     industries,
     supply,
     demand,
     gap: demand - supply,
+    latestBatch,
+    targetBatch,
+    trendDescription,
   };
 }
 
-/* ============================================================
-   INTERPRETATION / INSIGHT GENERATION
-   These read the metrics that are already calculated above and
-   turn them into short, decision-oriented statements. No new
-   statistics are invented here — every number quoted comes
-   directly from the DeptMetrics object.
-   ============================================================ */
-
 function generateProjectionInsight(metrics: DeptMetrics): string {
-  if (metrics.total === 0) {
-    return `No alumni records are available yet for ${metrics.name}.`;
-  }
-  if (metrics.projection === null || metrics.growth === null) {
-    return 'Projection unavailable. At least two historical graduating batches are required.';
+  const { name, total, alignmentRate, projection, growth, gap, targetBatch, latestBatch, batchCount, usableBatchCount } = metrics;
+
+  if (total === 0) return `No alumni records available for ${name}.`;
+  if (targetBatch === null || latestBatch === null) return 'Batch data unavailable. Add batch_year to records.';
+  if (batchCount === 0) return `No batch-year data for ${name}. Add batch_year to enable projection.`;
+
+  if (batchCount === 1) {
+    const projectedRate = alignmentRate;
+    const estimatedGap = Math.round(total * (alignmentRate / 100) * 1.1 - total);
+    
+    let base = `Based on Batch ${latestBatch} (${total} alumni, ${alignmentRate}% aligned), Batch ${targetBatch} requires ${projectedRate}% alignment.`;
+    
+    if (estimatedGap > 0) {
+      base += ` ${estimatedGap} additional graduates are needed for Batch ${targetBatch}.`;
+    } else if (estimatedGap < 0) {
+      base += ` Current graduate supply is sufficient for estimated demand.`;
+    } else {
+      base += ` Graduate supply and workforce demand are balanced.`;
+    }
+    
+    if (alignmentRate < 50) {
+      base += ` Low current alignment suggests program review is needed for Batch ${targetBatch}.`;
+    } else if (alignmentRate < 70) {
+      base += ` Moderate alignment indicates opportunity for improvement for Batch ${targetBatch}.`;
+    } else {
+      base += ` Strong alignment suggests maintaining current strategies for Batch ${targetBatch}.`;
+    }
+    
+    if (total < SMALL_SAMPLE_THRESHOLD) {
+      base += ` Small sample size (${total} alumni) limits statistical significance.`;
+    }
+    
+    return base;
   }
 
-  const current = metrics.alignmentRate;
-  const projected = metrics.projection;
-  const growth = metrics.growth;
-
-  // Meaningful growth: strategies are working, reinforce them.
-  if (growth > 1) {
-    return `Career alignment is projected to increase from ${current}% to ${projected}% by ${PROJECTION_YEAR} (+${growth}%). Current placement strategies appear effective. Continue strengthening employer partnerships.`;
+  if (usableBatchCount < 2) {
+    return `Insufficient batch data for ${name}. Current alignment: ${alignmentRate}%. Encourage more alumni to complete profiles.`;
+  }
+  
+  if (projection === null || growth === null || metrics.confidence === null) {
+    return `Insufficient historical data for Batch ${targetBatch} projection.`;
   }
 
-  // Sharp decline: flag urgency and name concrete next steps.
+  const trend = growth > 0 ? 'improving' : growth < 0 ? 'declining' : 'stable';
+  const absGrowth = Math.abs(growth);
+
+  let base = `Based on Batch ${latestBatch} graduates, Batch ${targetBatch} alignment is ${trend}.`;
+  base += ` Projected alignment: ${projection}% (${growth > 0 ? '+' : ''}${absGrowth}% from current ${alignmentRate}%).`;
+
+  if (gap > 0) {
+    base += ` ${gap} additional graduates are needed for Batch ${targetBatch}.`;
+  } else if (gap < 0) {
+    base += ` Graduate supply meets estimated demand.`;
+  } else {
+    base += ` Graduate supply and demand are balanced.`;
+  }
+
   if (growth < -10) {
-    return `Career alignment is projected to decline from ${current}% to ${projected}% by ${PROJECTION_YEAR} (${growth}%). This indicates weakening workforce alignment. Immediate curriculum review and industry collaboration are recommended.`;
+    base += ' Urgent intervention is recommended to address declining alignment.';
+  } else if (growth < -5) {
+    base += ' Declining trend detected. Monitor curriculum and employer engagement.';
+  } else if (growth > 5) {
+    base += ' Positive trend observed. Continue current strategies.';
   }
 
-  // Mild decline: a watch-list signal rather than a crisis.
-  if (growth < -1) {
-    return `Career alignment is projected to decrease slightly from ${current}% to ${projected}% by ${PROJECTION_YEAR} (${growth}%). Monitor curriculum relevance and employer engagement.`;
-  }
-
-  // Within +/-1%: treat as effectively flat.
-  return `Career alignment is expected to remain stable near ${projected}% through ${PROJECTION_YEAR}. Maintain current placement and internship initiatives.`;
+  return base;
 }
 
 function generateWorkforceInsight(metrics: DeptMetrics): string {
-  const lead = metrics.industries[0];
-  if (!lead) {
-    return `No industry placement data is available for ${metrics.name} yet.`;
+  const { industries, gap, targetBatch, latestBatch, code } = metrics;
+  const lead = industries[0];
+
+  if (!lead) return `No industry data available for ${code}.`;
+
+  const batchLabel = targetBatch !== null ? `Batch ${targetBatch}` : 'Next batch';
+  const fromLabel = latestBatch !== null ? `Batch ${latestBatch}` : 'previous';
+
+  let base = `Based on ${fromLabel} data, ${lead.industry} shows ${lead.demandLabel.toLowerCase()} (${lead.demandScore}%). ${lead.shareOfDept}% of ${code} graduates are employed in this sector.`;
+
+  if (lead.demandLabel === 'High Demand' && gap > 0) {
+    base += ` Additional ${code} graduates are needed for ${batchLabel}.`;
+  } else if (lead.demandLabel === 'High Demand' && gap <= 0) {
+    base += ` Current ${code} graduate supply meets demand for ${batchLabel}.`;
+  } else if (lead.demandLabel === 'Moderate Demand') {
+    base += ` Steady demand is expected for ${batchLabel}. Monitor trends.`;
+  } else {
+    base += ` Program diversification for ${batchLabel} may be beneficial.`;
   }
 
-  const leadSentence = `The ${lead.industry.toLowerCase()} sector currently employs ${lead.shareOfDept}% of ${metrics.code} graduates.`;
+  if (lead.demandLabel === 'High Demand' && gap > 5) {
+    base += ` Consider increasing ${code} enrollment by ${Math.min(gap + 5, 20)} students.`;
+  } else if (lead.demandLabel === 'Low Demand') {
+    base += ` Review ${code} curriculum for ${batchLabel}.`;
+  }
 
-  if (metrics.gap > 0) {
-    return `${leadSentence} Projected workforce demand exceeds graduate supply by ${metrics.gap} graduates. Expanding enrollment and strengthening internship programs may help meet employer demand.`;
-  }
-  if (metrics.gap < 0) {
-    return `${leadSentence} Graduate supply currently exceeds estimated workforce demand by ${Math.abs(metrics.gap)} graduates. Focus on increasing employer partnerships and expanding employment opportunities.`;
-  }
-  return `${leadSentence} Graduate supply is closely aligned with estimated workforce demand.`;
+  return base;
 }
 
 function generateIndustryInsight(metrics: DeptMetrics): string {
-  const industries = metrics.industries;
-  if (industries.length === 0) {
-    return `No industry distribution data is available for ${metrics.name} graduates yet.`;
-  }
+  const { code, industries } = metrics;
+  if (industries.length === 0) return `No industry data available for ${code}.`;
 
   const top = industries[0];
-  let concentrationSentence: string;
+
+  let base = `${code} graduates show ${top.demandLabel.toLowerCase()} demand.`;
+
   if (top.shareOfDept >= 40) {
-    concentrationSentence = `The ${top.industry.toLowerCase()} industry employs ${top.shareOfDept}% of ${metrics.code} graduates, indicating strong specialization in this sector.`;
+    base += ` ${top.industry} employs ${top.shareOfDept}% of ${code} graduates.`;
   } else if (industries.length >= 3) {
-    concentrationSentence = `Employment is distributed across ${industries.length} industries, reducing dependence on a single sector.`;
+    base += ` Employment is distributed across ${industries.length} industries.`;
   } else {
-    concentrationSentence = `${top.industry} is the leading employer for ${metrics.code} graduates at ${top.shareOfDept}% of alumni.`;
+    base += ` ${top.industry} is the primary employer (${top.shareOfDept}%).`;
   }
 
-  if (metrics.alignmentRate < 50) {
-    return `${concentrationSentence} Most graduates work outside their intended field, suggesting opportunities to strengthen career alignment.`;
+  const highDemand = industries.filter(i => i.demandLabel === 'High Demand');
+  const lowDemand = industries.filter(i => i.demandLabel === 'Low Demand');
+
+  if (highDemand.length > 0) {
+    base += ` High demand sectors: ${highDemand.map(i => i.industry).join(', ')}.`;
   }
-  if (metrics.alignmentRate >= 70) {
-    return `${concentrationSentence} Career alignment remains strong across current placements.`;
+  if (lowDemand.length > 0) {
+    base += ` Low demand sectors: ${lowDemand.map(i => i.industry).join(', ')}.`;
   }
-  return concentrationSentence;
+
+  if (highDemand.length >= 2) {
+    base += ` Graduates are in strong demand across ${highDemand.length} sectors.`;
+  } else if (highDemand.length === 1) {
+    base += ` Graduates are in demand in ${highDemand[0].industry}.`;
+  }
+
+  return base;
 }
 
 function generateHealthInsight(metrics: DeptMetrics): string {
-  if (metrics.total === 0) {
-    return `No alumni records are available yet to assess ${metrics.name} health.`;
-  }
+  const { code, healthScore, employmentRate, alignmentRate, total, targetBatch, latestBatch } = metrics;
+  if (total === 0) return `No alumni data available for ${code}.`;
 
-  const classificationText: Record<string, string> = {
-    Excellent: 'Department performance is consistently strong across employment and career alignment.',
-    'Very Good': 'Employment and career alignment outcomes are strong, with minor room for improvement.',
-    Good: 'Employment outcomes remain healthy, although career alignment has room for improvement.',
-    Fair: 'Graduate employability is acceptable, but alignment with degree-related careers should improve.',
-    'Needs Improvement':
-      'Low employment and alignment suggest the department should review curriculum relevance, internships, and employer engagement.',
-  };
+  const batchLabel = targetBatch !== null ? ` Batch ${targetBatch}` : ' next batch';
+  const fromLabel = latestBatch !== null ? `Batch ${latestBatch}` : 'current';
 
-  // Strategic recommendation depends on the employment/alignment combination,
-  // not the blended health score alone, so two departments with the same
-  // score can still get different advice.
-  const employmentHigh = metrics.employmentRate >= 70;
-  const alignmentHigh = metrics.alignmentRate >= 70;
-  let recommendation: string;
-  if (employmentHigh && !alignmentHigh) {
-    recommendation = 'Improve curriculum alignment with industry.';
-  } else if (!employmentHigh && alignmentHigh) {
-    recommendation = 'Strengthen job placement and employer recruitment.';
-  } else if (!employmentHigh && !alignmentHigh) {
-    recommendation = 'Review curriculum, internships, and career services.';
+  const status = classifyHealth(healthScore);
+
+  let base = `Based on ${fromLabel} data, ${code} health score is ${healthScore}% (${status}).`;
+
+  if (employmentRate >= 80) {
+    base += ` Employment (${employmentRate}%) is excellent.`;
+  } else if (employmentRate >= 70) {
+    base += ` Employment (${employmentRate}%) is good.`;
+  } else if (employmentRate >= 60) {
+    base += ` Employment (${employmentRate}%) is fair.`;
   } else {
-    recommendation = 'Maintain existing partnerships while expanding opportunities.';
+    base += ` Employment (${employmentRate}%) requires improvement.`;
   }
 
-  const classification = classifyHealth(metrics.healthScore);
-  return `${classificationText[classification] ?? ''} ${recommendation}`;
+  if (alignmentRate >= 80) {
+    base += ` Alignment (${alignmentRate}%) is excellent.`;
+  } else if (alignmentRate >= 70) {
+    base += ` Alignment (${alignmentRate}%) is good.`;
+  } else if (alignmentRate >= 60) {
+    base += ` Alignment (${alignmentRate}%) is fair.`;
+  } else {
+    base += ` Alignment (${alignmentRate}%) requires improvement.`;
+  }
+
+  if (employmentRate < 70 && alignmentRate < 70) {
+    base += ` Both employment and alignment need attention for${batchLabel}.`;
+  } else if (employmentRate < 70) {
+    base += ` Focus on improving job placement for${batchLabel}.`;
+  } else if (alignmentRate < 70) {
+    base += ` Focus on curriculum alignment for${batchLabel}.`;
+  } else {
+    base += ` Department is healthy. Maintain current strategies for${batchLabel}.`;
+  }
+
+  return base;
 }
 
 function generateProductivityInsight(metrics: DeptMetrics): string {
-  if (metrics.total === 0) {
-    return `No alumni records are available yet for ${metrics.name}.`;
+  const { code, total, inField, alignmentRate, targetBatch, latestBatch } = metrics;
+  if (total === 0) return `No alumni data available for ${code}.`;
+
+  const batchLabel = targetBatch !== null ? `Batch ${targetBatch}` : 'Next batch';
+  const fromLabel = latestBatch !== null ? `Batch ${latestBatch}` : 'current';
+
+  let base = `Based on ${fromLabel} data, ${inField} of ${total} ${code} graduates (${alignmentRate}%) are industry-ready for ${batchLabel}.`;
+
+  if (alignmentRate >= 80) {
+    base += ` Excellent. Graduates are in strong demand.`;
+  } else if (alignmentRate >= 70) {
+    base += ` Good. Graduates are in demand.`;
+  } else if (alignmentRate >= 60) {
+    base += ` Moderate. Can improve to reach 80% target.`;
+  } else {
+    base += ` Needs improvement. Review curriculum and career services.`;
   }
-  const base = `${metrics.inField} of ${metrics.total} graduates (${metrics.alignmentRate}%) are currently working in careers aligned with their degree.`;
-  if (metrics.alignmentRate >= 80) {
-    return `${base} Continue current internship and employer-partnership efforts to sustain this level.`;
+
+  if (alignmentRate < INDUSTRY_READINESS_TARGET) {
+    const neededInField = Math.ceil((INDUSTRY_READINESS_TARGET / 100) * total);
+    const shortfall = Math.max(0, neededInField - inField);
+    base += ` ${shortfall} additional graduates needed for ${batchLabel} to reach ${INDUSTRY_READINESS_TARGET}% target.`;
   }
-  return `${base} Improving internship placement and employer partnerships may further increase industry readiness.`;
+
+  if (alignmentRate >= 70) {
+    base += ` ${code} productivity is good.`;
+  } else if (alignmentRate >= 50) {
+    base += ` ${code} productivity is moderate.`;
+  } else {
+    base += ` ${code} productivity needs attention.`;
+  }
+
+  return base;
 }
 
-/* ============================================================
-   SMALL PRESENTATIONAL PIECES
-   ============================================================ */
-
-function DeptBadge({ code, color, size = 10 }: { code: string; color: string; size?: number }) {
+function SummaryCard({ label, value, sublabel }: { label: string; value: string | number; sublabel?: string }) {
   return (
-    <div
-      className="rounded-lg flex items-center justify-center font-bold text-white flex-shrink-0"
-      style={{ backgroundColor: color, width: `${size * 4}px`, height: `${size * 4}px`, fontSize: `${size * 1.1}px` }}
-    >
-      {code.slice(0, 2)}
+    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-6">
+      <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</p>
+      <p className="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{value}</p>
+      {sublabel && <p className="text-xs text-gray-400 mt-0.5">{sublabel}</p>}
     </div>
   );
 }
 
-function Bar({ value, color }: { value: number; color: string }) {
+function MetricCard({ label, value, sublabel }: { label: string; value: string; sublabel?: string }) {
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5">
+      <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</p>
+      <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+      {sublabel && <p className="text-xs text-gray-400 mt-0.5">{sublabel}</p>}
+    </div>
+  );
+}
+
+function ProgressBar({ value, color }: { value: number; color: string }) {
   const clamped = Math.max(0, Math.min(100, value));
   return (
     <div className="h-1.5 w-full rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
@@ -350,116 +564,162 @@ function Bar({ value, color }: { value: number; color: string }) {
   );
 }
 
-function StatTile({ label, value, accent, sublabel }: { label: string; value: string; accent?: string; sublabel?: string }) {
+function StatusBadge({ label, type }: { label: string; type?: 'success' | 'warning' | 'error' | 'info' }) {
+  const styles = {
+    success: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+    warning: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+    error: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+    info: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  };
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
-      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white" style={accent ? { color: accent } : undefined}>
-        {value}
-      </p>
-      {sublabel && <p className="text-xs text-gray-400 mt-0.5">{sublabel}</p>}
-    </div>
+    <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${styles[type || 'info']}`}>
+      {label}
+    </span>
   );
 }
 
-/* ============================================================
-   DEPARTMENT CARD (grid)
-   ============================================================ */
+function DepartmentCard({
+  metrics,
+  isSelected,
+  onSelect,
+}: {
+  metrics: DeptMetrics;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  const healthClass = classifyHealth(metrics.healthScore);
+  const healthColorValue = healthColor(metrics.healthScore);
+  const deptConfig = DEPARTMENTS.find(d => d.code === metrics.code);
+  const [imgError, setImgError] = useState(false);
 
-function DepartmentCard({ metrics, isSelected, onSelect }: { metrics: DeptMetrics; isSelected: boolean; onSelect: () => void }) {
-  const projectionLabel = metrics.projection === null ? 'Insufficient data' : `${metrics.projection}%`;
+  const cardBgColor = deptConfig?.bgColor || '#7C2D12';
+  const isCBE = deptConfig?.code === 'CBE';
+
   return (
     <button
       type="button"
       onClick={onSelect}
-      className={`text-left rounded-xl p-4 border transition-all duration-200 ${
+      className={`text-left rounded-2xl p-6 border-2 transition-all duration-300 ease-in-out w-full ${
         isSelected
-          ? 'border-transparent shadow-md ring-1'
-          : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+          ? 'shadow-xl ring-2 ring-offset-2 ring-white/30 scale-[1.02]'
+          : 'border-transparent hover:shadow-xl hover:scale-[1.01]'
       }`}
-      style={isSelected ? { boxShadow: `0 0 0 1.5px ${metrics.color}` } : undefined}
+      style={{
+        backgroundColor: cardBgColor,
+        borderColor: isSelected ? 'rgba(255,255,255,0.3)' : 'transparent',
+        minHeight: '300px',
+        transform: isSelected ? 'scale(1.02)' : 'scale(1)',
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+      }}
     >
-      <div className="flex items-center gap-3">
-        <DeptBadge code={metrics.code} color={metrics.color} />
-        <div className="min-w-0">
-          <h4 className="font-semibold text-gray-900 dark:text-white text-sm truncate">{metrics.name}</h4>
-          <p className="text-xs text-gray-500 dark:text-gray-400">{metrics.total} alumni</p>
-        </div>
+      {/* Department Logo & Name */}
+      <div className="flex flex-col items-center text-center">
+        {deptConfig?.logo && !imgError ? (
+          <img 
+            src={deptConfig.logo} 
+            alt={`${metrics.name} logo`}
+            className="w-32 h-32 object-contain mb-4 drop-shadow-lg"
+            loading="lazy"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <div 
+            className="w-32 h-32 rounded-2xl flex items-center justify-center text-6xl font-bold mb-4"
+            style={{ 
+              backgroundColor: 'rgba(255,255,255,0.12)',
+              color: isCBE ? '#000000' : '#ffffff',
+              backdropFilter: 'blur(4px)',
+              textShadow: isCBE ? 'none' : '0 2px 4px rgba(0,0,0,0.2)',
+            }}
+          >
+            {metrics.code}
+          </div>
+        )}
+        <p className="text-xs font-medium uppercase tracking-wider" style={{ color: isCBE ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)' }}>
+          {metrics.code}
+        </p>
+        <p className="text-sm font-bold leading-tight px-1" style={{ color: isCBE ? '#000000' : '#ffffff' }}>
+          {metrics.fullName || metrics.name}
+        </p>
+        <p className="text-xs mt-0.5" style={{ color: isCBE ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.4)' }}>
+          {metrics.total} alumni
+        </p>
       </div>
 
-      <div className="mt-3">
-        <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-          <span>Career alignment</span>
-          <span className="font-medium text-gray-700 dark:text-gray-200">{metrics.alignmentRate}%</span>
+      {/* Health Score - White for all except CBE (black) */}
+      <div className="mt-4 pt-3 border-t" style={{ borderColor: isCBE ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)' }}>
+        <div className="flex items-center justify-between text-sm">
+          <span style={{ color: isCBE ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)' }}>Health Score</span>
+          <span className="font-bold text-xl" style={{ color: isCBE ? '#000000' : '#ffffff' }}>
+            {metrics.healthScore}%
+          </span>
         </div>
-        <Bar value={metrics.alignmentRate} color={metrics.color} />
+        <div className="mt-1.5">
+          <ProgressBar value={metrics.healthScore} color={healthColorValue} />
+        </div>
+        <p className="text-xs mt-1.5 text-center font-medium" style={{ color: isCBE ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)' }}>
+          {healthClass}
+        </p>
       </div>
 
-      <div className="mt-3 flex items-center justify-between text-xs">
-        <span className="text-gray-400">{PROJECTION_YEAR} projection</span>
-        <span className="font-semibold" style={{ color: metrics.color }}>
-          {projectionLabel}
-        </span>
-      </div>
+      {isSelected && (
+        <div className="mt-3 pt-2 border-t flex justify-center" style={{ borderColor: isCBE ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)' }}>
+          <span className="text-[10px] font-medium tracking-wider" style={{ color: isCBE ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.4)' }}>
+            ● SELECTED
+          </span>
+        </div>
+      )}
     </button>
   );
 }
 
-/* ============================================================
-   TABS
-   ============================================================ */
-
-function OverviewTab({ metrics }: { metrics: DeptMetrics }) {
-  return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatTile label="Total Alumni" value={String(metrics.total)} />
-        <StatTile label="Employment" value={`${metrics.employmentRate}%`} accent={metrics.color} />
-        <StatTile label="Alignment" value={`${metrics.alignmentRate}%`} accent={metrics.color} />
-        <StatTile label="Demand" value={`${metrics.demandScore}%`} accent={metrics.color} />
-      </div>
-
-      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 p-5">
-        <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{PROJECTION_YEAR} Projection</p>
-        <p className="mt-1 text-sm font-medium text-gray-800 dark:text-gray-100">{generateProjectionInsight(metrics)}</p>
-      </div>
-
-      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Health Score</p>
-          <span
-            className="text-xs font-semibold px-2.5 py-1 rounded-full text-white"
-            style={{ backgroundColor: healthColor(metrics.healthScore) }}
-          >
-            {classifyHealth(metrics.healthScore)}
-          </span>
-        </div>
-        <p className="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{metrics.healthScore}</p>
-        <div className="mt-2">
-          <Bar value={metrics.healthScore} color={healthColor(metrics.healthScore)} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function WorkforceTab({ metrics }: { metrics: DeptMetrics }) {
-  const leadInsight = generateWorkforceInsight(metrics);
+function WorkforceTab({ metrics, aiInsights, aiLoading }: { metrics: DeptMetrics; aiInsights: any; aiLoading: boolean }) {
+  const insight = generateWorkforceInsight(metrics);
+  const projectionInsight = generateProjectionInsight(metrics);
+  const ai = aiInsights?.[metrics.code];
 
   return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-3 gap-3">
-        <StatTile label="Supply" value={String(metrics.supply)} accent={metrics.color} />
-        <StatTile label="Demand" value={String(metrics.demand)} accent={metrics.color} />
-        <StatTile label="Gap" value={`${metrics.gap > 0 ? '+' : ''}${metrics.gap}`} accent={metrics.gap > 0 ? '#ef4444' : '#10b981'} />
+    <div className="space-y-6">
+      <div className="grid grid-cols-4 gap-4">
+        <MetricCard label="Total Alumni" value={String(metrics.total)} />
+        <MetricCard label="Supply" value={String(metrics.supply)} />
+        <MetricCard label="Demand" value={String(metrics.demand)} />
+        <MetricCard 
+          label="Gap" 
+          value={`${metrics.gap > 0 ? '+' : ''}${metrics.gap}`} 
+          sublabel={metrics.gap > 0 ? 'Additional graduates needed' : metrics.gap < 0 ? 'Supply exceeds demand' : 'Balanced'}
+        />
       </div>
 
-      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 p-5">
-        <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{leadInsight}</p>
+      {/* Projection - System Generated */}
+      <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Projection</p>
+        <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">{projectionInsight}</p>
       </div>
 
-      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5">
-        <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-3">Top Industries by Alumni Count</p>
+      {/* Workforce Analysis - System Generated */}
+      <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Workforce Analysis</p>
+        <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">{insight}</p>
+      </div>
+
+      {/* AI Workforce Insight - Gemini Generated */}
+      {ai?.workforce && (
+        <div className="rounded-2xl border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20 p-6">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-sm font-semibold text-purple-700 dark:text-purple-300">🤖 AI Workforce Insight</span>
+            <span className="text-xs text-purple-400">Powered by Gemini</span>
+          </div>
+          <p className="text-sm text-gray-700 dark:text-gray-300">{ai.workforce}</p>
+          {aiLoading && (
+            <p className="text-xs text-purple-400 mt-2">Generating AI insights...</p>
+          )}
+        </div>
+      )}
+
+      {/* Top Industries */}
+      <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-4">Top Industries</p>
         <ul className="space-y-3">
           {metrics.industries.slice(0, 5).map((industry) => (
             <li key={industry.industry}>
@@ -467,7 +727,7 @@ function WorkforceTab({ metrics }: { metrics: DeptMetrics }) {
                 <span className="font-medium text-gray-700 dark:text-gray-200">{industry.industry}</span>
                 <span className="text-gray-500 dark:text-gray-400">{industry.count} alumni</span>
               </div>
-              <Bar value={industry.shareOfDept} color={metrics.color} />
+              <ProgressBar value={industry.shareOfDept} color="#7C2D12" />
             </li>
           ))}
           {metrics.industries.length === 0 && (
@@ -479,47 +739,60 @@ function WorkforceTab({ metrics }: { metrics: DeptMetrics }) {
   );
 }
 
-const demandBadgeStyles: Record<IndustryRow['demandLabel'], string> = {
-  'High Demand': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-  'Moderate Demand': 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  'Low Demand': 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
-};
-
-function IndustryTab({ metrics }: { metrics: DeptMetrics }) {
+function IndustryTab({ metrics, aiInsights, aiLoading }: { metrics: DeptMetrics; aiInsights: any; aiLoading: boolean }) {
   const insight = generateIndustryInsight(metrics);
+  const ai = aiInsights?.[metrics.code];
 
   return (
-    <div className="space-y-5">
-      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 p-5">
-        <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{insight}</p>
+    <div className="space-y-6">
+      {/* System Generated Industry Summary */}
+      <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Industry Demand Summary</p>
+        <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">{insight}</p>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+      {/* AI Industry Insight - Gemini Generated */}
+      {ai?.industry && (
+        <div className="rounded-2xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-6">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">🤖 AI Industry Insight</span>
+            <span className="text-xs text-blue-400">Powered by Gemini</span>
+          </div>
+          <p className="text-sm text-gray-700 dark:text-gray-300">{ai.industry}</p>
+          {aiLoading && (
+            <p className="text-xs text-blue-400 mt-2">Generating AI insights...</p>
+          )}
+        </div>
+      )}
+
+      {/* Industry Table */}
+      <div className="rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-gray-800">
             <tr>
-              <th className="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Industry</th>
-              <th className="px-4 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">Alumni</th>
-              <th className="px-4 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">Demand</th>
-              <th className="px-4 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">Employment</th>
+              <th className="px-6 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Industry</th>
+              <th className="px-6 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">Alumni</th>
+              <th className="px-6 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">Demand</th>
+              <th className="px-6 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">Employment</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-700 bg-white dark:bg-gray-800">
             {metrics.industries.map((industry) => (
               <tr key={industry.industry}>
-                <td className="px-4 py-3 font-medium text-gray-800 dark:text-gray-100">{industry.industry}</td>
-                <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-300">{industry.count}</td>
-                <td className="px-4 py-3 text-right">
-                  <span className={`inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${demandBadgeStyles[industry.demandLabel]}`}>
-                    {industry.demandLabel}
-                  </span>
+                <td className="px-6 py-3 font-medium text-gray-800 dark:text-gray-100">{industry.industry}</td>
+                <td className="px-6 py-3 text-right text-gray-600 dark:text-gray-300">{industry.count}</td>
+                <td className="px-6 py-3 text-right">
+                  <StatusBadge label={industry.demandLabel} type={
+                    industry.demandLabel === 'High Demand' ? 'success' :
+                    industry.demandLabel === 'Moderate Demand' ? 'warning' : 'error'
+                  } />
                 </td>
-                <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-300">{industry.employmentRate}%</td>
+                <td className="px-6 py-3 text-right text-gray-600 dark:text-gray-300">{industry.employmentRate}%</td>
               </tr>
             ))}
             {metrics.industries.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">
+                <td colSpan={4} className="px-6 py-6 text-center text-gray-500 dark:text-gray-400">
                   No industry records available.
                 </td>
               </tr>
@@ -531,38 +804,62 @@ function IndustryTab({ metrics }: { metrics: DeptMetrics }) {
   );
 }
 
-function HealthTab({ metrics, allMetrics, departmentStats }: { metrics: DeptMetrics; allMetrics: DeptMetrics[]; departmentStats: any[] }) {
+function HealthTab({ metrics, allMetrics, departmentStats, aiInsights, aiLoading }: { 
+  metrics: DeptMetrics; 
+  allMetrics: DeptMetrics[]; 
+  departmentStats: any[];
+  aiInsights: any;
+  aiLoading: boolean;
+}) {
   const hasExternalStats = Array.isArray(departmentStats) && departmentStats.length > 0;
+  const healthInsight = generateHealthInsight(metrics);
+  const productivityInsight = generateProductivityInsight(metrics);
+  const ai = aiInsights?.[metrics.code];
 
   return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatTile label="Employment" value={`${metrics.employmentRate}%`} accent={metrics.color} />
-        <StatTile label="Alignment" value={`${metrics.alignmentRate}%`} accent={metrics.color} />
-        <StatTile label="Demand" value={`${metrics.demandScore}%`} accent={metrics.color} />
-        <StatTile label="Health Score" value={String(metrics.healthScore)} accent={healthColor(metrics.healthScore)} />
+    <div className="space-y-6">
+      <div className="grid grid-cols-4 gap-4">
+        <MetricCard label="Employment" value={`${metrics.employmentRate}%`} />
+        <MetricCard label="Alignment" value={`${metrics.alignmentRate}%`} />
+        <MetricCard label="Demand" value={`${metrics.demandScore}%`} />
+        <MetricCard label="Health" value={`${metrics.healthScore}%`} sublabel={classifyHealth(metrics.healthScore)} />
       </div>
 
-      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 p-5">
-        <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-          Health Score · {classifyHealth(metrics.healthScore)}
-        </p>
-        <p className="mt-1 text-sm font-medium text-gray-800 dark:text-gray-100">{generateHealthInsight(metrics)}</p>
+      {/* System Generated Health Assessment */}
+      <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Health Assessment</p>
+        <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">{healthInsight}</p>
       </div>
 
-      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 p-5">
-        <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Productivity</p>
-        <p className="mt-1 text-sm font-medium text-gray-800 dark:text-gray-100">{generateProductivityInsight(metrics)}</p>
+      {/* AI Health Insight - Gemini Generated */}
+      {ai?.health && (
+        <div className="rounded-2xl border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-6">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-sm font-semibold text-green-700 dark:text-green-300">🤖 AI Health Insight</span>
+            <span className="text-xs text-green-400">Powered by Gemini</span>
+          </div>
+          <p className="text-sm text-gray-700 dark:text-gray-300">{ai.health}</p>
+          {aiLoading && (
+            <p className="text-xs text-green-400 mt-2">Generating AI insights...</p>
+          )}
+        </div>
+      )}
+
+      {/* System Generated Productivity */}
+      <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Productivity</p>
+        <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">{productivityInsight}</p>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+      {/* Department Comparison Table */}
+      <div className="rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-gray-800">
             <tr>
-              <th className="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Department</th>
-              <th className="px-4 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">Health</th>
-              <th className="px-4 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">Employment</th>
-              <th className="px-4 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">Alignment</th>
+              <th className="px-6 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Department</th>
+              <th className="px-6 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">Health</th>
+              <th className="px-6 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">Employment</th>
+              <th className="px-6 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">Alignment</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-700 bg-white dark:bg-gray-800">
@@ -577,13 +874,15 @@ function HealthTab({ metrics, allMetrics, departmentStats }: { metrics: DeptMetr
                 : row.healthScore;
               return (
                 <tr key={row.code} className={row.code === metrics.code ? 'bg-gray-50 dark:bg-gray-700/40' : undefined}>
-                  <td className="px-4 py-3 font-medium text-gray-800 dark:text-gray-100">
-                    <span className="inline-block h-2 w-2 rounded-full align-middle mr-2" style={{ backgroundColor: row.color }} />
+                  <td className="px-6 py-3 font-medium text-gray-800 dark:text-gray-100">
+                    <span className="inline-block h-2 w-2 rounded-full align-middle mr-2" style={{ backgroundColor: '#7C2D12' }} />
                     {row.name}
                   </td>
-                  <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-300">{Math.round(health)}</td>
-                  <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-300">{Math.round(Number(employment) || 0)}%</td>
-                  <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-300">{Math.round(Number(alignment) || 0)}%</td>
+                  <td className="px-6 py-3 text-right font-medium" style={{ color: healthColor(health) }}>
+                    {Math.round(health)}%
+                  </td>
+                  <td className="px-6 py-3 text-right text-gray-600 dark:text-gray-300">{Math.round(Number(employment) || 0)}%</td>
+                  <td className="px-6 py-3 text-right text-gray-600 dark:text-gray-300">{Math.round(Number(alignment) || 0)}%</td>
                 </tr>
               );
             })}
@@ -594,34 +893,139 @@ function HealthTab({ metrics, allMetrics, departmentStats }: { metrics: DeptMetr
   );
 }
 
-/* ============================================================
-   MAIN COMPONENT
-   ============================================================ */
-
 export default function PredictionDashboard({ alumni, departmentStats, selectedDepartment = 'CCS' }: PredictionDashboardProps) {
   const [activeCode, setActiveCode] = useState(selectedDepartment);
-  const [activeTab, setActiveTab] = useState<TabKey>('overview');
+  const [activeTab, setActiveTab] = useState<TabKey>('workforce');
+  const [aiInsights, setAiInsights] = useState<Record<string, any>>({});
+  const [aiLoading, setAiLoading] = useState<Record<string, boolean>>({});
+
+  const safeAlumni = Array.isArray(alumni) ? alumni : [];
+
+  const targetBatch = useMemo(() => getTargetBatch(safeAlumni), [safeAlumni]);
+  const latestBatch = useMemo(() => getLatestBatch(safeAlumni), [safeAlumni]);
 
   const allMetrics = useMemo(
-    () => DEPARTMENTS.map((dept) => computeDeptMetrics(Array.isArray(alumni) ? alumni : [], dept)),
-    [alumni]
+    () => DEPARTMENTS.map((dept) => computeDeptMetrics(safeAlumni, dept, targetBatch, latestBatch)),
+    [safeAlumni, targetBatch, latestBatch]
   );
 
   const departmentsAnalyzed = useMemo(() => allMetrics.filter((m) => m.total > 0).length, [allMetrics]);
   const metrics = allMetrics.find((m) => m.code === activeCode) ?? allMetrics[0];
 
+  const unclassifiedCount = useMemo(() => {
+    const classifiedTotal = allMetrics.reduce((sum, m) => sum + m.total, 0);
+    return Math.max(0, safeAlumni.length - classifiedTotal);
+  }, [allMetrics, safeAlumni.length]);
+
+  const totalGap = useMemo(() => {
+    return allMetrics.reduce((sum, m) => sum + (m.gap > 0 ? m.gap : 0), 0);
+  }, [allMetrics]);
+
+  const avgEmployment = useMemo(() => {
+    const withData = allMetrics.filter(m => m.total > 0);
+    if (withData.length === 0) return 0;
+    return Math.round(withData.reduce((sum, m) => sum + m.employmentRate, 0) / withData.length);
+  }, [allMetrics]);
+
+  // Fetch AI insights for the selected department
+  const fetchAIInsights = async (deptMetrics: DeptMetrics) => {
+    const deptCode = deptMetrics.code;
+    if (aiInsights[deptCode] || aiLoading[deptCode]) return;
+
+    setAiLoading(prev => ({ ...prev, [deptCode]: true }));
+
+    try {
+      const request: PredictionInsightRequest = {
+        department: deptMetrics.code,
+        departmentName: deptMetrics.fullName,
+        totalAlumni: deptMetrics.total,
+        employmentRate: deptMetrics.employmentRate,
+        alignmentRate: deptMetrics.alignmentRate,
+        healthScore: deptMetrics.healthScore,
+        demandScore: deptMetrics.demandScore,
+        projection: deptMetrics.projection,
+        growth: deptMetrics.growth,
+        gap: deptMetrics.gap,
+        targetBatch: deptMetrics.targetBatch,
+        latestBatch: deptMetrics.latestBatch,
+        topIndustry: deptMetrics.industries[0]?.industry || null,
+        topIndustryDemand: deptMetrics.industries[0]?.demandScore || null,
+        industriesCount: deptMetrics.industries.length,
+        batchCount: deptMetrics.batchCount,
+        isSmallSample: deptMetrics.isSmallSample,
+        hasTrendData: deptMetrics.batchCount >= 2,
+        trendDescription: deptMetrics.trendDescription || 'stable'
+      };
+
+      const result = await getPredictionInsights(request);
+      
+      // Store the AI results
+      setAiInsights(prev => ({
+        ...prev,
+        [deptCode]: result.insights
+      }));
+    } catch (error) {
+      console.error('Error fetching AI insights:', error);
+    } finally {
+      setAiLoading(prev => ({ ...prev, [deptCode]: false }));
+    }
+  };
+
+  // Fetch AI insights when department changes
+  useEffect(() => {
+    if (metrics && metrics.total > 0) {
+      fetchAIInsights(metrics);
+    }
+  }, [metrics]);
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Predictive Career Alignment</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-          Forecasting {PROJECTION_YEAR} outcomes from {Array.isArray(alumni) ? alumni.length : 0} alumni records across {departmentsAnalyzed} departments.
-        </p>
+    <div className="space-y-8">
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Workforce Demand Forecast</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Predictive analytics for alumni employment, industry demand, and workforce planning.
+          </p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+            {targetBatch !== null && latestBatch !== null
+              ? `Forecasting Batch ${targetBatch} needs based on Batch ${latestBatch} outcomes. ${safeAlumni.length} records, ${departmentsAnalyzed} departments.`
+              : `Analyzing ${safeAlumni.length} alumni records across ${departmentsAnalyzed} departments.`}
+          </p>
+        </div>
+        {totalGap > 0 && (
+          <div className="rounded-2xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-6 py-4">
+            <p className="text-sm font-medium text-red-700 dark:text-red-300">Graduate Shortage</p>
+            <p className="text-xl font-bold text-red-800 dark:text-red-200">{totalGap} additional graduates required</p>
+          </div>
+        )}
       </div>
 
-      {/* Department grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+      {targetBatch === null && (
+        <div className="rounded-2xl border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-900/20 px-6 py-4 text-sm text-amber-800 dark:text-amber-300">
+          {safeAlumni.length === 0
+            ? 'No alumni records provided. Add records to enable projections.'
+            : 'No batch_year data found. Add batch_year (e.g. 2026) to enable projections.'}
+        </div>
+      )}
+
+      {unclassifiedCount > 0 && (
+        <div className="rounded-2xl border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-900/20 px-6 py-4 text-sm text-amber-800 dark:text-amber-300">
+          {unclassifiedCount} alumni records could not be matched to a department. Check department field for typos.
+        </div>
+      )}
+
+      <div className="grid grid-cols-4 gap-6">
+        <SummaryCard label="Total Alumni" value={safeAlumni.length} />
+        <SummaryCard label="Departments" value={departmentsAnalyzed} />
+        <SummaryCard label="Average Employment" value={`${avgEmployment}%`} />
+        <SummaryCard 
+          label="Forecast Batch" 
+          value={targetBatch !== null ? String(targetBatch) : '—'} 
+          sublabel={latestBatch !== null ? `Based on Batch ${latestBatch}` : undefined}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {allMetrics.map((m) => (
           <DepartmentCard
             key={m.code}
@@ -629,25 +1033,35 @@ export default function PredictionDashboard({ alumni, departmentStats, selectedD
             isSelected={m.code === metrics.code}
             onSelect={() => {
               setActiveCode(m.code);
-              setActiveTab('overview');
+              setActiveTab('workforce');
             }}
           />
         ))}
       </div>
 
-      {/* Detail panel */}
-      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-          <DeptBadge code={metrics.code} color={metrics.color} size={9} />
-          <div>
-            <h4 className="font-semibold text-gray-900 dark:text-white">{metrics.name}</h4>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              {metrics.total} alumni · {metrics.batchCount} batch{metrics.batchCount === 1 ? '' : 'es'} analyzed
-            </p>
+      <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
+        <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-700">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{metrics.name} ({metrics.code})</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {metrics.total} alumni · Latest Batch: {metrics.latestBatch || '—'} · Forecast Batch: {metrics.targetBatch || '—'}
+                {metrics.isSmallSample && (
+                  <span className="ml-3 inline-block rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 px-2.5 py-0.5 text-xs font-medium">
+                    Small sample
+                  </span>
+                )}
+                {aiLoading[metrics.code] && (
+                  <span className="ml-3 inline-block text-xs text-gray-400">
+                    Loading AI insights...
+                  </span>
+                )}
+              </p>
+            </div>
           </div>
         </div>
 
-        <div className="flex gap-1 px-3 pt-2 border-b border-gray-100 dark:border-gray-700 overflow-x-auto">
+        <div className="flex gap-6 px-6 pt-4 border-b border-gray-100 dark:border-gray-700">
           {TABS.map((tab) => {
             const selected = tab.key === activeTab;
             return (
@@ -655,10 +1069,11 @@ export default function PredictionDashboard({ alumni, departmentStats, selectedD
                 key={tab.key}
                 type="button"
                 onClick={() => setActiveTab(tab.key)}
-                className={`whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors ${
-                  selected ? 'text-gray-900 dark:text-white' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+                className={`pb-3 text-sm font-medium transition-colors ${
+                  selected
+                    ? 'text-[#7C2D12] border-b-2 border-[#7C2D12]'
+                    : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
                 }`}
-                style={selected ? { borderBottom: `2px solid ${metrics.color}` } : { borderBottom: '2px solid transparent' }}
               >
                 {tab.label}
               </button>
@@ -666,12 +1081,29 @@ export default function PredictionDashboard({ alumni, departmentStats, selectedD
           })}
         </div>
 
-        <div className="p-5">
-          {activeTab === 'overview' && <OverviewTab metrics={metrics} />}
-          {activeTab === 'workforce' && <WorkforceTab metrics={metrics} />}
-          {activeTab === 'industry' && <IndustryTab metrics={metrics} />}
+        <div className="p-6">
+          {activeTab === 'workforce' && (
+            <WorkforceTab 
+              metrics={metrics} 
+              aiInsights={aiInsights} 
+              aiLoading={aiLoading[metrics.code]} 
+            />
+          )}
+          {activeTab === 'industry' && (
+            <IndustryTab 
+              metrics={metrics} 
+              aiInsights={aiInsights} 
+              aiLoading={aiLoading[metrics.code]} 
+            />
+          )}
           {activeTab === 'health' && (
-            <HealthTab metrics={metrics} allMetrics={allMetrics} departmentStats={Array.isArray(departmentStats) ? departmentStats : []} />
+            <HealthTab 
+              metrics={metrics} 
+              allMetrics={allMetrics} 
+              departmentStats={Array.isArray(departmentStats) ? departmentStats : []} 
+              aiInsights={aiInsights}
+              aiLoading={aiLoading[metrics.code]}
+            />
           )}
         </div>
       </div>
