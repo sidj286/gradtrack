@@ -137,11 +137,18 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+const handleMarkAsRead = async (notificationId: string) => {
+  // Update local state immediately
+  setNotifications(prev =>
+    prev.map(n =>
+      n.id === notificationId ? { ...n, is_read: true } : n
+    )
+  );
+  setUnreadCount(prev => Math.max(0, prev - 1));
 
-  const handleMarkAsRead = async (notificationId: string) => {
-    await markAsRead(notificationId);
-    fetchNotifications();
-  };
+  // Call API in background (don't await, don't re-fetch)
+  markAsRead(notificationId).catch(console.error);
+};
 
   const handleMarkAllAsRead = async () => {
     await markAllAsRead(userId);
@@ -152,19 +159,15 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
     await deleteNotification(notificationId);
     fetchNotifications();
   };
-
-  const handleNotificationClick = (notification: Notification) => {
-    if (!notification.is_read) {
-      handleMarkAsRead(notification.id);
-    }
-    
-    if (onNotificationClick) {
-      onNotificationClick(notification);
-    }
-    
-    setIsOpen(false);
-  };
-
+const handleNotificationClick = (notification: Notification) => {
+  if (!notification.is_read) {
+    handleMarkAsRead(notification.id);
+  }
+  if (onNotificationClick) {
+    onNotificationClick(notification);
+  }
+  // No re-fetch, no close dropdown
+};
   const getIcon = (type: string) => {
     const icons: Record<string, string> = {
       comment: '💬',
@@ -286,7 +289,7 @@ export default function NotificationBell({ userId, onNotificationClick }: Notifi
                         <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-[#800000] rounded-full animate-pulse flex-shrink-0" />
                       )}
                       {notification.link && (
-                        <span className="text-[10px] sm:text-xs text-[#800000] font-medium whitespace-nowrap">🔗 Tap to view</span>
+                        <span className="text-[10px] sm:text-xs text-[#800000] font-medium whitespace-nowrap"></span>
                       )}
                     </div>
                   </div>

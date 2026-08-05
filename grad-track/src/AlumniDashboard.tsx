@@ -430,7 +430,7 @@ const AnnouncementPage: React.FC<{
       {announcements.map(ann => (
         <article
           key={ann.id}
-          id={`announcement-${ann.id}`}  // ✅ ADDED THIS
+          id={`announcement-${ann.id}`}
           className={`rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition-all duration-300 hover:shadow-md sm:p-6 ${!ann.viewed ? 'bg-gradient-to-r from-blue-50/70 to-white' : ''}`}
         >
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-3">
@@ -504,6 +504,11 @@ export default function AlumniDashboard({ session }: { session: Session }) {
   const [selectedCity, setSelectedCity] = useState<string>('');
   const [selectedBarangay, setSelectedBarangay] = useState<string>('');
   const [street, setStreet] = useState<string>('');
+
+  // Feed highlight state
+  const [feedHighlightPostId, setFeedHighlightPostId] = useState<string | null>(null);
+  const [feedHighlightCommentId, setFeedHighlightCommentId] = useState<string | null>(null);
+  
 
   const [employmentForm, setEmploymentForm] = useState({
     job_title: '',
@@ -719,8 +724,6 @@ export default function AlumniDashboard({ session }: { session: Session }) {
       dbName = userRecord.full_name;
     }
 
-
-
     const { data, error } = await supabase
       .from('alumni_profiles')
       .select('*')
@@ -736,7 +739,6 @@ export default function AlumniDashboard({ session }: { session: Session }) {
     if (!data) {
       console.log('No profile found, creating new profile...');
 
-      // 🔍 Try to get gender from graduates_master
       let genderFromMaster = null;
       try {
         const { data: gradData } = await supabase
@@ -802,7 +804,6 @@ export default function AlumniDashboard({ session }: { session: Session }) {
 
       let finalData = { ...data, avatar_url: avatarUrl };
 
-      // 🔍 Sync gender from master if missing
       if (!data.gender) {
         try {
           const { data: gradData } = await supabase
@@ -883,10 +884,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
     comments.forEach(comment => {
       const userRow = userMap[comment.user_id];
       const role = userRow?.role || 'Alumni';
-      // Alumni always see "Admin" for admin commenters — real name never exposed here.
-      const displayName = role === 'Admin'
-        ? 'Admin'
-        : (userRow?.full_name || 'Unknown Alumni');
+     const displayName = userRow?.full_name || 'Unknown Alumni';
 
       commentMap[comment.id] = {
         ...comment,
@@ -988,8 +986,6 @@ const addComment = async (announcementId: string, content: string, parentComment
       .eq('id', announcementId)
       .single();
 
-    // Alumni commenting or replying — always notify all admins.
-    // (Admin-to-alumni replies are handled separately, in AdminDashboard.tsx.)
     await notifyCommentAdded(
       profile?.full_name || 'An alumni',
       announcement?.title || 'announcement',
@@ -1021,7 +1017,6 @@ const addComment = async (announcementId: string, content: string, parentComment
     }
   };
 
-  // ✅ EDIT COMMENT FUNCTION - ADDED HERE
   const editComment = async (commentId: string, announcementId: string, newContent: string) => {
     if (!newContent.trim()) return;
 
@@ -1117,7 +1112,6 @@ const addComment = async (announcementId: string, content: string, parentComment
 
       setProfile(prev => prev ? { ...prev, avatar_url: publicUrl } : null);
 
-      // ✅ #4 PROFILE UPDATED - Notify admins when profile picture is updated
       await notifyProfileUpdated(
         profile?.full_name || 'An alumni',
         session.user.id,
@@ -1143,7 +1137,6 @@ const addComment = async (announcementId: string, content: string, parentComment
       await supabase.from('alumni_profiles').update({ avatar_url: null }).eq('user_id', session.user.id);
       setProfile(prev => prev ? { ...prev, avatar_url: null } : null);
 
-      // ✅ #4 PROFILE UPDATED - Notify admins when profile picture is removed
       await notifyProfileUpdated(
         profile?.full_name || 'An alumni',
         session.user.id,
@@ -1188,19 +1181,16 @@ const addComment = async (announcementId: string, content: string, parentComment
   const companyChanged = employmentForm.company !== oldValues.company;
   const statusChanged = employmentForm.employment_status !== oldValues.employment_status;
 
-  // SAVE JOB HISTORY
   if ((jobTitleChanged || companyChanged) && profile?.id) {
     try {
       const today = new Date().toISOString().split('T')[0];
       
-      // 1. Find the current job
       const { data: currentJobs } = await supabase
         .from('alumni_job_history')
         .select('*')
         .eq('alumni_id', profile.id)
         .eq('is_current', true);
 
-      // 2. End ALL current jobs
       if (currentJobs && currentJobs.length > 0) {
         for (const job of currentJobs) {
           await supabase
@@ -1213,7 +1203,6 @@ const addComment = async (announcementId: string, content: string, parentComment
         }
       }
 
-      // 3. Create the NEW current job
       await supabase
         .from('alumni_job_history')
         .insert({
@@ -1232,7 +1221,6 @@ const addComment = async (announcementId: string, content: string, parentComment
     }
   }
 
-  // Rest of your existing code...
   const updateData: Record<string, unknown> = {
     last_synced_at: new Date().toISOString(),
     profile_completion: completionScore,
@@ -1362,15 +1350,17 @@ const addComment = async (announcementId: string, content: string, parentComment
       <nav className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8">
           <div className="flex items-center justify-between h-14 sm:h-16">
-            <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center">
               <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-[#800000] to-[#a10000] rounded-full flex items-center justify-center text-white font-bold text-base sm:text-lg shadow-md flex-shrink-0">
                 GT
               </div>
-              <div className="hidden xs:block">
-                <h1 className="text-base sm:text-xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+              <div className="ml-1 sm:ml-1.5 flex flex-col leading-tight">
+                <h1 className="text-base sm:text-xl font-bold text-gray-900 dark:text-white">
                   GradTrack
                 </h1>
-                <p className="text-[10px] sm:text-xs text-gray-500">Alumni Portal</p>
+                <p className="text-[9px] sm:text-xs text-gray-500 dark:text-gray-400 -mt-0.5">
+                  Alumni Tracker
+                </p>
               </div>
             </div>
 
@@ -1438,33 +1428,74 @@ const addComment = async (announcementId: string, content: string, parentComment
                 </button>
               </div>
 
-<NotificationBell
-  userId={session.user.id}
-  onNotificationClick={(notification) => {
-    if (notification.link) {
-      console.log('🔔 Notification clicked:', notification);
+              <NotificationBell
+                userId={session.user.id}
+                onNotificationClick={(notification) => {
+                  if (!notification.link) return;
 
-      // ✅ Extract announcement ID from link
-      const linkParts = notification.link.split('/');
-      const announcementId = linkParts[linkParts.length - 1];
+                  console.log('🔔 Notification clicked:', notification);
 
-      // ✅ Switch to announcements tab
-      setActiveTab('announcements');
+                  const url = new URL(notification.link, window.location.origin);
+                  const pathParts = url.pathname.split('/');
+                  const lastPart = pathParts[pathParts.length - 1];
 
-      // ✅ Scroll to the specific announcement after a short delay
-      setTimeout(() => {
-        const element = document.getElementById(`announcement-${announcementId}`);
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          element.classList.add('ring-2', 'ring-[#800000]', 'ring-offset-2');
-          setTimeout(() => {
-            element.classList.remove('ring-2', 'ring-[#800000]', 'ring-offset-2');
-          }, 3000);
-        }
-      }, 300);
-    }
-  }}
-/>
+                  // Check if it's a feed link
+                  if (pathParts.includes('feed') && lastPart) {
+                    const postId = lastPart;
+                    setActiveTab('feed');
+                    setFeedHighlightPostId(postId);
+                    
+                    if (notification.metadata?.parent_comment_id) {
+                      setFeedHighlightCommentId(notification.metadata.parent_comment_id);
+                    } else if (notification.metadata?.comment_id) {
+                      setFeedHighlightCommentId(notification.metadata.comment_id);
+                    }
+                    
+                    setTimeout(() => {
+                      setFeedHighlightPostId(null);
+                      setFeedHighlightCommentId(null);
+                      
+                    }, 5000);
+                    return;
+                  }
+
+                  // Check if it's an announcement link
+                  if (pathParts.includes('announcements') && lastPart) {
+                    const announcementId = lastPart;
+                    const commentId = url.hash ? url.hash.substring(1).replace('comment-', '') : null;
+
+                    setActiveTab('announcements');
+
+                    setTimeout(() => {
+                      const announcementElement = document.getElementById(`announcement-${announcementId}`);
+                      if (announcementElement) {
+                        announcementElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        announcementElement.classList.add('ring-2', 'ring-[#800000]', 'ring-offset-2');
+                        setTimeout(() => {
+                          announcementElement.classList.remove('ring-2', 'ring-[#800000]', 'ring-offset-2');
+                        }, 3000);
+
+                        if (commentId) {
+                          setTimeout(() => {
+                            const commentElement = document.getElementById(`comment-${commentId}`);
+                            if (commentElement) {
+                              commentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              commentElement.classList.add('ring-2', 'ring-blue-500', 'ring-offset-2', 'bg-blue-50');
+                              setTimeout(() => {
+                                commentElement.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2', 'bg-blue-50');
+                              }, 4000);
+                            }
+                          }, 500);
+                        }
+                      }
+                    }, 300);
+                    return;
+                  }
+
+                  // Fallback
+                  window.location.href = notification.link;
+                }}
+              />
 
               {/* Sign Out Button with Confirmation */}
               <Button
@@ -1493,70 +1524,68 @@ const addComment = async (announcementId: string, content: string, parentComment
               <p className="text-xs sm:text-sm text-gray-600 mt-1">Track your career journey and stay connected with your alma mater</p>
             </div>
 
-           {/* Profile Header Card */}
-<Card className="p-4 sm:p-6 hover:shadow-xl transition-all duration-300">
-  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-6">
-    <div className="flex items-center gap-4 sm:gap-6 min-w-0 w-full sm:w-auto">
-      {/* ✅ FIX: flex-shrink-0 keeps this circle from being squished into an oval by a long name in the flex row */}
-      <div className="relative group flex-shrink-0">
-        <img
-          src={profile?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.full_name || 'A')}&background=800000&color=fff&rounded=true&size=80`}
-          alt="Profile"
-          className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover shadow-lg ring-4 ring-white aspect-square flex-shrink-0"
-        />
-        <div className="absolute inset-0 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-          <label className="cursor-pointer p-1 sm:p-1.5 bg-white rounded-full text-gray-700 hover:bg-gray-100 transition-colors text-xs sm:text-base">
-            📷
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) uploadAvatar(file);
-              }}
-            />
-          </label>
-          {profile?.avatar_url && (
-            <button
-              onClick={removeAvatar}
-              className="p-1 sm:p-1.5 bg-white rounded-full text-red-500 hover:bg-gray-100 transition-colors text-xs sm:text-base"
-            >
-              🗑️
-            </button>
-          )}
-        </div>
-      </div>
+            {/* Profile Header Card */}
+            <Card className="p-4 sm:p-6 hover:shadow-xl transition-all duration-300">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-6">
+                <div className="flex items-center gap-4 sm:gap-6 min-w-0 w-full sm:w-auto">
+                  <div className="relative group flex-shrink-0">
+                    <img
+                      src={profile?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.full_name || 'A')}&background=800000&color=fff&rounded=true&size=80`}
+                      alt="Profile"
+                      className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover shadow-lg ring-4 ring-white aspect-square flex-shrink-0"
+                    />
+                    <div className="absolute inset-0 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                      <label className="cursor-pointer p-1 sm:p-1.5 bg-white rounded-full text-gray-700 hover:bg-gray-100 transition-colors text-xs sm:text-base">
+                        📷
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) uploadAvatar(file);
+                          }}
+                        />
+                      </label>
+                      {profile?.avatar_url && (
+                        <button
+                          onClick={removeAvatar}
+                          className="p-1 sm:p-1.5 bg-white rounded-full text-red-500 hover:bg-gray-100 transition-colors text-xs sm:text-base"
+                        >
+                          🗑️
+                        </button>
+                      )}
+                    </div>
+                  </div>
 
-      {/* ✅ FIX: min-w-0 lets this column shrink/wrap instead of forcing the avatar to shrink */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 mb-1 flex-wrap">
-          <h2 className="text-base sm:text-2xl font-bold text-gray-900 truncate max-w-[220px] sm:max-w-none">{profile?.full_name || 'Loading...'}</h2>
-          <Badge variant="success">✓ Verified</Badge>
-          {profile?.gender && (
-            <Badge variant={profile.gender === 'Male' ? 'info' : 'warning'}>
-              {profile.gender === 'Male' ? '' : ''} {profile.gender}
-            </Badge>
-          )}
-        </div>
-        <p className="text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3">
-          {profile?.course || 'Course not set'} • Class of {profile?.batch_year || '----'}
-        </p>
-        <div className="flex flex-wrap gap-1.5 sm:gap-2">
-          {profile?.employment_status && profile.employment_status !== 'Unemployed' && (
-            <Badge variant="info">{profile.employment_status}</Badge>
-          )}
-          <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-lg bg-amber-50 text-amber-700">
-             Verified from Master List
-          </span>
-        </div>
-      </div>
-    </div>
-    <Button size="sm" onClick={() => setShowEmploymentModal(true)}>
-      Update Career
-    </Button>
-  </div>
-</Card>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <h2 className="text-base sm:text-2xl font-bold text-gray-900 truncate max-w-[220px] sm:max-w-none">{profile?.full_name || 'Loading...'}</h2>
+                      <Badge variant="success">✓ Verified</Badge>
+                      {profile?.gender && (
+                        <Badge variant={profile.gender === 'Male' ? 'info' : 'warning'}>
+                          {profile.gender === 'Male' ? '' : ''} {profile.gender}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3">
+                      {profile?.course || 'Course not set'} • Class of {profile?.batch_year || '----'}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                      {profile?.employment_status && profile.employment_status !== 'Unemployed' && (
+                        <Badge variant="info">{profile.employment_status}</Badge>
+                      )}
+                      <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-lg bg-amber-50 text-amber-700">
+                         Verified from Master List
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <Button size="sm" onClick={() => setShowEmploymentModal(true)}>
+                  Update Career
+                </Button>
+              </div>
+            </Card>
 
             {/* Stats Grid */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
@@ -1606,44 +1635,44 @@ const addComment = async (announcementId: string, content: string, parentComment
             </div>
 
             {/* Verified Information Section */}
-<Card className="p-4 sm:p-6 bg-gradient-to-r from-amber-50/30 to-transparent border-amber-100">
-  <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
-    <div className="w-8 h-8 sm:w-10 sm:h-10 bg-amber-100 rounded-lg sm:rounded-xl flex items-center justify-center text-base sm:text-lg">
-      🔒
-    </div>
-    <div>
-      <h3 className="text-sm sm:text-lg font-bold text-gray-900">Verified Academic Records</h3>
-      <p className="text-[10px] sm:text-xs text-gray-500">From Master List - Contact admin for corrections</p>
-    </div>
-  </div>
+            <Card className="p-4 sm:p-6 bg-gradient-to-r from-amber-50/30 to-transparent border-amber-100">
+              <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-amber-100 rounded-lg sm:rounded-xl flex items-center justify-center text-base sm:text-lg">
+                  🔒
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-lg font-bold text-gray-900">Verified Academic Records</h3>
+                  <p className="text-[10px] sm:text-xs text-gray-500">From Master List - Contact admin for corrections</p>
+                </div>
+              </div>
 
-  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
-    <InfoBox
-      title="Full Name"
-      value={profile?.full_name}
-      icon="👤"
-      hint="Official records - Contact admin"
-    />
-    <InfoBox
-      title="Gender"
-      value={profile?.gender || 'Not specified'}
-      icon={profile?.gender === 'Male' ? '' : profile?.gender === 'Female' ? '' : '🚻'}
-      hint="Official records - Contact admin"
-    />
-    <InfoBox
-      title="Course / Program"
-      value={profile?.course}
-      icon="📚"
-      hint="Official records - Contact admin"
-    />
-    <InfoBox
-      title="Batch Year"
-      value={profile?.batch_year}
-      icon="🎓"
-      hint="Official records - Contact admin"
-    />
-  </div>
-</Card>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
+                <InfoBox
+                  title="Full Name"
+                  value={profile?.full_name}
+                  icon="👤"
+                  hint="Official records - Contact admin"
+                />
+                <InfoBox
+                  title="Gender"
+                  value={profile?.gender || 'Not specified'}
+                  icon={profile?.gender === 'Male' ? '' : profile?.gender === 'Female' ? '' : '🚻'}
+                  hint="Official records - Contact admin"
+                />
+                <InfoBox
+                  title="Course / Program"
+                  value={profile?.course}
+                  icon="📚"
+                  hint="Official records - Contact admin"
+                />
+                <InfoBox
+                  title="Batch Year"
+                  value={profile?.batch_year}
+                  icon="🎓"
+                  hint="Official records - Contact admin"
+                />
+              </div>
+            </Card>
 
             {/* Career Information Section */}
             <Card className="p-4 sm:p-6">
@@ -1702,8 +1731,8 @@ const addComment = async (announcementId: string, content: string, parentComment
             </Card>
 
             <Card className="p-4 sm:p-6">
-  <JobHistory alumniId={profile?.id || ''} />
-</Card>
+              <JobHistory alumniId={profile?.id || ''} />
+            </Card>
 
             {/* Recent Activity Section */}
             <Card className="p-4 sm:p-6">
@@ -1761,7 +1790,12 @@ const addComment = async (announcementId: string, content: string, parentComment
               <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Alumni Feed</h2>
               <Badge variant="info">Live</Badge>
             </div>
-            <SocialFeed session={session} profile={profile} />
+            <SocialFeed 
+              session={session} 
+              profile={profile}
+              highlightPostId={feedHighlightPostId}
+              highlightCommentId={feedHighlightCommentId}
+            />
           </div>
         )}
       </main>
@@ -2013,9 +2047,7 @@ const addComment = async (announcementId: string, content: string, parentComment
         </div>
       )}
 
-      {/* ========================================================== */}
-      {/* BLOCK: SIGN OUT CONFIRMATION MODAL */}
-      {/* ========================================================== */}
+      {/* Sign Out Confirmation Modal */}
       {showSignOutConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-800 rounded-2xl max-w-sm w-full mx-4 p-6 shadow-2xl border border-gray-200 dark:border-gray-700">

@@ -1,5 +1,6 @@
 // src/components/AnnouncementComments.tsx
 import React, { useState, useEffect } from 'react';
+import { supabase } from './lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 
 interface AnnouncementComment {
@@ -10,11 +11,6 @@ interface AnnouncementComment {
   parent_comment_id: string | null;
   created_at: string;
   updated_at?: string;
-  // ✅ These come flat on the comment object, populated by the parent
-  // dashboard's fetchComments/fetchCommentsForAnnouncement — NOT nested
-  // under `.profiles` or `.user` (there is no `profiles` table in this
-  // schema; names/roles are resolved from `users` + `alumni_profiles`
-  // by the parent, then attached directly here).
   full_name?: string;
   role?: string;
   replies?: AnnouncementComment[];
@@ -42,7 +38,6 @@ const CommentMenu: React.FC<{
   const [isOpen, setIsOpen] = useState(false);
 
   const isCommentOwner = comment.user_id === session.user.id;
-
   const canEdit = isCommentOwner;
   const canDelete = isCommentOwner || isAdmin;
 
@@ -62,17 +57,11 @@ const CommentMenu: React.FC<{
 
       {isOpen && (
         <>
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setIsOpen(false)}
-          />
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
           <div className="absolute right-0 mt-1 w-40 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden z-50">
             {canEdit && (
               <button
-                onClick={() => {
-                  setIsOpen(false);
-                  onEdit();
-                }}
+                onClick={() => { setIsOpen(false); onEdit(); }}
                 className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -83,10 +72,7 @@ const CommentMenu: React.FC<{
             )}
             {canDelete && (
               <button
-                onClick={() => {
-                  setIsOpen(false);
-                  onDelete();
-                }}
+                onClick={() => { setIsOpen(false); onDelete(); }}
                 className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -168,22 +154,11 @@ const CommentItem: React.FC<{
   };
 
   const isCommentOwner = comment.user_id === session.user.id;
-
-  // ✅ FIXED: full_name and role are attached directly on the comment
-  // object by the parent dashboard (AdminDashboard.tsx / AlumniDashboard.tsx
-  // fetchComments), not nested under `.user` or `.profiles`. Those nested
-  // shapes never existed in this schema — reading them always fell through
-  // to the 'Unknown' default, which was the actual bug.
   const commentRole = comment.role || 'Alumni';
-  const commentFullName = comment.full_name || 'Unknown';
+  const commentFullName = comment.full_name || (commentRole === 'Admin' ? 'Admin' : 'Unknown User');
 
-  // Display name logic: alumni viewers never see an admin's real name —
-  // the parent already applies this masking for AlumniDashboard's fetch,
-  // but this guards the admin dashboard's own comment list too, in case
-  // isAdmin is false for some other viewer context.
-  const displayName = commentRole === 'Admin' && !isAdmin
-    ? 'Admin'
-    : commentFullName;
+  // ✅ Always show the real name (transparency)
+  const displayName = commentFullName;
 
   return (
     <div className={`${level > 0 ? 'ml-4 sm:ml-8 border-l-2 border-gray-200 dark:border-gray-700 pl-3 sm:pl-4' : ''}`}>
@@ -322,33 +297,79 @@ export default function AnnouncementComments({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [comments, setComments] = useState<AnnouncementComment[]>(initialComments);
 
-  // ✅ Always mirror whatever the parent passes down. The parent
-  // (AdminDashboard.tsx / AlumniDashboard.tsx) owns the source of truth
-  // for comments — including the correctly-resolved full_name/role —
-  // and refetches after every add/edit/delete via onAddComment /
-  // onEditComment / onDeleteComment. This component should never fetch
-  // or process comments on its own; doing so previously caused both the
-  // "Unknown" name bug (wrong join target) and duplicate notifications.
+  // ✅ Fetch missing user data from `users` table – exactly like the feed.
   useEffect(() => {
-    setComments(initialComments);
+    const enrichComments = async () => {
+      // Flatten all comments and replies
+      const allComments: AnnouncementComment[] = [];
+      const flatten = (list: AnnouncementComment[]) => {
+        for (const c of list) {
+          allComments.push(c);
+          if (c.replies) flatten(c.replies);
+        }
+      };
+      flatten(initialComments);
+
+      // Find users whose full_name is missing, generic, or clearly fallback
+      const unknownNames = ['Unknown', 'Unknown Alumni', 'Unknown User', 'Unknown User'];
+      const missingUserIds = allComments
+        .filter(c => {
+          const name = c.full_name?.trim() || '';
+          return !name || unknownNames.includes(name) || name === '';
+        })
+        .map(c => c.user_id)
+        .filter((id, idx, self) => self.indexOf(id) === idx);
+
+      if (missingUserIds.length === 0) {
+        setComments(initialComments);
+        return;
+      }
+
+      // Fetch from `users` table
+      const { data: users, error } = await supabase
+        .from('users')
+        .select('id, full_name, role')
+        .in('id', missingUserIds);
+
+      if (error || !users) {
+        console.error('Failed to fetch user data for comments:', error);
+        setComments(initialComments);
+        return;
+      }
+
+      const userMap = users.reduce((acc, u) => {
+        acc[u.id] = u;
+        return acc;
+      }, {} as Record<string, { full_name: string; role: string }>);
+
+      // Recursively enrich comments
+      const enrich = (list: AnnouncementComment[]): AnnouncementComment[] => {
+        return list.map(c => {
+          const user = userMap[c.user_id];
+          const enriched = {
+            ...c,
+            full_name: c.full_name && !unknownNames.includes(c.full_name.trim())
+              ? c.full_name
+              : user?.full_name || 'Unknown',
+            role: c.role || user?.role || 'Alumni',
+          };
+          if (enriched.replies) {
+            enriched.replies = enrich(enriched.replies);
+          }
+          return enriched;
+        });
+      };
+
+      setComments(enrich(initialComments));
+    };
+
+    enrichComments();
   }, [initialComments]);
 
   const handleAddComment = async () => {
     if (!newComment.trim() || isSubmitting) return;
     setIsSubmitting(true);
     try {
-      // ✅ FIXED: just delegate to the parent's onAddComment. The parent
-      // (AdminDashboard.tsx's addComment / AlumniDashboard.tsx's addComment)
-      // already handles: inserting the row, resolving the commenter's name
-      // from `users`/`alumni_profiles`, sending the correct notification
-      // (notifyCommentAdded for alumni, or the admin-specific fan-out for
-      // admin comments/replies), and refetching comments into its own
-      // state — which flows back down here via the `comments` prop.
-      //
-      // Previously this function ALSO called notifyCommentAdded directly
-      // and ran its own broken `profiles!inner` refetch, which caused
-      // duplicate notifications and fed this component data structured
-      // in a way getUserData() could never actually read.
       await onAddComment(announcementId, newComment.trim(), null);
       setNewComment('');
     } catch (error) {

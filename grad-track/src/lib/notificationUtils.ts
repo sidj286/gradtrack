@@ -223,20 +223,29 @@ export async function notifyReplyAdded(
   adminName: string,
   announcementTitle: string,
   replyContent: string,
-  announcementId: string
+  announcementId: string,
+  parentCommentId?: string   // ← ADD THIS
 ) {
-  console.log('🔔 notifyReplyAdded called!');
-  const message = `Admin replied to your comment on "${announcementTitle}"`;
+  console.log('🔔 notifyReplyAdded called!', { alumniId, adminName, announcementTitle, replyContent, announcementId, parentCommentId });
+  const message = `${adminName} replied to your comment on "${announcementTitle}"`;
+  let link = `/alumni/announcements/${announcementId}`;
+  if (parentCommentId) {
+    link += `#comment-${parentCommentId}`;
+  }
   return sendNotification(
     alumniId,
     'reply',
     '📩 New Reply',
     message,
-    `/alumni/announcements/${announcementId}`,
-    { announcement_id: announcementId, reply_preview: replyContent, admin_name: adminName }
+    link,
+    { 
+      announcement_id: announcementId, 
+      reply_preview: replyContent, 
+      admin_name: adminName,
+      parent_comment_id: parentCommentId 
+    }
   );
 }
-
 // 3. CAREER UPDATED - Alumni updates job title or company (FIXED)
 export async function notifyCareerUpdated(
   alumniName: string,

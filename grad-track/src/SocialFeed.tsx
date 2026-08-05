@@ -44,6 +44,7 @@ interface Comment {
   alumni_profiles: {
     full_name: string;
     avatar_url: string | null;
+    role?: string;
   };
   replies?: CommentReply[];
   reply_count?: number;
@@ -60,6 +61,7 @@ interface CommentReply {
   alumni_profiles: {
     full_name: string;
     avatar_url: string | null;
+    role?: string;
   };
   user_liked?: boolean;
 }
@@ -94,6 +96,8 @@ interface AlumniFullProfile {
 interface SocialFeedProps {
   session: Session;
   profile: any;
+  highlightPostId?: string | null;
+  highlightCommentId?: string | null;
 }
 
 interface SearchResult {
@@ -107,11 +111,12 @@ interface SearchResult {
   company: string | null;
 }
 
-const Card: React.FC<{ children: React.ReactNode; className?: string }> = ({
+const Card: React.FC<{ children: React.ReactNode; className?: string; id?: string }> = ({
   children,
   className = '',
+  id
 }) => (
-  <div className={`bg-white rounded-xl shadow-sm border border-gray-200 ${className}`}>
+  <div id={id} className={`bg-white rounded-xl shadow-sm border border-gray-200 ${className}`}>
     {children}
   </div>
 );
@@ -573,7 +578,7 @@ const SearchAlumni: React.FC<{
   );
 };
 
-export default function SocialFeed({ session, profile }: SocialFeedProps) {
+export default function SocialFeed({ session, profile, highlightPostId, highlightCommentId }: SocialFeedProps) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -687,6 +692,8 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
       if (commentsError) console.error('Comments error:', commentsError);
 
       const commenterIds = commentsData ? commentsData.map(c => c.user_id) : [];
+
+      // Fetch alumni_profiles for commenters
       let commenterProfiles = [];
       if (commenterIds.length > 0) {
         const { data: cpData } = await supabase
@@ -694,6 +701,16 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
           .select('*')
           .in('user_id', commenterIds);
         commenterProfiles = cpData || [];
+      }
+
+      // ✅ FIX: Explicitly type commenterUsers
+      let commenterUsers: { id: string; full_name: string; role: string }[] = [];
+      if (commenterIds.length > 0) {
+        const { data: cuData } = await supabase
+          .from('users')
+          .select('id, full_name, role')
+          .in('id', commenterIds);
+        commenterUsers = cuData || [];
       }
 
       let commentLikesData: any[] = [];
@@ -717,6 +734,7 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
         repliesData = rData || [];
       }
 
+      // Fetch alumni_profiles for repliers
       let replyProfiles = [];
       if (repliesData && repliesData.length > 0) {
         const replyUserIds = repliesData.map(r => r.user_id);
@@ -725,6 +743,17 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
           .select('*')
           .in('user_id', replyUserIds);
         replyProfiles = rpData || [];
+      }
+
+      // ✅ FIX: Explicitly type replyUsers
+      let replyUsers: { id: string; full_name: string; role: string }[] = [];
+      if (repliesData && repliesData.length > 0) {
+        const replyUserIds = repliesData.map(r => r.user_id);
+        const { data: ruData } = await supabase
+          .from('users')
+          .select('id, full_name, role')
+          .in('id', replyUserIds);
+        replyUsers = ruData || [];
       }
 
       let replyLikesData: any[] = [];
@@ -753,17 +782,27 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
           .filter((c: any) => c.post_id === post.id)
           .map((comment: any) => {
             const commenterProfile = commenterProfiles.find((p: any) => p.user_id === comment.user_id);
+            const commenterUser = commenterUsers.find((u: any) => u.id === comment.user_id);
+            const displayName = commenterProfile?.full_name || commenterUser?.full_name || 'Unknown User';
+            const avatar = commenterProfile?.avatar_url || null;
+            const role = commenterUser?.role || 'Alumni';
+
             const commentLikes = commentLikesData.filter((cl: any) => cl.comment_id === comment.id);
             const replies = (repliesData || [])
               .filter((r: any) => r.comment_id === comment.id)
               .map((reply: any) => {
                 const replyProfile = replyProfiles.find((p: any) => p.user_id === reply.user_id);
+                const replyUser = replyUsers.find((u: any) => u.id === reply.user_id);
+                const replyDisplayName = replyProfile?.full_name || replyUser?.full_name || 'Unknown User';
+                const replyAvatar = replyProfile?.avatar_url || null;
+                const replyRole = replyUser?.role || 'Alumni';
                 const replyLikes = replyLikesData.filter((rl: any) => rl.reply_id === reply.id);
                 return {
                   ...reply,
-                  alumni_profiles: replyProfile || {
-                    full_name: 'Unknown User',
-                    avatar_url: null
+                  alumni_profiles: {
+                    full_name: replyDisplayName,
+                    avatar_url: replyAvatar,
+                    role: replyRole
                   },
                   user_liked: replyLikes.some((rl: any) => rl.user_id === session.user.id) || false,
                 };
@@ -771,9 +810,10 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
 
             return {
               ...comment,
-              alumni_profiles: commenterProfile || {
-                full_name: 'Unknown User',
-                avatar_url: null
+              alumni_profiles: {
+                full_name: displayName,
+                avatar_url: avatar,
+                role: role
               },
               replies: replies,
               reply_count: replies.length,
@@ -1218,17 +1258,29 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
 
       if (insertError) throw insertError;
 
-      const { data: profileData, error: profileError } = await supabase
+      // Fetch user info (for admins)
+      const { data: userData } = await supabase
+        .from('users')
+        .select('full_name, role')
+        .eq('id', session.user.id)
+        .single();
+
+      const { data: profileData } = await supabase
         .from('alumni_profiles')
         .select('full_name, avatar_url')
         .eq('user_id', session.user.id)
         .single();
 
+      const displayName = profileData?.full_name || userData?.full_name || 'Unknown User';
+      const avatar = profileData?.avatar_url || null;
+      const role = userData?.role || 'Alumni';
+
       const fullComment = {
         ...commentData,
-        alumni_profiles: profileData || {
-          full_name: 'Unknown User',
-          avatar_url: null
+        alumni_profiles: {
+          full_name: displayName,
+          avatar_url: avatar,
+          role: role
         },
         replies: [],
         reply_count: 0,
@@ -1298,17 +1350,29 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
 
       if (insertError) throw insertError;
 
-      const { data: profileData, error: profileError } = await supabase
+      // Fetch user info for reply
+      const { data: userData } = await supabase
+        .from('users')
+        .select('full_name, role')
+        .eq('id', session.user.id)
+        .single();
+
+      const { data: profileData } = await supabase
         .from('alumni_profiles')
         .select('full_name, avatar_url')
         .eq('user_id', session.user.id)
         .single();
 
+      const displayName = profileData?.full_name || userData?.full_name || 'Unknown User';
+      const avatar = profileData?.avatar_url || null;
+      const role = userData?.role || 'Alumni';
+
       const fullReply = {
         ...replyData,
-        alumni_profiles: profileData || {
-          full_name: 'Unknown User',
-          avatar_url: null
+        alumni_profiles: {
+          full_name: displayName,
+          avatar_url: avatar,
+          role: role
         },
         user_liked: false,
       };
@@ -1345,7 +1409,8 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
           currentUserFullName, 
           "Social Feed", 
           replyText.trim(), 
-          postId
+          postId,
+          commentId
         );
       }
 
@@ -1486,6 +1551,38 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
     fetchAlumniDirectory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Handle external highlight
+  useEffect(() => {
+    if (!highlightPostId) return;
+
+    const timeout = setTimeout(() => {
+      const postElement = document.getElementById(`post-${highlightPostId}`);
+      if (postElement) {
+        postElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        postElement.classList.add('ring-2', 'ring-[#800000]', 'ring-offset-2', 'bg-[#800000]/5');
+        
+        if (highlightCommentId) {
+          setTimeout(() => {
+            const commentElement = document.getElementById(`comment-${highlightCommentId}`);
+            if (commentElement) {
+              commentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              commentElement.classList.add('ring-2', 'ring-blue-500', 'ring-offset-2', 'bg-blue-50');
+              setTimeout(() => {
+                commentElement.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2', 'bg-blue-50');
+              }, 4000);
+            }
+          }, 500);
+        }
+        
+        setTimeout(() => {
+          postElement.classList.remove('ring-2', 'ring-[#800000]', 'ring-offset-2', 'bg-[#800000]/5');
+        }, 5000);
+      }
+    }, 500);
+
+    return () => clearTimeout(timeout);
+  }, [highlightPostId, highlightCommentId, posts]);
 
   // FACEBOOK-STYLE INFINITE SCROLL (Using Window)
   useEffect(() => {
@@ -1717,7 +1814,7 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
               <AlumniDirectory entries={alumniDirectory} loading={directoryLoading} onSelect={openProfile} />
 
               {posts.map((post) => (
-                <Card key={post.id} className="p-4 hover:shadow-md transition">
+                <Card key={post.id} id={`post-${post.id}`} className="p-4 hover:shadow-md transition">
                   {/* Post Header */}
                   <div className="flex items-start justify-between">
                     <button
@@ -1883,7 +1980,7 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
                       {/* Comments List */}
                       <div className="mt-3 space-y-3 max-h-60 overflow-y-auto">
                         {post.alumni_comments.map((comment: Comment) => (
-                          <div key={comment.id} className="flex items-start gap-2">
+                          <div key={comment.id} id={`comment-${comment.id}`} className="flex items-start gap-2">
                             <button onClick={() => openProfile(comment.user_id)}>
                               <img
                                 src={
@@ -1905,6 +2002,11 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
                                   >
                                     {comment.alumni_profiles?.full_name}
                                   </button>
+                                  {comment.alumni_profiles?.role === 'Admin' && (
+                                    <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-[#800000] text-white flex-shrink-0 ml-1">
+                                      SASO Admin
+                                    </span>
+                                  )}
                                   <span className="text-xs text-gray-400">
                                     {timeAgo(comment.created_at)}
                                   </span>
@@ -2005,6 +2107,11 @@ export default function SocialFeed({ session, profile }: SocialFeedProps) {
                                             >
                                               {reply.alumni_profiles?.full_name}
                                             </button>
+                                            {reply.alumni_profiles?.role === 'Admin' && (
+                                              <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-[#800000] text-white flex-shrink-0 ml-1">
+                                                SASO Admin
+                                              </span>
+                                            )}
                                             <span className="text-xs text-gray-400">
                                               {timeAgo(reply.created_at)}
                                             </span>
