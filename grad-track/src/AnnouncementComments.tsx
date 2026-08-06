@@ -170,7 +170,7 @@ const CommentItem: React.FC<{
             </span>
             {commentRole === 'Admin' && (
               <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-[#800000] text-white flex-shrink-0">
-                SASO Admin
+                Admin
               </span>
             )}
             <span className="text-xs text-gray-400 flex-shrink-0">
