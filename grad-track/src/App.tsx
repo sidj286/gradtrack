@@ -179,11 +179,11 @@ function App() {
     setError('');
   };
 
-  const switchToEmailLink = () => {
-    setUseEmailLink(true);
-    setEmailLinkSent(false);
-    setError('');
-  };
+  // const switchToEmailLink = () => {
+  //   setUseEmailLink(true);
+  //   setEmailLinkSent(false);
+  //   setError('');
+  // };
 
   // Show reset password page
   if (isResettingPassword) {
@@ -314,7 +314,7 @@ function App() {
                         </div>
                       </div>
                       
-                      <button
+                      {/* <button
                         onClick={switchToEmailLink}
                         className="w-full mt-4 py-2.5 border-2 border-[#800000] text-[#800000] font-semibold rounded-xl hover:bg-[#800000]/5 transition-all duration-200 flex items-center justify-center gap-2"
                       >
@@ -324,7 +324,7 @@ function App() {
                           className="w-5 h-5"
                         />
                         Continue with email
-                      </button>
+                      </button> */}
                       
                       <p className="text-center text-sm text-gray-600 mt-6">
                         Don't have an account?{' '}
