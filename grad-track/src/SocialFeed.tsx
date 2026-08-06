@@ -2004,7 +2004,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                                   </button>
                                   {comment.alumni_profiles?.role === 'Admin' && (
                                     <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-[#800000] text-white flex-shrink-0 ml-1">
-                                      SASO Admin
+                                       Admin
                                     </span>
                                   )}
                                   <span className="text-xs text-gray-400">
