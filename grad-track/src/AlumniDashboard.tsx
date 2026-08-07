@@ -489,7 +489,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
   const [loading, setLoading] = useState(true);
   const [announcementsLoading, setAnnouncementsLoading] = useState(true);
   const [activitiesLoading, setActivitiesLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'announcements' | 'feed'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'announcements' | 'feed'>('feed');
   const [showEmploymentModal, setShowEmploymentModal] = useState(false);
   const [signOutLoading, setSignOutLoading] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
