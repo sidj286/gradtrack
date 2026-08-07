@@ -19,6 +19,7 @@ interface Post {
   alumni_profiles: {
     full_name: string;
     avatar_url: string | null;
+    role?: string;
     course: string | null;
     batch_year: number | null;
     employment_status: string | null;
@@ -628,8 +629,13 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
   const resolveAvatar = (path: string | null) => {
     if (!path) return null;
     if (path.startsWith('http')) return path;
-    const { data } = supabase.storage.from('profile-pictures').getPublicUrl(path);
-    return data.publicUrl;
+    try {
+      const { data } = supabase.storage.from('profile-pictures').getPublicUrl(path);
+      return data.publicUrl;
+    } catch (error) {
+      console.error('Error resolving avatar:', error);
+      return null;
+    }
   };
 
   // FETCH POSTS
@@ -665,6 +671,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
 
       const userIds = postsData.map(post => post.user_id);
       
+      // Fetch alumni_profiles for post authors
       const { data: profilesData, error: profilesError } = await supabase
         .from('alumni_profiles')
         .select('*')
@@ -673,6 +680,16 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
       if (profilesError) {
         console.error('Profiles error:', profilesError);
         throw profilesError;
+      }
+
+      // Fetch users for post authors (for admins without alumni_profiles)
+      let postUsers: { id: string; full_name: string; role: string }[] = [];
+      if (userIds.length > 0) {
+        const { data: puData } = await supabase
+          .from('users')
+          .select('id, full_name, role')
+          .in('id', userIds);
+        postUsers = puData || [];
       }
 
       const postIds = postsData.map(post => post.id);
@@ -703,7 +720,6 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
         commenterProfiles = cpData || [];
       }
 
-      // ✅ FIX: Explicitly type commenterUsers
       let commenterUsers: { id: string; full_name: string; role: string }[] = [];
       if (commenterIds.length > 0) {
         const { data: cuData } = await supabase
@@ -745,7 +761,6 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
         replyProfiles = rpData || [];
       }
 
-      // ✅ FIX: Explicitly type replyUsers
       let replyUsers: { id: string; full_name: string; role: string }[] = [];
       if (repliesData && repliesData.length > 0) {
         const replyUserIds = repliesData.map(r => r.user_id);
@@ -775,6 +790,11 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
 
       const transformedPosts = postsData.map((post: any) => {
         const profile = profilesData?.find((p: any) => p.user_id === post.user_id);
+        const postUser = postUsers.find((u: any) => u.id === post.user_id);
+        const postDisplayName = profile?.full_name || postUser?.full_name || 'Unknown User';
+        const postAvatar = profile?.avatar_url ? resolveAvatar(profile.avatar_url) : null;
+        const postRole = postUser?.role || 'Alumni';
+
         const likes = likesData?.filter((l: any) => l.post_id === post.id) || [];
         const shares = sharesData?.filter((s: any) => s.post_id === post.id) || [];
         
@@ -784,7 +804,11 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
             const commenterProfile = commenterProfiles.find((p: any) => p.user_id === comment.user_id);
             const commenterUser = commenterUsers.find((u: any) => u.id === comment.user_id);
             const displayName = commenterProfile?.full_name || commenterUser?.full_name || 'Unknown User';
-            const avatar = commenterProfile?.avatar_url || null;
+            // ✅ FIX: Properly resolve avatar URL using resolveAvatar
+            let avatar = null;
+            if (commenterProfile?.avatar_url) {
+              avatar = resolveAvatar(commenterProfile.avatar_url);
+            }
             const role = commenterUser?.role || 'Alumni';
 
             const commentLikes = commentLikesData.filter((cl: any) => cl.comment_id === comment.id);
@@ -794,7 +818,10 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                 const replyProfile = replyProfiles.find((p: any) => p.user_id === reply.user_id);
                 const replyUser = replyUsers.find((u: any) => u.id === reply.user_id);
                 const replyDisplayName = replyProfile?.full_name || replyUser?.full_name || 'Unknown User';
-                const replyAvatar = replyProfile?.avatar_url || null;
+                let replyAvatar = null;
+                if (replyProfile?.avatar_url) {
+                  replyAvatar = resolveAvatar(replyProfile.avatar_url);
+                }
                 const replyRole = replyUser?.role || 'Alumni';
                 const replyLikes = replyLikesData.filter((rl: any) => rl.reply_id === reply.id);
                 return {
@@ -823,14 +850,15 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
 
         return {
           ...post,
-          alumni_profiles: profile || {
-            full_name: 'Unknown User',
-            avatar_url: null,
-            course: null,
-            batch_year: null,
-            employment_status: null,
-            job_title: null,
-            company: null
+          alumni_profiles: {
+            full_name: postDisplayName,
+            avatar_url: postAvatar,
+            role: postRole,
+            course: profile?.course || null,
+            batch_year: profile?.batch_year || null,
+            employment_status: profile?.employment_status || null,
+            job_title: profile?.job_title || null,
+            company: profile?.company || null
           },
           alumni_likes: likes,
           alumni_comments: comments,
@@ -1272,7 +1300,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
         .single();
 
       const displayName = profileData?.full_name || userData?.full_name || 'Unknown User';
-      const avatar = profileData?.avatar_url || null;
+      const avatar = profileData?.avatar_url ? resolveAvatar(profileData.avatar_url) : null;
       const role = userData?.role || 'Alumni';
 
       const fullComment = {
@@ -1364,7 +1392,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
         .single();
 
       const displayName = profileData?.full_name || userData?.full_name || 'Unknown User';
-      const avatar = profileData?.avatar_url || null;
+      const avatar = profileData?.avatar_url ? resolveAvatar(profileData.avatar_url) : null;
       const role = userData?.role || 'Alumni';
 
       const fullReply = {
@@ -1815,43 +1843,83 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
 
               {posts.map((post) => (
                 <Card key={post.id} id={`post-${post.id}`} className="p-4 hover:shadow-md transition">
-                  {/* Post Header */}
+                  {/* Post Header - Admin NOT clickable */}
                   <div className="flex items-start justify-between">
-                    <button
-                      onClick={() => openProfile(post.user_id)}
-                      className="flex items-center gap-3 text-left group"
-                    >
-                      <img
-                        src={
-                          post.alumni_profiles?.avatar_url ||
-                          `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                            post.alumni_profiles?.full_name || 'A'
-                          )}&background=800000&color=fff&rounded=true&size=40`
-                        }
-                        alt={post.alumni_profiles?.full_name}
-                        className="w-10 h-10 rounded-full flex-shrink-0 group-hover:ring-2 group-hover:ring-[#800000]/40 transition-all"
-                      />
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-sm sm:text-base group-hover:underline">
-                            {post.alumni_profiles?.full_name}
-                          </span>
-                          {post.alumni_profiles?.employment_status === 'Employed' && (
-                            <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">
-                              Working
+                    {post.alumni_profiles?.role === 'Admin' ? (
+                      <div className="flex items-center gap-3 text-left">
+                        <img
+                          src={
+                            post.alumni_profiles?.avatar_url ||
+                            `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                              post.alumni_profiles?.full_name || 'A'
+                            )}&background=800000&color=fff&rounded=true&size=40`
+                          }
+                          alt={post.alumni_profiles?.full_name}
+                          className="w-10 h-10 rounded-full flex-shrink-0"
+                        />
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-sm sm:text-base">
+                              {post.alumni_profiles?.full_name}
                             </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-gray-500">
-                          <span>{post.alumni_profiles?.course || 'Alumni'}</span>
-                          {post.alumni_profiles?.batch_year && <span>• Class of {post.alumni_profiles.batch_year}</span>}
-                          <span>• {timeAgo(post.created_at)}</span>
-                          {post.updated_at !== post.created_at && (
-                            <span className="text-gray-400 text-[10px]">(edited)</span>
-                          )}
+                            {post.alumni_profiles?.role === 'Admin' && (
+                              <span className="text-[10px] bg-[#800000] text-white px-1.5 py-0.5 rounded-full font-semibold ml-1">
+                                 Admin
+                              </span>
+                            )}
+                            {post.alumni_profiles?.employment_status === 'Employed' && (
+                              <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">
+                                Working
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <span>{post.alumni_profiles?.course || 'Alumni'}</span>
+                            {post.alumni_profiles?.batch_year && <span>• Class of {post.alumni_profiles.batch_year}</span>}
+                            <span>• {timeAgo(post.created_at)}</span>
+                            {post.updated_at !== post.created_at && (
+                              <span className="text-gray-400 text-[10px]">(edited)</span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </button>
+                    ) : (
+                      <button
+                        onClick={() => openProfile(post.user_id)}
+                        className="flex items-center gap-3 text-left group"
+                      >
+                        <img
+                          src={
+                            post.alumni_profiles?.avatar_url ||
+                            `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                              post.alumni_profiles?.full_name || 'A'
+                            )}&background=800000&color=fff&rounded=true&size=40`
+                          }
+                          alt={post.alumni_profiles?.full_name}
+                          className="w-10 h-10 rounded-full flex-shrink-0 group-hover:ring-2 group-hover:ring-[#800000]/40 transition-all"
+                        />
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-sm sm:text-base group-hover:underline">
+                              {post.alumni_profiles?.full_name}
+                            </span>
+                            {post.alumni_profiles?.employment_status === 'Employed' && (
+                              <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">
+                                Working
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <span>{post.alumni_profiles?.course || 'Alumni'}</span>
+                            {post.alumni_profiles?.batch_year && <span>• Class of {post.alumni_profiles.batch_year}</span>}
+                            <span>• {timeAgo(post.created_at)}</span>
+                            {post.updated_at !== post.created_at && (
+                              <span className="text-gray-400 text-[10px]">(edited)</span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    )}
 
                     <ThreeDotsMenu
                       isOwner={post.user_id === session.user.id}
@@ -1942,7 +2010,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                     <div className="mt-3 pt-3 border-t border-gray-100">
                       {/* Comment Input */}
                       <div className="flex items-center gap-2">
-                        <img
+                        {/* <img
                           src={
                             profile?.avatar_url ||
                             `https://ui-avatars.com/api/?name=${encodeURIComponent(
@@ -1951,7 +2019,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                           }
                           alt="Your avatar"
                           className="w-8 h-8 rounded-full flex-shrink-0"
-                        />
+                        /> */}
                         <div className="flex-1 flex gap-2">
                           <input
                             type="text"
@@ -1980,17 +2048,24 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                       {/* Comments List */}
                       <div className="mt-3 space-y-3 max-h-60 overflow-y-auto">
                         {post.alumni_comments.map((comment: Comment) => (
-                          <div key={comment.id} id={`comment-${comment.id}`} className="flex items-start gap-2">
+                          <div key={comment.id} id={`comment-${comment.id}`} className="flex items-start gap-3">
                             <button onClick={() => openProfile(comment.user_id)}>
                               <img
                                 src={
-                                  comment.alumni_profiles?.avatar_url ||
-                                  `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                                    comment.alumni_profiles?.full_name || 'A'
-                                  )}&background=800000&color=fff&rounded=true&size=32`
+                                  comment.alumni_profiles?.avatar_url
+                                    ? comment.alumni_profiles.avatar_url
+                                    : `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                                        comment.alumni_profiles?.full_name || 'User'
+                                      )}&background=800000&color=fff&rounded=true&size=40`
                                 }
-                                alt="Commenter"
-                                className="w-7 h-7 rounded-full flex-shrink-0"
+                                alt={comment.alumni_profiles?.full_name || 'Commenter'}
+                                className="w-10 h-10 rounded-full flex-shrink-0 object-cover border-2 border-gray-200"
+                                onError={(e) => {
+                                  console.log('Avatar failed to load for:', comment.alumni_profiles?.full_name);
+                                  (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                                    comment.alumni_profiles?.full_name || 'User'
+                                  )}&background=800000&color=fff&rounded=true&size=40`;
+                                }}
                               />
                             </button>
                             <div className="flex-1 bg-gray-50 rounded-lg p-2">
@@ -2089,13 +2164,19 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                                       <button onClick={() => openProfile(reply.user_id)}>
                                         <img
                                           src={
-                                            reply.alumni_profiles?.avatar_url ||
-                                            `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                                              reply.alumni_profiles?.full_name || 'A'
-                                            )}&background=800000&color=fff&rounded=true&size=24`
+                                            reply.alumni_profiles?.avatar_url
+                                              ? reply.alumni_profiles.avatar_url
+                                              : `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                                                  reply.alumni_profiles?.full_name || 'User'
+                                                )}&background=800000&color=fff&rounded=true&size=28`
                                           }
-                                          alt="Replier"
-                                          className="w-6 h-6 rounded-full flex-shrink-0"
+                                          alt={reply.alumni_profiles?.full_name || 'Replier'}
+                                          className="w-7 h-7 rounded-full flex-shrink-0 object-cover border border-gray-200"
+                                          onError={(e) => {
+                                            (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                                              reply.alumni_profiles?.full_name || 'User'
+                                            )}&background=800000&color=fff&rounded=true&size=28`;
+                                          }}
                                         />
                                       </button>
                                       <div className="flex-1">
@@ -2109,7 +2190,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                                             </button>
                                             {reply.alumni_profiles?.role === 'Admin' && (
                                               <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-[#800000] text-white flex-shrink-0 ml-1">
-                                                SASO Admin
+                                                 Admin
                                               </span>
                                             )}
                                             <span className="text-xs text-gray-400">
@@ -2180,10 +2261,10 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                                       profile?.avatar_url ||
                                       `https://ui-avatars.com/api/?name=${encodeURIComponent(
                                         profile?.full_name || 'A'
-                                      )}&background=800000&color=fff&rounded=true&size=24`
+                                      )}&background=800000&color=fff&rounded=true&size=28`
                                     }
                                     alt="Your avatar"
-                                    className="w-6 h-6 rounded-full flex-shrink-0"
+                                    className="w-7 h-7 rounded-full flex-shrink-0 object-cover border border-gray-200"
                                   />
                                   <div className="flex-1 flex gap-2">
                                     <input
