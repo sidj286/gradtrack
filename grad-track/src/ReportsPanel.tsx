@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from './lib/supabase';
 import { getSpecializationFromJobTitle } from './lib/jobTitleMapper';
 import {
@@ -100,45 +100,71 @@ export default function ReportsPanel() {
   const [exportLoading, setExportLoading] = useState(false);
   const [exportType, setExportType] = useState<'employment' | 'department' | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<AnalyticsData | null>(null);
+  const [fullData, setFullData] = useState<AnalyticsData | null>(null);
   const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
   const [showExportModal, setShowExportModal] = useState(false);
 
   // ============================================================
-  // FETCH ANALYTICS DATA
+  // PAGINATION HELPER
+  // ============================================================
+  const fetchAllRows = async (table: string, select: string, filter?: { column: string; value: any }) => {
+    let allData: any[] = [];
+    let page = 0;
+    const pageSize = 1000;
+    let hasMore = true;
+
+    while (hasMore) {
+      let query = supabase
+        .from(table)
+        .select(select)
+        .range(page * pageSize, (page + 1) * pageSize - 1);
+
+      if (filter) {
+        query = query.eq(filter.column, filter.value);
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        hasMore = false;
+      } else {
+        allData = [...allData, ...data];
+        page++;
+        if (data.length < pageSize) {
+          hasMore = false;
+        }
+      }
+    }
+
+    return allData;
+  };
+
+  // ============================================================
+  // FETCH ANALYTICS DATA - ONCE ON MOUNT
   // ============================================================
   useEffect(() => {
     fetchAnalytics();
-  }, [selectedDepartment]);
+  }, []);
 
   const fetchAnalytics = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      let query = supabase
-        .from('alumni_profiles')
-        .select(`
-          full_name,
-          department,
-          course,
-          job_title,
-          employment_status,
-          career_alignment_status,
-          batch_year,
-          company
-        `);
-
-      if (selectedDepartment !== 'all') {
-        query = query.eq('department', selectedDepartment);
-      }
-
-      const { data: alumni, error: fetchError } = await query;
-
-      if (fetchError) throw fetchError;
+      const alumni = await fetchAllRows('alumni_profiles', `
+        full_name,
+        department,
+        course,
+        job_title,
+        employment_status,
+        career_alignment_status,
+        batch_year,
+        company
+      `);
 
       const processedData = processAnalyticsData(alumni || []);
-      setData(processedData);
+      setFullData(processedData);
     } catch (err) {
       console.error('Failed to fetch analytics:', err);
       setError('Failed to load analytics data. Please try again.');
@@ -148,7 +174,7 @@ export default function ReportsPanel() {
   };
 
   // ============================================================
-  // DATA PROCESSING
+  // DATA PROCESSING - ALWAYS PROCESSES FULL DATASET
   // ============================================================
   const processAnalyticsData = (alumni: AlumniProfile[]): AnalyticsData => {
     const total = alumni.length;
@@ -241,58 +267,124 @@ export default function ReportsPanel() {
       };
     });
 
+    // ============================================================
+    // INSIGHT GENERATION - EVERY department gets insights
+    // ============================================================
     const insights: AnalyticsData['insights'] = [];
 
     departmentMetrics.forEach(dept => {
-      if (dept.alignmentRate < dept.institutionalAvgAlignment - 15) {
-        insights.push({
-          type: 'warning',
-          department: dept.department,
-          message: `${dept.department} has significantly low career alignment (${dept.alignmentRate.toFixed(1)}% vs institutional average ${dept.institutionalAvgAlignment.toFixed(1)}%).`,
-          recommendation: `Strengthen industry partnerships and career guidance programs for ${dept.department} students.`,
-        });
-      } else if (dept.alignmentRate < dept.institutionalAvgAlignment - 5) {
-        insights.push({
-          type: 'info',
-          department: dept.department,
-          message: `${dept.department} has below-average career alignment (${dept.alignmentRate.toFixed(1)}%).`,
-          recommendation: `Consider enhancing internship programs and curriculum alignment for ${dept.department}.`,
-        });
-      } else if (dept.alignmentRate > dept.institutionalAvgAlignment + 10) {
+      const alignmentDiff = dept.alignmentRate - dept.institutionalAvgAlignment;
+      const unemploymentDiff = dept.unemploymentRate - dept.institutionalAvgUnemployment;
+
+      // --- ALIGNMENT INSIGHT ---
+      if (alignmentDiff > 10) {
         insights.push({
           type: 'success',
           department: dept.department,
-          message: `${dept.department} is excelling in career alignment (${dept.alignmentRate.toFixed(1)}% above institutional average).`,
-          recommendation: `Share best practices from ${dept.department} with other departments.`,
+          message: `${dept.department} is significantly exceeding institutional alignment (${dept.alignmentRate.toFixed(1)}% vs ${dept.institutionalAvgAlignment.toFixed(1)}% avg).`,
+          recommendation: `Document and share ${dept.department}'s successful career preparation strategies with other departments.`,
         });
-      }
-
-      if (dept.unemploymentRate > dept.institutionalAvgUnemployment + 10) {
+      } else if (alignmentDiff > 5) {
         insights.push({
-          type: 'danger',
+          type: 'success',
           department: dept.department,
-          message: `${dept.department} has critically high unemployment rate (${dept.unemploymentRate.toFixed(1)}% vs institutional average ${dept.institutionalAvgUnemployment.toFixed(1)}%).`,
-          recommendation: `Urgently review ${dept.department} curriculum and strengthen industry partnerships.`,
+          message: `${dept.department} is performing above the institutional alignment average (${dept.alignmentRate.toFixed(1)}% vs ${dept.institutionalAvgAlignment.toFixed(1)}% avg).`,
+          recommendation: `Continue supporting ${dept.department}'s career development initiatives.`,
         });
-      } else if (dept.unemploymentRate > dept.institutionalAvgUnemployment + 5) {
+      } else if (alignmentDiff >= -5) {
+        insights.push({
+          type: 'info',
+          department: dept.department,
+          message: `${dept.department} is performing in line with institutional alignment (${dept.alignmentRate.toFixed(1)}% vs ${dept.institutionalAvgAlignment.toFixed(1)}% avg).`,
+          recommendation: `Maintain current career preparation programs for ${dept.department}.`,
+        });
+      } else if (alignmentDiff >= -10) {
         insights.push({
           type: 'warning',
           department: dept.department,
-          message: `${dept.department} has higher unemployment rate (${dept.unemploymentRate.toFixed(1)}%) than institutional average.`,
-          recommendation: `Enhance job placement support for ${dept.department} graduates.`,
+          message: `${dept.department} is below institutional alignment (${dept.alignmentRate.toFixed(1)}% vs ${dept.institutionalAvgAlignment.toFixed(1)}% avg).`,
+          recommendation: `Strengthen industry partnerships and career guidance for ${dept.department} students.`,
+        });
+      } else {
+        insights.push({
+          type: 'danger',
+          department: dept.department,
+          message: `${dept.department} is significantly below institutional alignment (${dept.alignmentRate.toFixed(1)}% vs ${dept.institutionalAvgAlignment.toFixed(1)}% avg).`,
+          recommendation: `Urgently review ${dept.department} curriculum and enhance career preparation programs.`,
         });
       }
 
+      // --- UNEMPLOYMENT INSIGHT ---
+      if (unemploymentDiff < -10) {
+        insights.push({
+          type: 'success',
+          department: dept.department,
+          message: `${dept.department} has significantly lower unemployment (${dept.unemploymentRate.toFixed(1)}% vs ${dept.institutionalAvgUnemployment.toFixed(1)}% avg).`,
+          recommendation: `Share ${dept.department}'s successful employment strategies with other departments.`,
+        });
+      } else if (unemploymentDiff < -5) {
+        insights.push({
+          type: 'success',
+          department: dept.department,
+          message: `${dept.department} has lower unemployment (${dept.unemploymentRate.toFixed(1)}% vs ${dept.institutionalAvgUnemployment.toFixed(1)}% avg).`,
+          recommendation: `Continue supporting ${dept.department}'s job placement programs.`,
+        });
+      } else if (unemploymentDiff <= 5) {
+        insights.push({
+          type: 'info',
+          department: dept.department,
+          message: `${dept.department} has unemployment in line with institutional average (${dept.unemploymentRate.toFixed(1)}% vs ${dept.institutionalAvgUnemployment.toFixed(1)}% avg).`,
+          recommendation: `Maintain current job placement support for ${dept.department} graduates.`,
+        });
+      } else if (unemploymentDiff <= 10) {
+        insights.push({
+          type: 'warning',
+          department: dept.department,
+          message: `${dept.department} has higher unemployment (${dept.unemploymentRate.toFixed(1)}% vs ${dept.institutionalAvgUnemployment.toFixed(1)}% avg).`,
+          recommendation: `Enhance job placement services and employer partnerships for ${dept.department}.`,
+        });
+      } else {
+        insights.push({
+          type: 'danger',
+          department: dept.department,
+          message: `${dept.department} has significantly higher unemployment (${dept.unemploymentRate.toFixed(1)}% vs ${dept.institutionalAvgUnemployment.toFixed(1)}% avg).`,
+          recommendation: `Urgently review ${dept.department} curriculum and strengthen industry partnerships.`,
+        });
+      }
+
+      // --- OVERALL STATUS INSIGHT ---
       if (dept.status === 'excellent') {
         insights.push({
           type: 'success',
           department: dept.department,
-          message: `${dept.department} is performing exceptionally well with ${dept.alignmentRate.toFixed(1)}% career alignment and only ${dept.unemploymentRate.toFixed(1)}% unemployment.`,
+          message: `${dept.department} is performing exceptionally well with ${dept.alignmentRate.toFixed(1)}% alignment and ${dept.unemploymentRate.toFixed(1)}% unemployment.`,
           recommendation: `Continue supporting ${dept.department}'s successful programs and initiatives.`,
+        });
+      } else if (dept.status === 'good') {
+        insights.push({
+          type: 'info',
+          department: dept.department,
+          message: `${dept.department} shows solid performance with ${dept.alignmentRate.toFixed(1)}% alignment and ${dept.unemploymentRate.toFixed(1)}% unemployment.`,
+          recommendation: `Maintain current strategies and monitor for improvement opportunities in ${dept.department}.`,
+        });
+      } else if (dept.status === 'needs_attention') {
+        insights.push({
+          type: 'warning',
+          department: dept.department,
+          message: `${dept.department} needs attention with ${dept.alignmentRate.toFixed(1)}% alignment and ${dept.unemploymentRate.toFixed(1)}% unemployment.`,
+          recommendation: `Develop targeted improvement plan for ${dept.department} focusing on career preparation.`,
+        });
+      } else {
+        insights.push({
+          type: 'danger',
+          department: dept.department,
+          message: `${dept.department} requires critical intervention with ${dept.alignmentRate.toFixed(1)}% alignment and ${dept.unemploymentRate.toFixed(1)}% unemployment.`,
+          recommendation: `Immediate strategic review needed for ${dept.department} including curriculum and industry partnerships.`,
         });
       }
     });
 
+    // --- ADD BEST/WORST DEPARTMENT INSIGHTS ---
     if (departmentMetrics.length > 0) {
       const bestDept = departmentMetrics.reduce((best, current) =>
         current.alignmentRate > best.alignmentRate ? current : best
@@ -301,10 +393,23 @@ export default function ReportsPanel() {
         type: 'info',
         department: bestDept.department,
         message: `${bestDept.department} has the highest career alignment rate at ${bestDept.alignmentRate.toFixed(1)}%.`,
-        recommendation: `Analyze and replicate ${bestDept.department}'s successful strategies.`,
+        recommendation: `Analyze and replicate ${bestDept.department}'s successful strategies across the institution.`,
       });
+
+      const lowestUnemployment = departmentMetrics.reduce((lowest, current) =>
+        current.unemploymentRate < lowest.unemploymentRate ? current : lowest
+      );
+      if (lowestUnemployment.department !== bestDept.department) {
+        insights.push({
+          type: 'info',
+          department: lowestUnemployment.department,
+          message: `${lowestUnemployment.department} has the lowest unemployment rate at ${lowestUnemployment.unemploymentRate.toFixed(1)}%.`,
+          recommendation: `Study ${lowestUnemployment.department}'s employment strategies for institutional adoption.`,
+        });
+      }
     }
 
+    // Sort insights by severity
     const severityOrder = { danger: 0, warning: 1, info: 2, success: 3 };
     insights.sort((a, b) => severityOrder[a.type] - severityOrder[b.type]);
 
@@ -325,6 +430,44 @@ export default function ReportsPanel() {
       insights,
     };
   };
+
+  // ============================================================
+  // FILTER DATA - CLIENT SIDE, INSTANT, NO LOADING
+  // ============================================================
+  const filteredData = useMemo(() => {
+    if (!fullData) return null;
+    if (selectedDepartment === 'all') return fullData;
+
+    const filteredDeptMetrics = fullData.departmentMetrics.filter(
+      d => d.department === selectedDepartment
+    );
+    const filteredSpecData = fullData.specializationData.filter(
+      d => d.department === selectedDepartment
+    );
+    const filteredInsights = fullData.insights.filter(
+      i => i.department === selectedDepartment
+    );
+    const selectedDeptMetric = filteredDeptMetrics[0];
+
+    if (!selectedDeptMetric) return fullData;
+
+    return {
+      specializationData: filteredSpecData,
+      departmentMetrics: filteredDeptMetrics,
+      overallMetrics: {
+        totalAlumni: selectedDeptMetric.totalAlumni,
+        totalEmployed: selectedDeptMetric.employed,
+        totalUnemployed: selectedDeptMetric.unemployed,
+        totalInField: selectedDeptMetric.inField,
+        totalOutOfField: selectedDeptMetric.outOfField,
+        totalPending: selectedDeptMetric.pending,
+        overallEmploymentRate: selectedDeptMetric.employmentRate,
+        overallAlignmentRate: selectedDeptMetric.alignmentRate,
+        overallUnemploymentRate: selectedDeptMetric.unemploymentRate,
+      },
+      insights: filteredInsights,
+    };
+  }, [fullData, selectedDepartment]);
 
   // ============================================================
   // HELPER FUNCTION: Standard Deviation
@@ -1092,9 +1235,28 @@ export default function ReportsPanel() {
     setExportType('department');
 
     try {
-      let query = supabase
-        .from('alumni_profiles')
-        .select(`
+      let alumni: any[] = [];
+      
+      if (department !== 'all') {
+        alumni = await fetchAllRows('alumni_profiles', `
+          full_name,
+          course,
+          department,
+          batch_year,
+          employment_status,
+          job_title,
+          company,
+          industry,
+          location,
+          linkedin_url,
+          career_alignment_status,
+          ai_confidence_score,
+          profile_completion,
+          created_at,
+          updated_at
+        `, { column: 'department', value: department });
+      } else {
+        alumni = await fetchAllRows('alumni_profiles', `
           full_name,
           course,
           department,
@@ -1111,14 +1273,7 @@ export default function ReportsPanel() {
           created_at,
           updated_at
         `);
-
-      if (department !== 'all') {
-        query = query.eq('department', department);
       }
-
-      const { data: alumni, error } = await query.order('batch_year', { ascending: false });
-
-      if (error) throw error;
 
       const deptName = department === 'all' ? 'All Departments' : department;
 
@@ -1147,9 +1302,7 @@ export default function ReportsPanel() {
         pending,
       };
 
-      const { data: allDeptData } = await supabase
-        .from('alumni_profiles')
-        .select('department, career_alignment_status, employment_status');
+      const allDeptData = await fetchAllRows('alumni_profiles', 'department, career_alignment_status, employment_status');
 
       const deptStats = allDeptData ? processDepartmentStatsForComparison(allDeptData) : [];
 
@@ -1256,11 +1409,7 @@ export default function ReportsPanel() {
     setExportType('employment');
 
     try {
-      const { data: alumni, error } = await supabase
-        .from('alumni_profiles')
-        .select('employment_status, department, batch_year, course, career_alignment_status');
-
-      if (error) throw error;
+      const alumni = await fetchAllRows('alumni_profiles', 'employment_status, department, batch_year, course, career_alignment_status');
 
       const total = alumni.length;
       const employed = alumni.filter(a => a.employment_status === 'Employed').length;
@@ -1358,12 +1507,12 @@ export default function ReportsPanel() {
   // RENDER FUNCTIONS
   // ============================================================
   const renderSpecializationChart = () => {
-    if (!data) return null;
+    if (!filteredData) return null;
 
-    const departments = [...new Set(data.specializationData.map(d => d.department))];
+    const departments = [...new Set(filteredData.specializationData.map(d => d.department))];
 
     const chartData = departments.map(dept => {
-      const deptData = data.specializationData.filter(d => d.department === dept);
+      const deptData = filteredData.specializationData.filter(d => d.department === dept);
       const total = deptData.reduce((sum, d) => sum + d.count, 0);
       const entry: any = { department: dept, total };
       deptData.forEach(d => {
@@ -1372,7 +1521,7 @@ export default function ReportsPanel() {
       return entry;
     });
 
-    const allSpecializations = [...new Set(data.specializationData.map(d => d.specialization))];
+    const allSpecializations = [...new Set(filteredData.specializationData.map(d => d.specialization))];
 
     return (
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
@@ -1411,9 +1560,9 @@ export default function ReportsPanel() {
   };
 
   const renderDepartmentMetrics = () => {
-    if (!data) return null;
+    if (!filteredData) return null;
 
-    const chartData = data.departmentMetrics.map(dept => ({
+    const chartData = filteredData.departmentMetrics.map(dept => ({
       department: dept.department,
       'Career Alignment': dept.alignmentRate,
       'Unemployment Rate': dept.unemploymentRate,
@@ -1464,9 +1613,9 @@ export default function ReportsPanel() {
   };
 
   const renderOverallMetrics = () => {
-    if (!data) return null;
+    if (!filteredData) return null;
 
-    const { overallMetrics } = data;
+    const { overallMetrics } = filteredData;
     const pieData = [
       { name: 'In-Field', value: overallMetrics.totalInField },
       { name: 'Out-of-Field', value: overallMetrics.totalOutOfField },
@@ -1563,7 +1712,7 @@ export default function ReportsPanel() {
   };
 
   const renderInsights = () => {
-    if (!data || data.insights.length === 0) {
+    if (!filteredData || filteredData.insights.length === 0) {
       return (
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
           <p className="text-gray-500 dark:text-gray-400 text-center">
@@ -1597,7 +1746,7 @@ export default function ReportsPanel() {
           <span>💡</span> Automated Insights & Recommendations
         </h3>
         <div className="space-y-4">
-          {data.insights.slice(0, 8).map((insight, index) => (
+          {filteredData.insights.slice(0, 8).map((insight, index) => (
             <div
               key={index}
               className={`border-l-4 p-4 rounded-r-lg ${getStatusColor(insight.type)}`}
@@ -1628,7 +1777,7 @@ export default function ReportsPanel() {
   };
 
   const renderDepartmentCards = () => {
-    if (!data) return null;
+    if (!filteredData) return null;
 
     const statusColors = {
       excellent: 'border-green-500 bg-green-50 dark:bg-green-900/20',
@@ -1645,7 +1794,7 @@ export default function ReportsPanel() {
 
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {data.departmentMetrics.map(dept => (
+        {filteredData.departmentMetrics.map(dept => (
           <div
             key={dept.department}
             className={`bg-white dark:bg-gray-800 rounded-2xl shadow-lg border-l-4 p-4 ${statusColors[dept.status]}`}
@@ -1700,7 +1849,7 @@ export default function ReportsPanel() {
   const renderExportModal = () => {
     if (!showExportModal) return null;
 
-    const departments = data?.departmentMetrics.map(d => d.department) || [];
+    const departments = filteredData?.departmentMetrics.map(d => d.department) || [];
 
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -1786,7 +1935,7 @@ export default function ReportsPanel() {
     );
   }
 
-  if (!data) {
+  if (!filteredData) {
     return (
       <div className="p-4 sm:p-6 max-w-7xl mx-auto">
         <div className="text-center py-12">
@@ -1816,7 +1965,7 @@ export default function ReportsPanel() {
             className="px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#800000]"
           >
             <option value="all">All Departments</option>
-            {data.departmentMetrics.map(dept => (
+            {fullData?.departmentMetrics.map(dept => (
               <option key={dept.department} value={dept.department}>
                 {dept.department}
               </option>
