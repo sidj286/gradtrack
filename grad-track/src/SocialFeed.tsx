@@ -136,7 +136,7 @@ const Card: React.FC<{ children: React.ReactNode; className?: string; id?: strin
   className = '',
   id
 }) => (
-  <div id={id} className={`bg-white rounded-xl shadow-sm border border-gray-200 ${className}`}>
+  <div id={id} className={`bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white ${className}`}>
     {children}
   </div>
 );
@@ -201,17 +201,17 @@ const ThreeDotsMenu: React.FC<{
           e.stopPropagation();
           setIsOpen(!isOpen);
         }}
-        className="text-gray-400 hover:text-gray-600 transition text-sm p-1 rounded-full hover:bg-gray-100"
+        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition text-sm p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
         title="More options"
       >
         ⋮
       </button>
       {isOpen && (
-        <div className={`absolute ${menuPosition === 'right' ? 'right-0' : 'left-0'} mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50`}>
+        <div className={`absolute ${menuPosition === 'right' ? 'right-0' : 'left-0'} mt-1 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50`}>
           {isOwner && onEdit && (
             <button
               onClick={() => { onEdit(); setIsOpen(false); }}
-              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 flex items-center gap-2"
             >
               ✏️ Edit
             </button>
@@ -219,7 +219,7 @@ const ThreeDotsMenu: React.FC<{
           {onCopy && (
             <button
               onClick={() => { onCopy(); setIsOpen(false); }}
-              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 flex items-center gap-2"
             >
               📋 Copy
             </button>
@@ -227,7 +227,7 @@ const ThreeDotsMenu: React.FC<{
           {isOwner && onDelete && (
             <button
               onClick={() => { onDelete(); setIsOpen(false); }}
-              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 text-red-600 flex items-center gap-2"
+              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-red-600 dark:text-red-400 flex items-center gap-2"
             >
               🗑️ Delete
             </button>
@@ -250,8 +250,8 @@ const AlumniDirectory: React.FC<{
         <div className="flex gap-3 overflow-x-auto">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="flex-shrink-0 w-20 animate-pulse">
-              <div className="w-14 h-14 rounded-full bg-gray-200 mx-auto" />
-              <div className="h-2 bg-gray-200 rounded mt-2 w-3/4 mx-auto" />
+              <div className="w-14 h-14 rounded-full bg-gray-200 dark:bg-gray-700 mx-auto" />
+              <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded mt-2 w-3/4 mx-auto" />
             </div>
           ))}
         </div>
@@ -265,7 +265,7 @@ const AlumniDirectory: React.FC<{
     <Card className="p-4 mb-4">
       <div className="flex items-center gap-2 mb-3">
         <span className="text-base">🤝</span>
-        <h3 className="text-sm font-bold text-gray-900">People you may know</h3>
+        <h3 className="text-sm font-bold text-gray-900 dark:text-white">People you may know</h3>
       </div>
       <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1">
         {entries.map((entry) => (
@@ -284,10 +284,10 @@ const AlumniDirectory: React.FC<{
               alt={entry.full_name || 'Alumni'}
               className="w-14 h-14 rounded-full object-cover mx-auto ring-2 ring-transparent group-hover:ring-[#800000]/40 transition-all"
             />
-            <p className="text-[11px] font-semibold text-gray-800 mt-1.5 truncate">
+            <p className="text-[11px] font-semibold text-gray-800 dark:text-gray-200 mt-1.5 truncate">
               {entry.full_name || 'Alumni'}
             </p>
-            <p className="text-[10px] text-[#800000] truncate">{entry.matchReason}</p>
+            <p className="text-[10px] text-[#800000] dark:text-[#a10000] truncate">{entry.matchReason}</p>
           </button>
         ))}
       </div>
@@ -320,12 +320,12 @@ const ProfileModal: React.FC<{
       className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn"
       onClick={handleBackdropClick}
     >
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl animate-scaleIn max-h-[90vh] overflow-y-auto">
-        {/* Close button - top right, no maroon header */}
-        <div className="sticky top-0 z-20 bg-white pt-4 px-4 flex justify-end">
+      <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 animate-scaleIn max-h-[90vh] overflow-y-auto">
+        {/* Close button - top right */}
+        <div className="sticky top-0 z-20 bg-white dark:bg-gray-800 pt-4 px-4 flex justify-end">
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 text-2xl leading-none w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition"
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl leading-none w-8 h-8 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-center transition"
           >
             ×
           </button>
@@ -335,10 +335,10 @@ const ProfileModal: React.FC<{
         <div className="px-6 pb-6">
           {loading || !profile ? (
             <div className="space-y-3 animate-pulse">
-              <div className="w-20 h-20 rounded-full bg-gray-200 mx-auto" />
-              <div className="h-4 bg-gray-200 rounded w-1/2 mx-auto" />
-              <div className="h-3 bg-gray-200 rounded w-1/3 mx-auto" />
-              <div className="h-3 bg-gray-200 rounded w-2/3 mx-auto" />
+              <div className="w-20 h-20 rounded-full bg-gray-200 dark:bg-gray-700 mx-auto" />
+              <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2 mx-auto" />
+              <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/3 mx-auto" />
+              <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-2/3 mx-auto" />
             </div>
           ) : (
             <>
@@ -352,16 +352,16 @@ const ProfileModal: React.FC<{
                     )}&background=800000&color=fff&rounded=true&size=80`
                   }
                   alt={profile.full_name || 'Alumni'}
-                  className="w-20 h-20 rounded-full object-cover border-4 border-gray-200 shadow-md"
+                  className="w-20 h-20 rounded-full object-cover border-4 border-gray-200 dark:border-gray-700 shadow-md"
                 />
               </div>
 
               {/* Name and Course */}
               <div className="text-center mt-3">
-                <h3 className="text-lg font-bold text-gray-900">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
                   {profile.full_name || 'Alumni'}
                 </h3>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
                   {profile.course || 'Course not set'}
                   {profile.batch_year ? ` • Class of ${profile.batch_year}` : ''}
                 </p>
@@ -369,41 +369,41 @@ const ProfileModal: React.FC<{
 
               {/* Profile Details */}
               <div className="grid grid-cols-1 gap-3 mt-4">
-                <div className="bg-gray-50 rounded-xl p-3">
-                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3">
+                  <p className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Current Role
                   </p>
-                  <p className="text-sm font-medium text-gray-900 mt-0.5">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white mt-0.5">
                     {profile.job_title || 'Not specified'}
                     {profile.company ? ` at ${profile.company}` : ''}
                   </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-gray-50 rounded-xl p-3">
-                    <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                  <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3">
+                    <p className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       Status
                     </p>
-                    <p className="text-sm font-medium text-gray-900 mt-0.5">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white mt-0.5">
                       {profile.employment_status || 'Not specified'}
                     </p>
                   </div>
-                  <div className="bg-gray-50 rounded-xl p-3">
-                    <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                  <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3">
+                    <p className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       Industry
                     </p>
-                    <p className="text-sm font-medium text-gray-900 mt-0.5 truncate">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white mt-0.5 truncate">
                       {profile.industry || 'Not specified'}
                     </p>
                   </div>
                 </div>
 
                 {profile.location && (
-                  <div className="bg-gray-50 rounded-xl p-3">
-                    <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                  <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3">
+                    <p className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       Location
                     </p>
-                    <p className="text-sm font-medium text-gray-900 mt-0.5">{profile.location}</p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white mt-0.5">{profile.location}</p>
                   </div>
                 )}
 
@@ -412,7 +412,7 @@ const ProfileModal: React.FC<{
                     href={profile.linkedin_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-sm text-[#800000] font-semibold hover:underline inline-flex items-center justify-center gap-1 bg-gray-50 rounded-xl p-3 transition hover:bg-gray-100"
+                    className="text-sm text-[#800000] dark:text-red-400 font-semibold hover:underline inline-flex items-center justify-center gap-1 bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3 transition hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
                     🔗 View LinkedIn Profile →
                   </a>
@@ -507,7 +507,7 @@ const SearchAlumni: React.FC<{
       {/* Search Input */}
       <div className="relative">
         <svg
-          className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
+          className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -519,7 +519,7 @@ const SearchAlumni: React.FC<{
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           placeholder="Search alumni by name, course, job title, or company..."
-          className="w-full pl-10 pr-4 py-2.5 bg-gray-100 hover:bg-gray-200 focus:bg-white border border-transparent focus:border-[#800000] rounded-full text-sm text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-[#800000]/20 transition-all duration-200 outline-none"
+          className="w-full pl-10 pr-4 py-2.5 bg-gray-100 dark:bg-gray-700/70 hover:bg-gray-200 dark:hover:bg-gray-700 focus:bg-white dark:focus:bg-gray-800 border border-transparent focus:border-[#800000] rounded-full text-sm text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-[#800000]/20 transition-all duration-200 outline-none"
           onFocus={() => searchTerm.trim().length >= 2 && setShowResults(true)}
         />
         {loading && (
@@ -534,7 +534,7 @@ const SearchAlumni: React.FC<{
               setResults([]);
               setShowResults(false);
             }}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
           >
             ×
           </button>
@@ -543,14 +543,14 @@ const SearchAlumni: React.FC<{
 
       {/* Search Results Dropdown */}
       {showResults && (
-        <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-200 max-h-80 overflow-y-auto z-50">
+        <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 max-h-80 overflow-y-auto z-50">
           {loading ? (
-            <div className="p-4 text-center text-gray-500">
+            <div className="p-4 text-center text-gray-500 dark:text-gray-400">
               <div className="inline-block w-5 h-5 border-2 border-[#800000]/20 border-t-[#800000] rounded-full animate-spin mr-2" />
               Searching...
             </div>
           ) : results.length === 0 ? (
-            <div className="p-4 text-center text-gray-500">
+            <div className="p-4 text-center text-gray-500 dark:text-gray-400">
               {searchTerm.trim().length >= 2 ? 'No alumni found' : 'Type at least 2 characters to search'}
             </div>
           ) : (
@@ -559,7 +559,7 @@ const SearchAlumni: React.FC<{
                 <button
                   key={result.user_id}
                   onClick={() => handleSelect(result.user_id)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors duration-150 text-left"
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/60 transition-colors duration-150 text-left"
                 >
                   <img
                     src={
@@ -572,10 +572,10 @@ const SearchAlumni: React.FC<{
                     className="w-10 h-10 rounded-full object-cover flex-shrink-0"
                   />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
                       {result.full_name || 'Unknown Alumni'}
                     </p>
-                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                       {result.course && <span className="truncate">{result.course}</span>}
                       {result.batch_year && <span>• Class of {result.batch_year}</span>}
                     </div>
@@ -1809,7 +1809,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
               <div className="flex-1 relative">
                 <button
                   onClick={() => setShowPostModal(true)}
-                  className="w-full text-left px-4 py-2.5 bg-gray-100 hover:bg-gray-200 rounded-full text-sm text-gray-500 transition-colors pr-12"
+                  className="w-full text-left px-4 py-2.5 bg-gray-100 dark:bg-gray-700/70 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full text-sm text-gray-500 dark:text-gray-300 transition-colors pr-12"
                 >
                   What's on your mind, {profile?.full_name?.split(' ')[0] || 'Alumni'}?
                 </button>
@@ -1822,7 +1822,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                       if (textarea) textarea.focus();
                     }, 100);
                   }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded-full hover:bg-gray-200 transition text-lg"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 transition text-lg text-gray-600 dark:text-gray-300"
                   title="Add Photo"
                 >
                   📷
@@ -1847,10 +1847,10 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
               }
             }}
           >
-            <div className="max-w-lg w-full bg-white rounded-2xl shadow-2xl overflow-hidden animate-scaleIn max-h-[90vh] flex flex-col">
+            <div className="max-w-lg w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden animate-scaleIn max-h-[90vh] flex flex-col">
               {/* Modal Header */}
-              <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 flex-shrink-0">
-                <h3 className="text-lg font-bold text-gray-900">Create Post</h3>
+              <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Create Post</h3>
                 <button
                   onClick={() => {
                     setShowPostModal(false);
@@ -1858,7 +1858,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                     setImageFile(null);
                     setImagePreview(null);
                   }}
-                  className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xl transition"
+                  className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 flex items-center justify-center text-xl transition"
                 >
                   ×
                 </button>
@@ -1879,8 +1879,8 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                     className="w-10 h-10 rounded-full flex-shrink-0"
                   />
                   <div>
-                    <p className="font-semibold text-sm">{profile?.full_name || 'Alumni'}</p>
-                    <div className="flex items-center gap-1 text-xs text-gray-500">
+                    <p className="font-semibold text-sm text-gray-900 dark:text-white">{profile?.full_name || 'Alumni'}</p>
+                    <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
                       <span>🌐 Public</span>
                       <span>•</span>
                       <span>📅</span>
@@ -1894,14 +1894,14 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                   value={newPost}
                   onChange={(e) => setNewPost(e.target.value)}
                   placeholder={`What's on your mind, ${profile?.full_name?.split(' ')[0] || 'Alumni'}?`}
-                  className="w-full border-0 focus:ring-0 resize-none text-lg min-h-[120px] outline-none placeholder-gray-400"
+                  className="w-full border-0 focus:ring-0 resize-none text-lg min-h-[120px] outline-none placeholder-gray-400 dark:placeholder-gray-500 bg-transparent text-gray-900 dark:text-white"
                   rows={4}
                   autoFocus
                 />
 
                 {/* Image Preview */}
                 {imagePreview && (
-                  <div className="relative mt-2 border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="relative mt-2 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
                     <img src={imagePreview} alt="Preview" className="w-full max-h-64 object-contain" />
                     <button
                       onClick={() => {
@@ -1916,14 +1916,14 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                 )}
 
                 {/* Add to your post - Photo only */}
-                <div className="mt-4 border border-gray-200 rounded-lg p-3">
+                <div className="mt-4 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-600">Add to your post</span>
+                    <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Add to your post</span>
                     <button
                       onClick={() => {
                         fileInputRef.current?.click();
                       }}
-                      className="w-10 h-10 rounded-full hover:bg-gray-100 flex items-center justify-center text-2xl transition"
+                      className="w-10 h-10 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-center text-2xl transition"
                     >
                       📷
                     </button>
@@ -1957,16 +1957,16 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
               }
             }}
           >
-            <div className="max-w-lg w-full bg-white rounded-2xl shadow-2xl overflow-hidden animate-scaleIn max-h-[90vh] flex flex-col">
+            <div className="max-w-lg w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden animate-scaleIn max-h-[90vh] flex flex-col">
               {/* Modal Header */}
-              <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 flex-shrink-0">
-                <h3 className="text-lg font-bold text-gray-900">Share Post</h3>
+              <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Share Post</h3>
                 <button
                   onClick={() => {
                     setShareModalPost(null);
                     setShareCaption('');
                   }}
-                  className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xl transition"
+                  className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 flex items-center justify-center text-xl transition"
                 >
                   ×
                 </button>
@@ -1987,9 +1987,9 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                     className="w-10 h-10 rounded-full flex-shrink-0 object-cover"
                   />
                   <div>
-                    <p className="font-semibold text-sm">{profile?.full_name || 'Alumni'}</p>
-                    <div className="flex items-center gap-1 text-xs text-gray-500">
-                      <span className="bg-gray-100 px-2 py-0.5 rounded text-gray-700 font-medium">🌐 Sharing to Feed</span>
+                    <p className="font-semibold text-sm text-gray-900 dark:text-white">{profile?.full_name || 'Alumni'}</p>
+                    <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                      <span className="bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded text-gray-700 dark:text-gray-300 font-medium">🌐 Sharing to Feed</span>
                     </div>
                   </div>
                 </div>
@@ -1999,13 +1999,13 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                   value={shareCaption}
                   onChange={(e) => setShareCaption(e.target.value)}
                   placeholder="Say something about this post..."
-                  className="w-full border border-gray-200 focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 rounded-xl p-3 resize-none text-sm min-h-[90px] outline-none placeholder-gray-400 mb-4"
+                  className="w-full border border-gray-200 dark:border-gray-700 focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 rounded-xl p-3 resize-none text-sm min-h-[90px] outline-none placeholder-gray-400 dark:placeholder-gray-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white mb-4"
                   rows={3}
                   autoFocus
                 />
 
                 {/* Embedded Preview Card of Original Post */}
-                <div className="border border-gray-200 rounded-xl p-3.5 bg-gray-50/80">
+                <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3.5 bg-gray-50/80 dark:bg-gray-700/50">
                   <div className="flex items-center gap-2.5 mb-2">
                     <img
                       src={
@@ -2017,18 +2017,18 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                       className="w-8 h-8 rounded-full object-cover flex-shrink-0"
                     />
                     <div>
-                      <p className="text-xs font-semibold text-gray-900">
+                      <p className="text-xs font-semibold text-gray-900 dark:text-white">
                         {shareModalPost.shared_post 
                           ? shareModalPost.shared_post.alumni_profiles?.full_name 
                           : shareModalPost.alumni_profiles?.full_name}
                       </p>
-                      <p className="text-[10px] text-gray-500">
+                      <p className="text-[10px] text-gray-500 dark:text-gray-400">
                         {timeAgo(shareModalPost.shared_post ? shareModalPost.shared_post.created_at : shareModalPost.created_at)}
                       </p>
                     </div>
                   </div>
                   {(shareModalPost.shared_post ? shareModalPost.shared_post.content : shareModalPost.content) && (
-                    <p className="text-xs text-gray-800 line-clamp-4 whitespace-pre-wrap">
+                    <p className="text-xs text-gray-800 dark:text-gray-200 line-clamp-4 whitespace-pre-wrap">
                       {shareModalPost.shared_post ? shareModalPost.shared_post.content : shareModalPost.content}
                     </p>
                   )}
@@ -2061,15 +2061,15 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
         <div className="space-y-4">
           
           {loading && posts.length === 0 ? (
-            <div className="text-center py-8 bg-white rounded-xl shadow-sm border border-gray-200">
+            <div className="text-center py-8 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
               <div className="inline-block w-8 h-8 border-4 border-[#800000]/20 border-t-[#800000] rounded-full animate-spin" />
-              <p className="text-gray-500 mt-2">Loading feed...</p>
+              <p className="text-gray-500 dark:text-gray-400 mt-2">Loading feed...</p>
             </div>
           ) : posts.length === 0 ? (
             <Card className="p-8 text-center">
               <div className="text-4xl mb-3">📭</div>
-              <p className="text-gray-600 font-medium">No posts yet</p>
-              <p className="text-sm text-gray-400 mt-1">Be the first to share something!</p>
+              <p className="text-gray-600 dark:text-gray-300 font-medium">No posts yet</p>
+              <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">Be the first to share something!</p>
             </Card>
           ) : (
             <>
@@ -2093,7 +2093,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                         />
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-sm sm:text-base">
+                            <span className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white">
                               {post.alumni_profiles?.full_name}
                             </span>
                             {post.alumni_profiles?.role === 'Admin' && (
@@ -2102,17 +2102,17 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                               </span>
                             )}
                             {post.alumni_profiles?.employment_status === 'Employed' && (
-                              <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">
+                              <span className="text-[10px] bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 px-1.5 py-0.5 rounded-full">
                                 Working
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                             <span>{post.alumni_profiles?.course || 'Alumni'}</span>
                             {post.alumni_profiles?.batch_year && <span>• Class of {post.alumni_profiles.batch_year}</span>}
                             <span>• {timeAgo(post.created_at)}</span>
                             {post.updated_at !== post.created_at && (
-                              <span className="text-gray-400 text-[10px]">(edited)</span>
+                              <span className="text-gray-400 dark:text-gray-500 text-[10px]">(edited)</span>
                             )}
                           </div>
                         </div>
@@ -2134,21 +2134,21 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                         />
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-sm sm:text-base group-hover:underline">
+                            <span className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white group-hover:underline">
                               {post.alumni_profiles?.full_name}
                             </span>
                             {post.alumni_profiles?.employment_status === 'Employed' && (
-                              <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">
+                              <span className="text-[10px] bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 px-1.5 py-0.5 rounded-full">
                                 Working
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                             <span>{post.alumni_profiles?.course || 'Alumni'}</span>
                             {post.alumni_profiles?.batch_year && <span>• Class of {post.alumni_profiles.batch_year}</span>}
                             <span>• {timeAgo(post.created_at)}</span>
                             {post.updated_at !== post.created_at && (
-                              <span className="text-gray-400 text-[10px]">(edited)</span>
+                              <span className="text-gray-400 dark:text-gray-500 text-[10px]">(edited)</span>
                             )}
                           </div>
                         </div>
@@ -2174,7 +2174,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                         <textarea
                           value={editingPostContent}
                           onChange={(e) => setEditingPostContent(e.target.value)}
-                          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none"
+                          className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                           rows={3}
                         />
                         <div className="flex gap-2">
@@ -2190,7 +2190,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                               setEditingPostId(null);
                               setEditingPostContent('');
                             }}
-                            className="px-3 py-1 text-sm text-gray-500 hover:text-gray-700"
+                            className="px-3 py-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
                           >
                             Cancel
                           </button>
@@ -2199,7 +2199,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                     ) : (
                       <>
                         {post.content && (
-                          <p className="text-sm sm:text-base text-gray-800 whitespace-pre-wrap">
+                          <p className="text-sm sm:text-base text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
                             {post.content}
                           </p>
                         )}
@@ -2212,7 +2212,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                           />
                         )}
                         {post.shared_post_id && (
-                          <div className="mt-3 border border-gray-200 rounded-xl p-3.5 bg-gray-50/80 hover:bg-gray-50 transition">
+                          <div className="mt-3 border border-gray-200 dark:border-gray-700 rounded-xl p-3.5 bg-gray-50/80 dark:bg-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/80 transition">
                             {post.shared_post ? (
                               <>
                                 <div className="flex items-center gap-2.5 mb-2">
@@ -2227,10 +2227,10 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                                     className="w-8 h-8 rounded-full flex-shrink-0 object-cover"
                                   />
                                   <div>
-                                    <span className="font-semibold text-xs text-gray-900">
+                                    <span className="font-semibold text-xs text-gray-900 dark:text-white">
                                       {post.shared_post.alumni_profiles?.full_name}
                                     </span>
-                                    <div className="flex items-center gap-1.5 text-[10px] text-gray-500">
+                                    <div className="flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400">
                                       {post.shared_post.alumni_profiles?.course && (
                                         <span>{post.shared_post.alumni_profiles.course}</span>
                                       )}
@@ -2242,7 +2242,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                                   </div>
                                 </div>
                                 {post.shared_post.content && (
-                                  <p className="text-xs sm:text-sm text-gray-800 whitespace-pre-wrap">
+                                  <p className="text-xs sm:text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
                                     {post.shared_post.content}
                                   </p>
                                 )}
@@ -2256,7 +2256,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                                 )}
                               </>
                             ) : (
-                              <div className="text-xs text-gray-500 italic flex items-center gap-2 py-1">
+                              <div className="text-xs text-gray-500 dark:text-gray-400 italic flex items-center gap-2 py-1">
                                 <span>⚠️</span>
                                 <span>This post is no longer available.</span>
                               </div>
@@ -2268,31 +2268,31 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                   </div>
 
                   {/* Post Stats */}
-                  <div className="flex items-center gap-4 mt-4 pt-3 border-t border-gray-100 text-xs sm:text-sm text-gray-500">
+                  <div className="flex items-center gap-4 mt-4 pt-3 border-t border-gray-100 dark:border-gray-700/60 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
                     <span>❤️ {post.like_count}</span>
                     <span>💬 {post.comment_count}</span>
                     <span>↗️ {post.share_count || 0}</span>
                   </div>
 
                   {/* Post Actions */}
-                  <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-100">
+                  <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-100 dark:border-gray-700/60">
                     <button
                       onClick={() => handleLike(post.id)}
                       className={`flex-1 py-1.5 text-sm font-medium rounded-lg transition flex items-center justify-center gap-1 ${
-                        post.user_liked ? 'text-[#800000] bg-[#800000]/5' : 'text-gray-500 hover:bg-gray-50'
+                        post.user_liked ? 'text-[#800000] dark:text-red-400 bg-[#800000]/5 dark:bg-[#800000]/20' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
                       }`}
                     >
                       {post.user_liked ? '❤️' : '🤍'} Like
                     </button>
                     <button
                       onClick={() => setShowCommentInput(showCommentInput === post.id ? null : post.id)}
-                      className="flex-1 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-50 rounded-lg transition flex items-center justify-center gap-1"
+                      className="flex-1 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition flex items-center justify-center gap-1"
                     >
                       💬 Comment
                     </button>
                     <button 
                       onClick={() => setShareModalPost(post)}
-                      className="flex-1 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-50 rounded-lg transition flex items-center justify-center gap-1"
+                      className="flex-1 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition flex items-center justify-center gap-1"
                     >
                       ↗️ Share
                     </button>
@@ -2300,26 +2300,16 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
 
                   {/* Comments */}
                   {showCommentInput === post.id && (
-                    <div className="mt-3 pt-3 border-t border-gray-100">
+                    <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
                       {/* Comment Input */}
                       <div className="flex items-center gap-2">
-                        {/* <img
-                          src={
-                            profile?.avatar_url ||
-                            `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                              profile?.full_name || 'A'
-                            )}&background=800000&color=fff&rounded=true&size=32`
-                          }
-                          alt="Your avatar"
-                          className="w-8 h-8 rounded-full flex-shrink-0"
-                        /> */}
                         <div className="flex-1 flex gap-2">
                           <input
                             type="text"
                             value={commentText}
                             onChange={(e) => setCommentText(e.target.value)}
                             placeholder="Write a comment..."
-                            className="flex-1 px-3 py-1.5 text-sm border border-gray-200 rounded-full focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none"
+                            className="flex-1 px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700/70 border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 rounded-full focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none"
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
                                 handleAddComment(post.id);
@@ -2352,21 +2342,20 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                                       )}&background=800000&color=fff&rounded=true&size=40`
                                 }
                                 alt={comment.alumni_profiles?.full_name || 'Commenter'}
-                                className="w-10 h-10 rounded-full flex-shrink-0 object-cover border-2 border-gray-200"
+                                className="w-10 h-10 rounded-full flex-shrink-0 object-cover border-2 border-gray-200 dark:border-gray-700"
                                 onError={(e) => {
-                                  console.log('Avatar failed to load for:', comment.alumni_profiles?.full_name);
                                   (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
                                     comment.alumni_profiles?.full_name || 'User'
                                   )}&background=800000&color=fff&rounded=true&size=40`;
                                 }}
                               />
                             </button>
-                            <div className="flex-1 bg-gray-50 rounded-lg p-2">
+                            <div className="flex-1 bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2">
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                   <button
                                     onClick={() => openProfile(comment.user_id)}
-                                    className="text-xs font-semibold hover:underline"
+                                    className="text-xs font-semibold text-gray-900 dark:text-white hover:underline"
                                   >
                                     {comment.alumni_profiles?.full_name}
                                   </button>
@@ -2375,11 +2364,11 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                                        Admin
                                     </span>
                                   )}
-                                  <span className="text-xs text-gray-400">
+                                  <span className="text-xs text-gray-400 dark:text-gray-400">
                                     {timeAgo(comment.created_at)}
                                   </span>
                                   {comment.updated_at !== comment.created_at && (
-                                    <span className="text-[10px] text-gray-400">(edited)</span>
+                                    <span className="text-[10px] text-gray-400 dark:text-gray-500">(edited)</span>
                                   )}
                                 </div>
                                 <ThreeDotsMenu
@@ -2401,12 +2390,12 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                                     type="text"
                                     value={editingCommentContent}
                                     onChange={(e) => setEditingCommentContent(e.target.value)}
-                                    className="w-full px-2 py-1 text-sm border border-gray-200 rounded-lg focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none"
+                                    className="w-full px-2 py-1 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                                   />
                                   <div className="flex gap-2">
                                     <button
                                       onClick={() => handleEditComment(comment.id, post.id)}
-                                      className="text-xs text-[#800000] font-semibold hover:underline"
+                                      className="text-xs text-[#800000] dark:text-red-400 font-semibold hover:underline"
                                     >
                                       Save
                                     </button>
@@ -2416,14 +2405,14 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                                         setEditingCommentContent('');
                                         setEditingCommentPostId(null);
                                       }}
-                                      className="text-xs text-gray-500 hover:underline"
+                                      className="text-xs text-gray-500 dark:text-gray-400 hover:underline"
                                     >
                                       Cancel
                                     </button>
                                   </div>
                                 </div>
                               ) : (
-                                <p className="text-sm mt-1">{comment.content}</p>
+                                <p className="text-sm mt-1 text-gray-800 dark:text-gray-200">{comment.content}</p>
                               )}
 
                               {/* Comment Actions - Like & Reply */}
@@ -2431,19 +2420,19 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                                 <button
                                   onClick={() => handleCommentLike(comment.id, post.id)}
                                   className={`text-xs flex items-center gap-1 ${
-                                    comment.user_liked ? 'text-[#800000]' : 'text-gray-400 hover:text-gray-600'
+                                    comment.user_liked ? 'text-[#800000] dark:text-red-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
                                   }`}
                                 >
                                   {comment.user_liked ? '❤️' : '🤍'} Like
                                 </button>
                                 <button
                                   onClick={() => setShowReplyInput(showReplyInput === comment.id ? null : comment.id)}
-                                  className="text-xs text-gray-400 hover:text-gray-600"
+                                  className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
                                 >
                                   Reply
                                 </button>
                                 {comment.reply_count && comment.reply_count > 0 && (
-                                  <span className="text-xs text-gray-400">
+                                  <span className="text-xs text-gray-400 dark:text-gray-500">
                                     • {comment.reply_count} {comment.reply_count === 1 ? 'reply' : 'replies'}
                                   </span>
                                 )}
@@ -2451,7 +2440,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
 
                               {/* Replies */}
                               {comment.replies && comment.replies.length > 0 && (
-                                <div className="mt-2 ml-6 space-y-2 border-l-2 border-gray-200 pl-3">
+                                <div className="mt-2 ml-6 space-y-2 border-l-2 border-gray-200 dark:border-gray-700 pl-3">
                                   {comment.replies.map((reply: CommentReply) => (
                                     <div key={reply.id} className="flex items-start gap-2">
                                       <button onClick={() => openProfile(reply.user_id)}>
@@ -2464,7 +2453,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                                                 )}&background=800000&color=fff&rounded=true&size=28`
                                           }
                                           alt={reply.alumni_profiles?.full_name || 'Replier'}
-                                          className="w-7 h-7 rounded-full flex-shrink-0 object-cover border border-gray-200"
+                                          className="w-7 h-7 rounded-full flex-shrink-0 object-cover border border-gray-200 dark:border-gray-700"
                                           onError={(e) => {
                                             (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
                                               reply.alumni_profiles?.full_name || 'User'
@@ -2477,7 +2466,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                                           <div className="flex items-center gap-2">
                                             <button
                                               onClick={() => openProfile(reply.user_id)}
-                                              className="text-xs font-semibold hover:underline"
+                                              className="text-xs font-semibold text-gray-900 dark:text-white hover:underline"
                                             >
                                               {reply.alumni_profiles?.full_name}
                                             </button>
@@ -2486,11 +2475,11 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                                                  Admin
                                               </span>
                                             )}
-                                            <span className="text-xs text-gray-400">
+                                            <span className="text-xs text-gray-400 dark:text-gray-400">
                                               {timeAgo(reply.created_at)}
                                             </span>
                                             {reply.updated_at !== reply.created_at && (
-                                              <span className="text-[10px] text-gray-400">(edited)</span>
+                                              <span className="text-[10px] text-gray-400 dark:text-gray-500">(edited)</span>
                                             )}
                                           </div>
                                           <ThreeDotsMenu
@@ -2515,12 +2504,12 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                                               type="text"
                                               value={editingReplyContent}
                                               onChange={(e) => setEditingReplyContent(e.target.value)}
-                                              className="w-full px-2 py-1 text-sm border border-gray-200 rounded-lg focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none"
+                                              className="w-full px-2 py-1 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                                             />
                                             <div className="flex gap-2">
                                               <button
                                                 onClick={() => handleEditReply(post.id, comment.id, reply.id)}
-                                                className="text-xs text-[#800000] font-semibold hover:underline"
+                                                className="text-xs text-[#800000] dark:text-red-400 font-semibold hover:underline"
                                               >
                                                 Save
                                               </button>
@@ -2531,14 +2520,14 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                                                   setEditingReplyCommentId(null);
                                                   setEditingReplyPostId(null);
                                                 }}
-                                                className="text-xs text-gray-500 hover:underline"
+                                                className="text-xs text-gray-500 dark:text-gray-400 hover:underline"
                                               >
                                                 Cancel
                                               </button>
                                             </div>
                                           </div>
                                         ) : (
-                                          <p className="text-sm mt-0.5">{reply.content}</p>
+                                          <p className="text-sm mt-0.5 text-gray-800 dark:text-gray-200">{reply.content}</p>
                                         )}
                                       </div>
                                     </div>
@@ -2557,7 +2546,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                                       )}&background=800000&color=fff&rounded=true&size=28`
                                     }
                                     alt="Your avatar"
-                                    className="w-7 h-7 rounded-full flex-shrink-0 object-cover border border-gray-200"
+                                    className="w-7 h-7 rounded-full flex-shrink-0 object-cover border border-gray-200 dark:border-gray-700"
                                   />
                                   <div className="flex-1 flex gap-2">
                                     <input
@@ -2565,7 +2554,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                                       value={replyText}
                                       onChange={(e) => setReplyText(e.target.value)}
                                       placeholder="Write a reply..."
-                                      className="flex-1 px-2 py-1 text-sm border border-gray-200 rounded-full focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none"
+                                      className="flex-1 px-2 py-1 text-sm bg-gray-100 dark:bg-gray-700/70 border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 rounded-full focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none"
                                       onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
                                           handleAddReply(comment.id, post.id);
@@ -2603,7 +2592,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
 
           {!hasMore && posts.length > 0 && (
             <div className="text-center py-4">
-              <p className="text-xs text-gray-400 mb-3">You've seen all posts 🎉</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">You've seen all posts 🎉</p>
               
               <button
                 onClick={scrollToTop}

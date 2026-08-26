@@ -1364,46 +1364,13 @@ const addComment = async (announcementId: string, content: string, parentComment
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5 sm:gap-4">
-              <div className="flex md:hidden bg-gray-100 rounded-xl p-0.5 sm:p-1">
-                <button
-                  onClick={() => setActiveTab('overview')}
-                  className={`flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg font-medium text-[11px] sm:text-xs transition-all duration-200 ${activeTab === 'overview'
-                      ? 'bg-white text-[#800000] shadow-sm'
-                      : 'text-gray-600 hover:text-gray-800'
-                    }`}
-                >
-                  <span className="text-sm sm:text-base">📊</span>
-                  <span className="hidden xs:inline">Overview</span>
-                </button>
-                <button
-                  onClick={() => setActiveTab('announcements')}
-                  className={`flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg font-medium text-[11px] sm:text-xs transition-all duration-200 ${activeTab === 'announcements'
-                      ? 'bg-white text-[#800000] shadow-sm'
-                      : 'text-gray-600 hover:text-gray-800'
-                    }`}
-                >
-                  <span className="text-sm sm:text-base">📢</span>
-                  <span className="hidden xs:inline">Announcements</span>
-                </button>
-                <button
-                  onClick={() => setActiveTab('feed')}
-                  className={`flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg font-medium text-[11px] sm:text-xs transition-all duration-200 ${activeTab === 'feed'
-                      ? 'bg-white text-[#800000] shadow-sm'
-                      : 'text-gray-600 hover:text-gray-800'
-                    }`}
-                >
-                  <span className="text-sm sm:text-base">📰</span>
-                  <span className="hidden xs:inline">Feed</span>
-                </button>
-              </div>
-
+            <div className="flex items-center gap-2 sm:gap-4">
               <div className="hidden md:flex gap-1">
                 <button
                   onClick={() => setActiveTab('overview')}
                   className={`px-4 py-2 sm:px-5 sm:py-2 rounded-xl font-medium text-sm sm:text-base transition-all duration-200 ${activeTab === 'overview'
-                      ? 'bg-[#800000]/10 text-[#800000] shadow-sm'
-                      : 'text-gray-600 hover:bg-gray-100'
+                      ? 'bg-[#800000]/10 text-[#800000] dark:text-red-400 shadow-sm'
+                      : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                     }`}
                 >
                   Overview
@@ -1411,8 +1378,8 @@ const addComment = async (announcementId: string, content: string, parentComment
                 <button
                   onClick={() => setActiveTab('announcements')}
                   className={`px-4 py-2 sm:px-5 sm:py-2 rounded-xl font-medium text-sm sm:text-base transition-all duration-200 ${activeTab === 'announcements'
-                      ? 'bg-[#800000]/10 text-[#800000] shadow-sm'
-                      : 'text-gray-600 hover:bg-gray-100'
+                      ? 'bg-[#800000]/10 text-[#800000] dark:text-red-400 shadow-sm'
+                      : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                     }`}
                 >
                   Announcements
@@ -1420,8 +1387,8 @@ const addComment = async (announcementId: string, content: string, parentComment
                 <button
                   onClick={() => setActiveTab('feed')}
                   className={`px-4 py-2 sm:px-5 sm:py-2 rounded-xl font-medium text-sm sm:text-base transition-all duration-200 ${activeTab === 'feed'
-                      ? 'bg-[#800000]/10 text-[#800000] shadow-sm'
-                      : 'text-gray-600 hover:bg-gray-100'
+                      ? 'bg-[#800000]/10 text-[#800000] dark:text-red-400 shadow-sm'
+                      : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                     }`}
                 >
                   Feed
@@ -2087,6 +2054,43 @@ const addComment = async (announcementId: string, content: string, parentComment
           </div>
         </div>
       )}
+
+      {/* Mobile Bottom Navigation Bar */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-700 py-1.5 px-4 flex justify-around items-center shadow-2xl">
+        <button
+          onClick={() => setActiveTab('overview')}
+          className={`flex flex-col items-center gap-0.5 px-4 py-1 rounded-xl transition-all duration-200 ${
+            activeTab === 'overview'
+              ? 'text-[#800000] dark:text-red-400 font-bold bg-[#800000]/10 dark:bg-[#800000]/20 scale-105'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+          }`}
+        >
+          <span className="text-lg">📊</span>
+          <span className="text-[10px] font-medium">Overview</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('announcements')}
+          className={`flex flex-col items-center gap-0.5 px-4 py-1 rounded-xl transition-all duration-200 ${
+            activeTab === 'announcements'
+              ? 'text-[#800000] dark:text-red-400 font-bold bg-[#800000]/10 dark:bg-[#800000]/20 scale-105'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+          }`}
+        >
+          <span className="text-lg">📢</span>
+          <span className="text-[10px] font-medium">Announcements</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('feed')}
+          className={`flex flex-col items-center gap-0.5 px-4 py-1 rounded-xl transition-all duration-200 ${
+            activeTab === 'feed'
+              ? 'text-[#800000] dark:text-red-400 font-bold bg-[#800000]/10 dark:bg-[#800000]/20 scale-105'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+          }`}
+        >
+          <span className="text-lg">📰</span>
+          <span className="text-[10px] font-medium">Feed</span>
+        </button>
+      </div>
     </div>
   );
 }

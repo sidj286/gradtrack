@@ -1624,11 +1624,31 @@ export default function AdminDashboard({ session }: { session: Session }) {
       {/* ========================================================== */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-        {/* Tab Navigation */}
-        <div className="flex flex-wrap gap-2 mb-8 border-b border-gray-200 dark:border-gray-700">
+        {/* Mobile View Selector Dropdown */}
+        <div className="md:hidden mb-4">
+          <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">
+            Navigate Section:
+          </label>
+          <select
+            value={activeMainTab}
+            onChange={(e: any) => setActiveMainTab(e.target.value)}
+            className="w-full bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-2 border-[#800000]/30 rounded-xl p-3 text-sm font-bold shadow-sm focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 outline-none transition"
+          >
+            <option value="overview">📊 Overview</option>
+            <option value="departments">🏛️ Department Analytics</option>
+            <option value="announcements">📢 Announcements</option>
+            <option value="predictive">🔮 Predictive Analytics</option>
+            <option value="masterlist">📥 Master List</option>
+            <option value="reports">📊 Reports</option>
+            <option value="feed">📱 Feed</option>
+          </select>
+        </div>
+
+        {/* Tab Navigation - Horizontal Scrollable on Mobile, Flex Wrap on Desktop */}
+        <div className="flex overflow-x-auto md:flex-wrap gap-2 mb-8 pb-2 md:pb-0 border-b border-gray-200 dark:border-gray-700 whitespace-nowrap scrollbar-none">
           <button
             onClick={() => setActiveMainTab('overview')}
-            className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${activeMainTab === 'overview'
+            className={`px-4 sm:px-5 py-2.5 text-xs sm:text-sm font-semibold rounded-t-lg transition-all duration-200 flex-shrink-0 ${activeMainTab === 'overview'
                 ? 'bg-[#800000] text-white shadow-md'
                 : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
               }`}
@@ -1637,7 +1657,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
           </button>
           <button
             onClick={() => setActiveMainTab('departments')}
-            className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${activeMainTab === 'departments'
+            className={`px-4 sm:px-5 py-2.5 text-xs sm:text-sm font-semibold rounded-t-lg transition-all duration-200 flex-shrink-0 ${activeMainTab === 'departments'
                 ? 'bg-[#800000] text-white shadow-md'
                 : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
               }`}
@@ -1646,42 +1666,49 @@ export default function AdminDashboard({ session }: { session: Session }) {
           </button>
           <button
             onClick={() => setActiveMainTab('announcements')}
-            className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${activeMainTab === 'announcements'
+            className={`px-4 sm:px-5 py-2.5 text-xs sm:text-sm font-semibold rounded-t-lg transition-all duration-200 flex-shrink-0 ${activeMainTab === 'announcements'
                 ? 'bg-[#800000] text-white shadow-md'
                 : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
               }`}
           >
             📢 Announcements
           </button>
-           <button
-    onClick={() => setActiveMainTab('predictive')}
-    className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${activeMainTab === 'predictive'
-        ? 'bg-[#800000] text-white shadow-md'
-        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-      }`}
-  >
-    🔮 Predictive Analytics
-  </button>
+          <button
+            onClick={() => setActiveMainTab('predictive')}
+            className={`px-4 sm:px-5 py-2.5 text-xs sm:text-sm font-semibold rounded-t-lg transition-all duration-200 flex-shrink-0 ${activeMainTab === 'predictive'
+                ? 'bg-[#800000] text-white shadow-md'
+                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
+          >
+            🔮 Predictive Analytics
+          </button>
           <button
             onClick={() => setActiveMainTab('masterlist')}
-            className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${activeMainTab === 'masterlist'
+            className={`px-4 sm:px-5 py-2.5 text-xs sm:text-sm font-semibold rounded-t-lg transition-all duration-200 flex-shrink-0 ${activeMainTab === 'masterlist'
                 ? 'bg-[#800000] text-white shadow-md'
                 : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
               }`}
           >
             📥 Master List
           </button>
-          <button onClick={() => setActiveMainTab('reports')}
-            className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${activeMainTab === 'reports' ? 'bg-[#800000] text-white shadow-md' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>📊 Reports</button>
           <button
-  onClick={() => setActiveMainTab('feed')}
-  className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-all duration-200 ${activeMainTab === 'feed'
-      ? 'bg-[#800000] text-white shadow-md'
-      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-    }`}
->
-  📱 Feed
-</button>
+            onClick={() => setActiveMainTab('reports')}
+            className={`px-4 sm:px-5 py-2.5 text-xs sm:text-sm font-semibold rounded-t-lg transition-all duration-200 flex-shrink-0 ${activeMainTab === 'reports'
+                ? 'bg-[#800000] text-white shadow-md'
+                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
+          >
+            📊 Reports
+          </button>
+          <button
+            onClick={() => setActiveMainTab('feed')}
+            className={`px-4 sm:px-5 py-2.5 text-xs sm:text-sm font-semibold rounded-t-lg transition-all duration-200 flex-shrink-0 ${activeMainTab === 'feed'
+                ? 'bg-[#800000] text-white shadow-md'
+                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
+          >
+            📱 Feed
+          </button>
         </div>
         
 
