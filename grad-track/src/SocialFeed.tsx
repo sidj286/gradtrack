@@ -5,8 +5,24 @@ import type { Session } from '@supabase/supabase-js';
 import { 
   notifyCommentAdded, 
   notifyReplyAdded, 
+  notifyPostShared,
   sendNotification 
 } from './lib/notificationUtils';
+
+interface SharedPostData {
+  id: string;
+  user_id: string;
+  content: string;
+  image_url: string | null;
+  created_at: string;
+  alumni_profiles: {
+    full_name: string;
+    avatar_url: string | null;
+    role?: string;
+    course: string | null;
+    batch_year: number | null;
+  };
+}
 
 interface Post {
   id: string;
@@ -14,6 +30,8 @@ interface Post {
   content: string;
   post_type: string;
   image_url: string | null;
+  shared_post_id?: string | null;
+  shared_post?: SharedPostData | null;
   created_at: string;
   updated_at: string;
   alumni_profiles: {
@@ -33,6 +51,7 @@ interface Post {
   comment_count: number;
   share_count: number;
   user_liked: boolean;
+  user_shared?: boolean;
 }
 
 interface Comment {
@@ -595,6 +614,10 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
 
   const [showPostModal, setShowPostModal] = useState(false);
 
+  const [shareModalPost, setShareModalPost] = useState<Post | null>(null);
+  const [shareCaption, setShareCaption] = useState('');
+  const [submittingShare, setSubmittingShare] = useState(false);
+
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editingPostContent, setEditingPostContent] = useState('');
 
@@ -670,12 +693,26 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
       }
 
       const userIds = postsData.map(post => post.user_id);
-      
+      const sharedPostIds = postsData.map(post => post.shared_post_id).filter(Boolean);
+
+      let sharedPostsData: any[] = [];
+      if (sharedPostIds.length > 0) {
+        const { data: spData, error: spError } = await supabase
+          .from('alumni_posts')
+          .select('*')
+          .in('id', sharedPostIds);
+        if (spError) console.error('Shared posts error:', spError);
+        sharedPostsData = spData || [];
+      }
+
+      const sharedUserIds = sharedPostsData.map(sp => sp.user_id);
+      const allAuthorUserIds = Array.from(new Set([...userIds, ...sharedUserIds]));
+
       // Fetch alumni_profiles for post authors
       const { data: profilesData, error: profilesError } = await supabase
         .from('alumni_profiles')
         .select('*')
-        .in('user_id', userIds);
+        .in('user_id', allAuthorUserIds);
 
       if (profilesError) {
         console.error('Profiles error:', profilesError);
@@ -684,11 +721,11 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
 
       // Fetch users for post authors (for admins without alumni_profiles)
       let postUsers: { id: string; full_name: string; role: string }[] = [];
-      if (userIds.length > 0) {
+      if (allAuthorUserIds.length > 0) {
         const { data: puData } = await supabase
           .from('users')
           .select('id, full_name, role')
-          .in('id', userIds);
+          .in('id', allAuthorUserIds);
         postUsers = puData || [];
       }
 
@@ -848,8 +885,36 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
             };
           });
 
+        let sharedPostObj: SharedPostData | null = null;
+        if (post.shared_post_id) {
+          const target = sharedPostsData.find((sp: any) => sp.id === post.shared_post_id);
+          if (target) {
+            const spProfile = profilesData?.find((p: any) => p.user_id === target.user_id);
+            const spUser = postUsers.find((u: any) => u.id === target.user_id);
+            const spName = spProfile?.full_name || spUser?.full_name || 'Unknown User';
+            const spAvatar = spProfile?.avatar_url ? resolveAvatar(spProfile.avatar_url) : null;
+            const spRole = spUser?.role || 'Alumni';
+
+            sharedPostObj = {
+              id: target.id,
+              user_id: target.user_id,
+              content: target.content,
+              image_url: target.image_url,
+              created_at: target.created_at,
+              alumni_profiles: {
+                full_name: spName,
+                avatar_url: spAvatar,
+                role: spRole,
+                course: spProfile?.course || null,
+                batch_year: spProfile?.batch_year || null,
+              },
+            };
+          }
+        }
+
         return {
           ...post,
+          shared_post: sharedPostObj,
           alumni_profiles: {
             full_name: postDisplayName,
             avatar_url: postAvatar,
@@ -1047,6 +1112,64 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
     }
   };
 
+  // SHARE POST (Facebook Style)
+  const handleSharePost = async () => {
+    if (!shareModalPost) return;
+
+    setSubmittingShare(true);
+    try {
+      const targetPostId = shareModalPost.shared_post_id || shareModalPost.id;
+      const targetAuthorId = shareModalPost.shared_post 
+        ? shareModalPost.shared_post.user_id 
+        : shareModalPost.user_id;
+
+      // 1. Insert new share post with shared_post_id
+      const { data: newSharePost, error: insertError } = await supabase
+        .from('alumni_posts')
+        .insert({
+          user_id: session.user.id,
+          content: shareCaption.trim(),
+          post_type: 'share',
+          shared_post_id: targetPostId,
+        })
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
+      // 2. Track share in alumni_shares (upsert to handle unique constraint)
+      await supabase.from('alumni_shares').upsert(
+        {
+          post_id: targetPostId,
+          user_id: session.user.id,
+        },
+        { onConflict: 'post_id,user_id' }
+      );
+
+      // 3. Send notification to target post author if not self
+      if (targetAuthorId !== session.user.id) {
+        const currentUserFullName = profile?.full_name || 'Someone';
+        await notifyPostShared(
+          currentUserFullName,
+          targetAuthorId,
+          newSharePost?.id || targetPostId,
+          session.user.id
+        );
+      }
+
+      setShareModalPost(null);
+      setShareCaption('');
+
+      // 4. Refresh feed so newly shared post appears immediately
+      await fetchPosts(true);
+    } catch (error: any) {
+      console.error('Error sharing post:', error);
+      alert(`Failed to share post: ${error.message || error}`);
+    } finally {
+      setSubmittingShare(false);
+    }
+  };
+
   // EDIT POST
   const handleEditPost = async (postId: string) => {
     if (!editingPostContent.trim()) {
@@ -1198,7 +1321,7 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
         if (post.user_id !== session.user.id) {
           await sendNotification(
             post.user_id,
-            'comment', 
+            'like', 
             '❤️ New Like',
             `${currentUserFullName} liked your post.`,
             `/feed/${postId}`,
@@ -1822,6 +1945,117 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
         )}
 
         {/* ============================================================ */}
+        {/* FACEBOOK-STYLE SHARE POST MODAL */}
+        {/* ============================================================ */}
+        {shareModalPost && (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fadeIn"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setShareModalPost(null);
+                setShareCaption('');
+              }
+            }}
+          >
+            <div className="max-w-lg w-full bg-white rounded-2xl shadow-2xl overflow-hidden animate-scaleIn max-h-[90vh] flex flex-col">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 flex-shrink-0">
+                <h3 className="text-lg font-bold text-gray-900">Share Post</h3>
+                <button
+                  onClick={() => {
+                    setShareModalPost(null);
+                    setShareCaption('');
+                  }}
+                  className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xl transition"
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-6 overflow-y-auto flex-1">
+                {/* Author Info */}
+                <div className="flex items-center gap-3 mb-4">
+                  <img
+                    src={
+                      profile?.avatar_url ||
+                      `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                        profile?.full_name || 'A'
+                      )}&background=800000&color=fff&rounded=true&size=40`
+                    }
+                    alt="Profile"
+                    className="w-10 h-10 rounded-full flex-shrink-0 object-cover"
+                  />
+                  <div>
+                    <p className="font-semibold text-sm">{profile?.full_name || 'Alumni'}</p>
+                    <div className="flex items-center gap-1 text-xs text-gray-500">
+                      <span className="bg-gray-100 px-2 py-0.5 rounded text-gray-700 font-medium">🌐 Sharing to Feed</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Caption Input */}
+                <textarea
+                  value={shareCaption}
+                  onChange={(e) => setShareCaption(e.target.value)}
+                  placeholder="Say something about this post..."
+                  className="w-full border border-gray-200 focus:border-[#800000] focus:ring-2 focus:ring-[#800000]/20 rounded-xl p-3 resize-none text-sm min-h-[90px] outline-none placeholder-gray-400 mb-4"
+                  rows={3}
+                  autoFocus
+                />
+
+                {/* Embedded Preview Card of Original Post */}
+                <div className="border border-gray-200 rounded-xl p-3.5 bg-gray-50/80">
+                  <div className="flex items-center gap-2.5 mb-2">
+                    <img
+                      src={
+                        shareModalPost.shared_post 
+                          ? (shareModalPost.shared_post.alumni_profiles?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(shareModalPost.shared_post.alumni_profiles?.full_name || 'A')}&background=800000&color=fff&rounded=true&size=32`)
+                          : (shareModalPost.alumni_profiles?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(shareModalPost.alumni_profiles?.full_name || 'A')}&background=800000&color=fff&rounded=true&size=32`)
+                      }
+                      alt="Original author"
+                      className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                    />
+                    <div>
+                      <p className="text-xs font-semibold text-gray-900">
+                        {shareModalPost.shared_post 
+                          ? shareModalPost.shared_post.alumni_profiles?.full_name 
+                          : shareModalPost.alumni_profiles?.full_name}
+                      </p>
+                      <p className="text-[10px] text-gray-500">
+                        {timeAgo(shareModalPost.shared_post ? shareModalPost.shared_post.created_at : shareModalPost.created_at)}
+                      </p>
+                    </div>
+                  </div>
+                  {(shareModalPost.shared_post ? shareModalPost.shared_post.content : shareModalPost.content) && (
+                    <p className="text-xs text-gray-800 line-clamp-4 whitespace-pre-wrap">
+                      {shareModalPost.shared_post ? shareModalPost.shared_post.content : shareModalPost.content}
+                    </p>
+                  )}
+                  {(shareModalPost.shared_post?.image_url || shareModalPost.image_url) && (
+                    <img
+                      src={(shareModalPost.shared_post?.image_url || shareModalPost.image_url)!}
+                      alt="Shared media preview"
+                      className="mt-2 rounded-lg max-h-48 w-full object-cover"
+                    />
+                  )}
+                </div>
+
+                {/* Submit Share Button */}
+                <Button
+                  onClick={handleSharePost}
+                  disabled={submittingShare}
+                  loading={submittingShare}
+                  className="w-full mt-4 !py-3 text-sm font-bold"
+                >
+                  Share Now
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================ */}
         {/* SCROLLING FEED */}
         {/* ============================================================ */}
         <div className="space-y-4">
@@ -1963,17 +2197,73 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                         </div>
                       </div>
                     ) : (
-                      <p className="text-sm sm:text-base text-gray-800 whitespace-pre-wrap">
-                        {post.content}
-                      </p>
-                    )}
-                    {post.image_url && (
-                      <img
-                        src={post.image_url}
-                        alt="Post image"
-                        className="mt-3 rounded-lg max-h-96 w-full object-cover"
-                        loading="lazy"
-                      />
+                      <>
+                        {post.content && (
+                          <p className="text-sm sm:text-base text-gray-800 whitespace-pre-wrap">
+                            {post.content}
+                          </p>
+                        )}
+                        {post.image_url && !post.shared_post_id && (
+                          <img
+                            src={post.image_url}
+                            alt="Post image"
+                            className="mt-3 rounded-lg max-h-96 w-full object-cover"
+                            loading="lazy"
+                          />
+                        )}
+                        {post.shared_post_id && (
+                          <div className="mt-3 border border-gray-200 rounded-xl p-3.5 bg-gray-50/80 hover:bg-gray-50 transition">
+                            {post.shared_post ? (
+                              <>
+                                <div className="flex items-center gap-2.5 mb-2">
+                                  <img
+                                    src={
+                                      post.shared_post.alumni_profiles?.avatar_url ||
+                                      `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                                        post.shared_post.alumni_profiles?.full_name || 'A'
+                                      )}&background=800000&color=fff&rounded=true&size=32`
+                                    }
+                                    alt={post.shared_post.alumni_profiles?.full_name}
+                                    className="w-8 h-8 rounded-full flex-shrink-0 object-cover"
+                                  />
+                                  <div>
+                                    <span className="font-semibold text-xs text-gray-900">
+                                      {post.shared_post.alumni_profiles?.full_name}
+                                    </span>
+                                    <div className="flex items-center gap-1.5 text-[10px] text-gray-500">
+                                      {post.shared_post.alumni_profiles?.course && (
+                                        <span>{post.shared_post.alumni_profiles.course}</span>
+                                      )}
+                                      {post.shared_post.alumni_profiles?.batch_year && (
+                                        <span>• Class of {post.shared_post.alumni_profiles.batch_year}</span>
+                                      )}
+                                      <span>• {timeAgo(post.shared_post.created_at)}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                                {post.shared_post.content && (
+                                  <p className="text-xs sm:text-sm text-gray-800 whitespace-pre-wrap">
+                                    {post.shared_post.content}
+                                  </p>
+                                )}
+                                {post.shared_post.image_url && (
+                                  <img
+                                    src={post.shared_post.image_url}
+                                    alt="Shared post media"
+                                    className="mt-2 rounded-lg max-h-80 w-full object-cover"
+                                    loading="lazy"
+                                  />
+                                )}
+                              </>
+                            ) : (
+                              <div className="text-xs text-gray-500 italic flex items-center gap-2 py-1">
+                                <span>⚠️</span>
+                                <span>This post is no longer available.</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
 
@@ -2000,7 +2290,10 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
                     >
                       💬 Comment
                     </button>
-                    <button className="flex-1 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-50 rounded-lg transition flex items-center justify-center gap-1">
+                    <button 
+                      onClick={() => setShareModalPost(post)}
+                      className="flex-1 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-50 rounded-lg transition flex items-center justify-center gap-1"
+                    >
                       ↗️ Share
                     </button>
                   </div>
@@ -2372,3 +2665,4 @@ export default function SocialFeed({ session, profile, highlightPostId, highligh
     </div>
   );
 }
+

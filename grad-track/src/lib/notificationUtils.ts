@@ -508,6 +508,27 @@ export async function notifyCommentDeleted(
   );
 }
 
+// 12. POST SHARED - Alumni shares a post
+export async function notifyPostShared(
+  sharerName: string,
+  postAuthorId: string,
+  postId: string,
+  sharerId: string
+) {
+  console.log('🔔 notifyPostShared called!', { sharerName, postAuthorId, postId, sharerId });
+  if (!postAuthorId || postAuthorId === sharerId) return null;
+  
+  const message = `${sharerName} shared your post`;
+  return sendNotification(
+    postAuthorId,
+    'share',
+    '↗️ Post Shared',
+    message,
+    `/feed/${postId}`,
+    { post_id: postId, sharer_id: sharerId }
+  );
+}
+
 // ============================================================
 // EXPORT ALL FUNCTIONS
 // ============================================================
@@ -522,6 +543,7 @@ export default {
   deleteNotification,
   notifyCommentAdded,
   notifyReplyAdded,
+  notifyPostShared,
   notifyCareerUpdated,
   notifyProfileUpdated,
   notifyNewRegistration,
