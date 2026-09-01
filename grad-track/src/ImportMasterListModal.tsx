@@ -8,6 +8,7 @@ import {
   getPreviewData,
   detectColumnMapping,
   detectFormatTypeWrapper,
+  DEPARTMENT_MAPPING,
   type MasterListRecord,
   type ImportResult,
   type SheetData
@@ -50,6 +51,27 @@ export default function ImportMasterListModal({
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
   const [loadingSheets, setLoadingSheets] = useState(false);
   const [importAll, setImportAll] = useState(false);
+  const [alreadyImportedCount, setAlreadyImportedCount] = useState<number>(0);
+
+  // Helper to query existing student IDs in database
+  const fetchExistingStudentIds = async (studentIds: string[]): Promise<Set<string>> => {
+    const existingSet = new Set<string>();
+    if (!studentIds || studentIds.length === 0) return existingSet;
+
+    const chunkSize = 300;
+    for (let i = 0; i < studentIds.length; i += chunkSize) {
+      const chunk = studentIds.slice(i, i + chunkSize);
+      const { data } = await supabase
+        .from('graduates_master')
+        .select('student_id')
+        .in('student_id', chunk);
+
+      if (data) {
+        data.forEach((r: { student_id: string }) => existingSet.add(r.student_id));
+      }
+    }
+    return existingSet;
+  };
 
   // Per-sheet manual overrides, keyed by sheet index (stable for the
   // lifetime of a parsed file — sheets aren't reordered after parsing).
@@ -169,6 +191,16 @@ export default function ImportMasterListModal({
     setParsedRecords(valid);
     setPreviewData(getPreviewData(valid));
 
+    // Pre-check duplicate records already in database
+    if (valid.length > 0) {
+      fetchExistingStudentIds(valid.map(r => r.student_id)).then(existingSet => {
+        const dupCount = valid.filter(r => existingSet.has(r.student_id)).length;
+        setAlreadyImportedCount(dupCount);
+      }).catch(() => setAlreadyImportedCount(0));
+    } else {
+      setAlreadyImportedCount(0);
+    }
+
     if (valid.length === 0) {
       setValidationErrors(prev => [...prev, 'No valid records found in this sheet']);
     }
@@ -180,7 +212,28 @@ export default function ImportMasterListModal({
 
   const updateOverride = (index: number, patch: SheetOverride) => {
     setSheetOverrides(prev => {
-      const next = { ...prev, [index]: { ...prev[index], ...patch } };
+      const currentOverride = prev[index] || {};
+      const newPatch = { ...patch };
+
+      // If user provided/changed course and department is not explicitly set yet:
+      if (newPatch.course && !newPatch.department && !currentOverride.department) {
+        const cLower = newPatch.course.trim().toLowerCase();
+        let matchedDept = '';
+        for (const [key, value] of Object.entries(DEPARTMENT_MAPPING)) {
+          if (cLower.includes(key.toLowerCase()) || key.toLowerCase().includes(cLower)) {
+            matchedDept = value;
+            break;
+          }
+        }
+        if (!matchedDept && /MAED|Master of Arts in Education|Education/i.test(newPatch.course)) {
+          matchedDept = 'CTE';
+        }
+        if (matchedDept) {
+          newPatch.department = matchedDept;
+        }
+      }
+
+      const next = { ...prev, [index]: { ...currentOverride, ...newPatch } };
       // Re-run validation immediately with the fresh override so the
       // preview/records/errors reflect the change without an extra click.
       loadSheet(index, sheets, next);
@@ -225,11 +278,21 @@ export default function ImportMasterListModal({
         }
       }
 
+      // Pre-fetch all existing student IDs if append mode
+      let allStudentIds: string[] = [];
+      for (const s of sheets) {
+        allStudentIds.push(...s.data.map((r: any) => r.student_id).filter(Boolean));
+      }
+
+      const globalExistingSet = importMode === 'append'
+        ? await fetchExistingStudentIds(allStudentIds)
+        : new Set<string>();
+
       for (let sheetIdx = 0; sheetIdx < sheets.length; sheetIdx++) {
         const sheet = sheets[sheetIdx];
         const metadata = getEffectiveMetadata(sheetIdx);
 
-        // Validate and transform with effective (auto-detected + override) metadata
+        // Validate and transform with effective metadata
         const { valid, errors } = validateAndTransformData(sheet.data, metadata);
 
         if (valid.length === 0) {
@@ -241,10 +304,24 @@ export default function ImportMasterListModal({
           allErrors.push(`Sheet "${sheet.name}": ${errors.length} validation errors`);
         }
 
+        let sheetRecordsToInsert = valid;
+        let sheetExistingCount = 0;
+
+        if (importMode === 'append') {
+          sheetExistingCount = valid.filter(r => globalExistingSet.has(r.student_id)).length;
+          sheetRecordsToInsert = valid.filter(r => !globalExistingSet.has(r.student_id));
+
+          if (sheetExistingCount === valid.length) {
+            totalSkipped += valid.length;
+            allErrors.push(`Sheet "${sheet.name}": Already imported (${valid.length} duplicate records skipped)`);
+            continue;
+          }
+        }
+
         // Insert in batches
         const batchSize = 100;
-        for (let i = 0; i < valid.length; i += batchSize) {
-          const batch = valid.slice(i, i + batchSize);
+        for (let i = 0; i < sheetRecordsToInsert.length; i += batchSize) {
+          const batch = sheetRecordsToInsert.slice(i, i + batchSize);
 
           const { error: insertError } = await supabase
             .from('graduates_master')
@@ -259,13 +336,30 @@ export default function ImportMasterListModal({
             totalInserted += batch.length;
           }
         }
+        totalSkipped += sheetExistingCount;
+      }
+
+      // ERROR HANDLER: If ALL records across ALL sheets were ALREADY imported!
+      if (totalInserted === 0 && totalSkipped > 0 && importMode === 'append') {
+        setImportResult({
+          success: false,
+          message: `⚠️ File / Batch Already Imported! All ${totalSkipped} records across ${sheets.length} sheet(s) are already present in the Master List database.`,
+          inserted: 0,
+          skipped: totalSkipped,
+          errors: [
+            `Duplicate Import Prevented: All student records in this file already exist in the database. Double entry was blocked.`
+          ]
+        });
+        setImporting(false);
+        setImportAll(false);
+        return;
       }
 
       const result: ImportResult = {
-        success: allErrors.length === 0,
-        message: allErrors.length === 0
-          ? `Successfully imported ${totalInserted} records from ${sheets.length} sheets`
-          : `Imported ${totalInserted} records with ${allErrors.length} errors`,
+        success: totalInserted > 0,
+        message: totalInserted > 0
+          ? `Successfully imported ${totalInserted} new records from ${sheets.length} sheets${totalSkipped > 0 ? ` (${totalSkipped} duplicates skipped)` : ''}`
+          : `Import completed with warnings`,
         inserted: totalInserted,
         skipped: totalSkipped,
         errors: allErrors
@@ -277,7 +371,7 @@ export default function ImportMasterListModal({
         await notifyMasterListImported(adminUserId, totalInserted);
       }
 
-      if (allErrors.length === 0) {
+      if (totalInserted > 0 && allErrors.length === 0) {
         setTimeout(() => {
           onImportComplete();
           resetModal();
@@ -373,12 +467,37 @@ export default function ImportMasterListModal({
         }
       }
 
+      let recordsToInsert = parsedRecords;
+      let existingCount = 0;
+
+      if (importMode === 'append') {
+        const existingSet = await fetchExistingStudentIds(parsedRecords.map(r => r.student_id));
+        existingCount = parsedRecords.filter(r => existingSet.has(r.student_id)).length;
+        recordsToInsert = parsedRecords.filter(r => !existingSet.has(r.student_id));
+
+        // ERROR HANDLER: If ALL records in this sheet/batch are ALREADY imported!
+        if (existingCount === parsedRecords.length) {
+          const currentMeta = getEffectiveMetadata(selectedSheetIndex);
+          setImportResult({
+            success: false,
+            message: `⚠️ Batch Already Imported! All ${parsedRecords.length} records in "${currentMeta.course || sheets[selectedSheetIndex]?.name}" (${currentMeta.batchYear || 'N/A'}) already exist in the Master List database.`,
+            inserted: 0,
+            skipped: parsedRecords.length,
+            errors: [
+              `Duplicate Entry Error: All ${parsedRecords.length} records from this sheet are already saved in the database. Double entry was prevented.`
+            ]
+          });
+          setImporting(false);
+          return;
+        }
+      }
+
       const batchSize = 100;
       let inserted = 0;
       let importErrors: string[] = [];
 
-      for (let i = 0; i < parsedRecords.length; i += batchSize) {
-        const batch = parsedRecords.slice(i, i + batchSize);
+      for (let i = 0; i < recordsToInsert.length; i += batchSize) {
+        const batch = recordsToInsert.slice(i, i + batchSize);
 
         const { error: insertError } = await supabase
           .from('graduates_master')
@@ -394,13 +513,15 @@ export default function ImportMasterListModal({
         }
       }
 
+      const totalSkipped = existingCount + (recordsToInsert.length - inserted);
+
       const result: ImportResult = {
-        success: importErrors.length === 0,
+        success: importErrors.length === 0 && inserted > 0,
         message: importErrors.length === 0
-          ? `Successfully imported ${inserted} records`
+          ? `Successfully imported ${inserted} new records${existingCount > 0 ? ` (${existingCount} existing duplicates skipped to prevent double entry)` : ''}`
           : `Imported ${inserted} records with ${importErrors.length} errors`,
         inserted,
-        skipped: parsedRecords.length - inserted,
+        skipped: totalSkipped,
         errors: importErrors
       };
 
@@ -410,7 +531,7 @@ export default function ImportMasterListModal({
         await notifyMasterListImported(adminUserId, inserted);
       }
 
-      if (importErrors.length === 0) {
+      if (importErrors.length === 0 && inserted > 0) {
         setTimeout(() => {
           onImportComplete();
           resetModal();
@@ -558,6 +679,31 @@ export default function ImportMasterListModal({
                 <span className="text-xs text-gray-500">
                   {sheets[selectedSheetIndex]?.rowCount || 0} records found
                 </span>
+              </div>
+            </div>
+          )}
+
+          {/* Already Imported Batch Alert Banner */}
+          {alreadyImportedCount > 0 && parsedRecords.length > 0 && importMode === 'append' && (
+            <div className={`p-4 rounded-xl border flex items-center gap-3 ${
+              alreadyImportedCount === parsedRecords.length
+                ? 'bg-red-50 dark:bg-red-900/30 border-red-300 dark:border-red-700 text-red-900 dark:text-red-200'
+                : 'bg-amber-50 dark:bg-amber-900/30 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200'
+            }`}>
+              <div className="text-2xl flex-shrink-0">
+                {alreadyImportedCount === parsedRecords.length ? '🛑' : '⚠️'}
+              </div>
+              <div className="flex-1">
+                <p className="font-bold text-sm">
+                  {alreadyImportedCount === parsedRecords.length
+                    ? 'Batch Already Imported'
+                    : 'Partial Duplicates Detected'}
+                </p>
+                <p className="text-xs mt-0.5 opacity-90">
+                  {alreadyImportedCount === parsedRecords.length
+                    ? `All ${parsedRecords.length} records in this sheet already exist in the Master List database. Double entry protection is active.`
+                    : `${alreadyImportedCount} out of ${parsedRecords.length} records in this sheet already exist in the database and will be skipped to prevent double entry.`}
+                </p>
               </div>
             </div>
           )}

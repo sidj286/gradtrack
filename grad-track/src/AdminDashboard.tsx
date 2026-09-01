@@ -502,23 +502,43 @@ export default function AdminDashboard({ session }: { session: Session }) {
   const fetchMasterList = async () => {
     setMasterListLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('graduates_master')
-        .select('*')
-        .order('student_id', { ascending: false });
+      let allRecords: any[] = [];
+      let page = 0;
+      const pageSize = 1000;
+      let hasMore = true;
 
-      if (error) throw error;
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('graduates_master')
+          .select('*')
+          .order('student_id', { ascending: false })
+          .range(page * pageSize, (page + 1) * pageSize - 1);
 
-      setMasterListData(data || []);
+        if (error) throw error;
 
-      const batches = [...new Set(data?.map((r: any) => r.batch_year).filter(Boolean))] as number[];
-      const coursesArr = [...new Set(data?.map((r: any) => r.course).filter(Boolean))] as string[];
+        if (data && data.length > 0) {
+          allRecords = [...allRecords, ...data];
+          if (data.length < pageSize) {
+            hasMore = false;
+          } else {
+            page++;
+          }
+        } else {
+          hasMore = false;
+        }
+      }
+
+      setMasterListData(allRecords);
+
+      // Normalize all batch years to numbers to prevent duplicate string/number keys
+      const batches = [...new Set(allRecords.map((r: any) => Number(r.batch_year)).filter(b => b && !isNaN(b)))] as number[];
+      const coursesArr = [...new Set(allRecords.map((r: any) => r.course).filter(Boolean))] as string[];
       const latestBatch = batches.length > 0 ? Math.max(...batches) : null;
 
       setMasterListStats({
-        total: data?.length || 0,
+        total: allRecords.length,
         byBatch: batches.sort((a, b) => b - a),
-        byCourse: coursesArr,
+        byCourse: coursesArr.sort(),
         latestBatch: latestBatch,
       });
     } catch (error) {
@@ -624,15 +644,32 @@ export default function AdminDashboard({ session }: { session: Session }) {
     setLoading(true);
 
     try {
-      const { data: alumniData, error: alumniError } = await supabase
-        .from('alumni_profiles')
-        .select('*');
+      let alumniData: any[] = [];
+      let page = 0;
+      const pageSize = 1000;
+      let hasMore = true;
 
-      if (alumniError) {
-        console.error("❌ Error fetching alumni:", alumniError);
-        setAlumni([]);
-        resetStats();
-      } else if (alumniData && alumniData.length > 0) {
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('alumni_profiles')
+          .select('*')
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          alumniData = [...alumniData, ...data];
+          if (data.length < pageSize) {
+            hasMore = false;
+          } else {
+            page++;
+          }
+        } else {
+          hasMore = false;
+        }
+      }
+
+      if (alumniData && alumniData.length > 0) {
         const processedAlumni = await Promise.all(alumniData.map(async (alum) => {
           let avatarUrl = null;
           if (alum.avatar_url) {
@@ -3916,6 +3953,16 @@ export default function AdminDashboard({ session }: { session: Session }) {
               <option value="Bachelor of Secondary Education - Science">Bachelor of Secondary Education - Science</option>
               <option value="Bachelor of Secondary Education - Social Studies">Bachelor of Secondary Education - Social Studies</option>
               <option value="Bachelor of Secondary Education - Filipino">Bachelor of Secondary Education - Filipino</option>
+              <option value="Master of Arts in Education - Educational Management">Master of Arts in Education - Educational Management (MAED-EM)</option>
+              <option value="Master of Arts in Education - Language Teaching">Master of Arts in Education - Language Teaching (MAED-LT)</option>
+              <option value="Master of Arts in Education - Mathematics">Master of Arts in Education - Mathematics (MAED-MATH)</option>
+              <option value="Master of Arts in Education - Guidance and Counseling">Master of Arts in Education - Guidance and Counseling (MAED-GC)</option>
+              <option value="Master of Arts in Education - Physical Education">Master of Arts in Education - Physical Education (MAED-PE)</option>
+              <option value="Master of Arts in Education - General Science">Master of Arts in Education - General Science (MAED-SCIENCE)</option>
+              <option value="Master of Arts in Education - Social Studies">Master of Arts in Education - Social Studies (MAED-SS)</option>
+              <option value="Master of Arts in Education - Early Childhood Education">Master of Arts in Education - Early Childhood Education (MAED-ECED)</option>
+              <option value="Master of Arts in Education - Special Education">Master of Arts in Education - Special Education (MAED-SPED)</option>
+              <option value="Master of Arts in Education - Administration and Supervision">Master of Arts in Education - Administration and Supervision (MAED-ADMIN)</option>
               <option value="BS Criminology">BS Criminology</option>
               <option value="BS Accountancy">BS Accountancy</option>
               <option value="BSBA Financial Management">BSBA Financial Management</option>

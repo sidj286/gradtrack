@@ -8,7 +8,7 @@ export interface MasterListRecord {
   course: string;
   batch_year: number;
   department: string;
-  gender?: string;
+  gender?: string | null;
   verified: boolean;
 }
 
@@ -52,6 +52,44 @@ export const DEPARTMENT_MAPPING: Record<string, string> = {
   'BSEd': 'CTE',
   'BS Social Work': 'PSY',
   'BSSW': 'PSY',
+  // Master of Arts in Education (MAED) Programs
+  'Master of Arts in Education': 'CTE',
+  'Master of Arts in Education - Educational Management': 'CTE',
+  'MAED - Educational Management': 'CTE',
+  'MAED-EM': 'CTE',
+  'MAED EM': 'CTE',
+  'Master of Arts in Education - Language Teaching': 'CTE',
+  'MAED-LT': 'CTE',
+  'MAED LT': 'CTE',
+  'Master of Arts in Education - Mathematics': 'CTE',
+  'MAED-MATH': 'CTE',
+  'MAED MATH': 'CTE',
+  'Master of Arts in Education - Guidance and Counseling': 'CTE',
+  'MAED-GC': 'CTE',
+  'MAED GC': 'CTE',
+  'Master of Arts in Education - Physical Education': 'CTE',
+  'MAED-PE': 'CTE',
+  'MAED PE': 'CTE',
+  'Master of Arts in Education - General Science': 'CTE',
+  'MAED-SCIENCE': 'CTE',
+  'MAED SCIENCE': 'CTE',
+  'Master of Arts in Education - Social Studies': 'CTE',
+  'MAED-SS': 'CTE',
+  'MAED SS': 'CTE',
+  'Master of Arts in Education - Early Childhood Education': 'CTE',
+  'MAED-ECED': 'CTE',
+  'MAED ECED': 'CTE',
+  'Master of Arts in Education - Special Education': 'CTE',
+  'MAED-SPED': 'CTE',
+  'MAED SPED': 'CTE',
+  'Master of Arts in Education - Administration and Supervision': 'CTE',
+  'MAED-ADMIN': 'CTE',
+  'MAED ADMIN': 'CTE',
+  'Master of Arts in Education - Filipino': 'CTE',
+  'MAED-FIL': 'CTE',
+  'Master of Arts in Education - English': 'CTE',
+  'MAED-ENG': 'CTE',
+  'MAED': 'CTE',
 };
 
 // ============================================================
@@ -110,6 +148,37 @@ export const extractCourseFromSheet = (rawData: any[][], sheetName: string = '')
   // matching on it alone is safe and works regardless of how the degree prefix
   // ("BS", "BSBA", "Bachelor of Science in", etc.) is written.
   const coursePatterns = [
+    // MAED (Master of Arts in Education) Programs & Majors
+    { pattern: /\bMAED[\s\-_/()]*(?:EM|ED\s*MAN|EDUCATIONAL\s*MANAGEMENT)\b/i, value: 'Master of Arts in Education - Educational Management' },
+    { pattern: /EDUCATIONAL\s*MANAGEMENT/i, value: 'Master of Arts in Education - Educational Management' },
+
+    { pattern: /\bMAED[\s\-_/()]*(?:LT|LANG(?:UAGE)?\s*TEACHING)\b/i, value: 'Master of Arts in Education - Language Teaching' },
+    { pattern: /LANGUAGE\s*TEACHING/i, value: 'Master of Arts in Education - Language Teaching' },
+
+    { pattern: /\bMAED[\s\-_/()]*(?:MATH|MATHEMATICS)\b/i, value: 'Master of Arts in Education - Mathematics' },
+
+    { pattern: /\bMAED[\s\-_/()]*(?:GC|GUIDANCE(?:\s*(?:AND|&)?\s*COUNSELING)?)\b/i, value: 'Master of Arts in Education - Guidance and Counseling' },
+    { pattern: /GUIDANCE\s*(?:AND|&)?\s*COUNSELING/i, value: 'Master of Arts in Education - Guidance and Counseling' },
+
+    { pattern: /\bMAED[\s\-_/()]*(?:PE|PHYSICAL\s*EDUCATION)\b/i, value: 'Master of Arts in Education - Physical Education' },
+
+    { pattern: /\bMAED[\s\-_/()]*(?:SCI|SCIENCE|GEN(?:ERAL)?\s*SCI(?:ENCE)?)\b/i, value: 'Master of Arts in Education - General Science' },
+
+    { pattern: /\bMAED[\s\-_/()]*(?:SS|SOCIAL\s*STUDIES)\b/i, value: 'Master of Arts in Education - Social Studies' },
+
+    { pattern: /\bMAED[\s\-_/()]*(?:ECED|EARLY\s*CHILDHOOD(?:\s*EDUCATION)?)\b/i, value: 'Master of Arts in Education - Early Childhood Education' },
+
+    { pattern: /\bMAED[\s\-_/()]*(?:SPED|SE|SPECIAL\s*EDUCATION)\b/i, value: 'Master of Arts in Education - Special Education' },
+
+    { pattern: /\bMAED[\s\-_/()]*(?:ADMIN(?:ISTRATION)?(?:\s*(?:AND|&)?\s*SUPERVISION)?)\b/i, value: 'Master of Arts in Education - Administration and Supervision' },
+
+    { pattern: /\bMAED[\s\-_/()]*(?:FIL|FILIPINO)\b/i, value: 'Master of Arts in Education - Filipino' },
+    { pattern: /\bMAED[\s\-_/()]*(?:ENG|ENGLISH)\b/i, value: 'Master of Arts in Education - English' },
+
+    { pattern: /\bMAED\b/i, value: 'Master of Arts in Education' },
+    { pattern: /MASTER\s*OF\s*ARTS\s*IN\s*EDUCATION/i, value: 'Master of Arts in Education' },
+
+    // Undergraduate Programs
     { pattern: /INFORMATION\s*TECHNOLOGY/i, value: 'BS Information Technology' },
     { pattern: /BSIT/i, value: 'BS Information Technology' },
     { pattern: /COMPUTER\s*SCIENCE/i, value: 'BS Computer Science' },
@@ -140,7 +209,7 @@ export const extractCourseFromSheet = (rawData: any[][], sheetName: string = '')
   for (const cp of coursePatterns) {
     if (cp.pattern.test(combinedTitle)) {
       extractedCourse = cp.value;
-      extractedDepartment = DEPARTMENT_MAPPING[extractedCourse] || '';
+      extractedDepartment = DEPARTMENT_MAPPING[extractedCourse] || DEPARTMENT_MAPPING[sheetName.trim()] || '';
       console.log(`✅ Extracted course: "${extractedCourse}"`);
       break;
     }
@@ -156,6 +225,17 @@ export const extractCourseFromSheet = (rawData: any[][], sheetName: string = '')
         break;
       }
     }
+  }
+
+  // Fallback for generic MAED / Master of Arts in Education if no specific pattern matched
+  if (!extractedCourse && (/\bMAED\b/i.test(combinedTitle) || /MASTER\s*OF\s*ARTS\s*IN\s*EDUCATION/i.test(combinedTitle))) {
+    extractedCourse = 'Master of Arts in Education';
+    extractedDepartment = 'CTE';
+  }
+
+  // Guarantee that ANY MAED sheet is assigned to CTE (College of Teacher Education)
+  if (!extractedDepartment && (/\bMAED\b/i.test(combinedTitle) || /Master of Arts in Education/i.test(combinedTitle) || /MAED/i.test(extractedCourse))) {
+    extractedDepartment = 'CTE';
   }
 
   if (!extractedCourse) {
@@ -498,12 +578,12 @@ export const transformData = (row: any, metadata: any = {}): any => {
   if (middleName && middleName.trim()) fullName += ' ' + middleName;
   result.full_name = fullName.trim() || studentId;
 
-  let gender = row.gender?.toString().trim() || '';
-  if (gender) {
-    const g = gender.toLowerCase();
-    if (g === 'male' || g === 'm') gender = 'Male';
-    else if (g === 'female' || g === 'f') gender = 'Female';
-    else gender = ''; // schema only allows Male/Female/null — don't send anything else
+  let gender: string | null = null;
+  if (row.gender) {
+    const g = row.gender.toString().trim().toLowerCase();
+    if (g === 'male' || g === 'm' || g === 'man') gender = 'Male';
+    else if (g === 'female' || g === 'f' || g === 'woman') gender = 'Female';
+    else gender = null; // database schema constraint requires NULL (not empty string "") if not Male or Female
   }
   result.gender = gender;
 
@@ -544,15 +624,21 @@ export const validateAndTransformData = (rawData: any[], metadata: any = {}): { 
 
       const validDepts = ['CCS', 'CTE', 'CCJE', 'CBE', 'PSY'];
       let dept = transformed.department?.toUpperCase().trim() || '';
-      if (dept && !validDepts.includes(dept)) {
-        const courseName = transformed.course.toString().trim();
+      const courseName = transformed.course.toString().trim();
+
+      if (!dept || !validDepts.includes(dept)) {
         for (const [key, value] of Object.entries(DEPARTMENT_MAPPING)) {
-          if (courseName.includes(key) || key.includes(courseName)) {
+          if (courseName.toLowerCase().includes(key.toLowerCase()) || key.toLowerCase().includes(courseName.toLowerCase())) {
             dept = value;
             break;
           }
         }
+        // Specific fallback for any MAED or Education degree -> CTE
+        if (!dept && /MAED|Master of Arts in Education|Education/i.test(courseName)) {
+          dept = 'CTE';
+        }
       }
+
       if (!dept || !validDepts.includes(dept)) {
         // Do NOT silently stamp this as 'CCS' — that hides a detection
         // failure behind a confident-looking (but wrong) label. Leave it
@@ -579,7 +665,7 @@ export const validateAndTransformData = (rawData: any[], metadata: any = {}): { 
         course: transformed.course.trim(),
         batch_year: batchYearValue,
         department: dept,
-        gender: transformed.gender || '',
+        gender: (transformed.gender === 'Male' || transformed.gender === 'Female') ? transformed.gender : null,
         verified: true,
       };
       if (!record.email.includes('@')) record.email = `${record.student_id}@crmc.edu.ph`;

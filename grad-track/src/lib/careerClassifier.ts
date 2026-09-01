@@ -27,7 +27,7 @@ const CCS_PROGRAMS = [
   'ComSci'
 ];
 
-// CTE Programs (Teacher Education)
+// CTE Programs (Teacher Education & Graduate Studies)
 const CTE_PROGRAMS = [
   'Bachelor of Elementary Education',
   'Bachelor of Elementary Education (BEED)',
@@ -45,7 +45,32 @@ const CTE_PROGRAMS = [
   'BSED Filipino',
   'Secondary Education',
   'Elementary Education',
-  'Education'
+  'Education',
+  'Master of Arts in Education',
+  'Master of Arts in Education - Educational Management',
+  'Master of Arts in Education - Language Teaching',
+  'Master of Arts in Education - Mathematics',
+  'Master of Arts in Education - Guidance and Counseling',
+  'Master of Arts in Education - Physical Education',
+  'Master of Arts in Education - General Science',
+  'Master of Arts in Education - Social Studies',
+  'Master of Arts in Education - Early Childhood Education',
+  'Master of Arts in Education - Special Education',
+  'Master of Arts in Education - Administration and Supervision',
+  'Master of Arts in Education - Filipino',
+  'Master of Arts in Education - English',
+  'MAED',
+  'MAED-EM',
+  'MAED EM',
+  'MAED-LT',
+  'MAED-MATH',
+  'MAED-GC',
+  'MAED-PE',
+  'MAED-SCIENCE',
+  'MAED-SS',
+  'MAED-ECED',
+  'MAED-SPED',
+  'MAED-ADMIN'
 ];
 
 // CCJE Programs (Criminal Justice)
