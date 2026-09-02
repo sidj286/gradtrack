@@ -724,14 +724,50 @@ export default function ImportMasterListModal({
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Course</label>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Course / Program & Major</label>
                   <input
                     type="text"
+                    list="course-major-suggestions"
                     value={currentMetadata.course}
                     onChange={(e) => updateOverride(selectedSheetIndex, { course: e.target.value })}
-                    placeholder="e.g. BS Information Technology"
+                    placeholder="e.g. Bachelor of Secondary Education - English"
                     className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
                   />
+                  <datalist id="course-major-suggestions">
+                    <option value="BS Information Technology" />
+                    <option value="BS Computer Science" />
+                    <option value="Bachelor of Elementary Education" />
+                    <option value="Bachelor of Secondary Education - English" />
+                    <option value="Bachelor of Secondary Education - Math" />
+                    <option value="Bachelor of Secondary Education - Science" />
+                    <option value="Bachelor of Secondary Education - Social Studies" />
+                    <option value="Bachelor of Secondary Education - Filipino" />
+                    <option value="Bachelor of Secondary Education - MAPEH" />
+                    <option value="Bachelor of Secondary Education - Values Education" />
+                    <option value="Bachelor of Secondary Education - TLE" />
+                    <option value="Master of Arts in Education - Educational Management" />
+                    <option value="Master of Arts in Education - Language Teaching" />
+                    <option value="Master of Arts in Education - Mathematics" />
+                    <option value="Master of Arts in Education - Guidance and Counseling" />
+                    <option value="Master of Arts in Education - Physical Education" />
+                    <option value="Master of Arts in Education - General Science" />
+                    <option value="Master of Arts in Education - Social Studies" />
+                    <option value="Master of Arts in Education - Early Childhood Education" />
+                    <option value="Master of Arts in Education - Special Education" />
+                    <option value="Master of Arts in Education - Administration and Supervision" />
+                    <option value="Master of Arts in Education - Filipino" />
+                    <option value="Master of Arts in Education - English" />
+                    <option value="BS Criminology" />
+                    <option value="BS Accountancy" />
+                    <option value="BSBA Financial Management" />
+                    <option value="BSBA Marketing Management" />
+                    <option value="BSBA Human Resource Management" />
+                    <option value="BSBA Operations Management" />
+                    <option value="BS Hospitality Management" />
+                    <option value="BS Tourism Management" />
+                    <option value="BS Psychology" />
+                    <option value="BS Social Work" />
+                  </datalist>
                 </div>
 
                 <div>

@@ -3947,12 +3947,16 @@ export default function AdminDashboard({ session }: { session: Session }) {
             >
               <option value="">Select Program</option>
               <option value="BS Information Technology">BS Information Technology</option>
+              <option value="BS Computer Science">BS Computer Science</option>
               <option value="Bachelor of Elementary Education">Bachelor of Elementary Education (BEED)</option>
               <option value="Bachelor of Secondary Education - English">Bachelor of Secondary Education - English</option>
               <option value="Bachelor of Secondary Education - Math">Bachelor of Secondary Education - Math</option>
               <option value="Bachelor of Secondary Education - Science">Bachelor of Secondary Education - Science</option>
               <option value="Bachelor of Secondary Education - Social Studies">Bachelor of Secondary Education - Social Studies</option>
               <option value="Bachelor of Secondary Education - Filipino">Bachelor of Secondary Education - Filipino</option>
+              <option value="Bachelor of Secondary Education - MAPEH">Bachelor of Secondary Education - MAPEH</option>
+              <option value="Bachelor of Secondary Education - Values Education">Bachelor of Secondary Education - Values Education</option>
+              <option value="Bachelor of Secondary Education - TLE">Bachelor of Secondary Education - TLE</option>
               <option value="Master of Arts in Education - Educational Management">Master of Arts in Education - Educational Management (MAED-EM)</option>
               <option value="Master of Arts in Education - Language Teaching">Master of Arts in Education - Language Teaching (MAED-LT)</option>
               <option value="Master of Arts in Education - Mathematics">Master of Arts in Education - Mathematics (MAED-MATH)</option>
@@ -3966,9 +3970,13 @@ export default function AdminDashboard({ session }: { session: Session }) {
               <option value="BS Criminology">BS Criminology</option>
               <option value="BS Accountancy">BS Accountancy</option>
               <option value="BSBA Financial Management">BSBA Financial Management</option>
+              <option value="BSBA Marketing Management">BSBA Marketing Management</option>
+              <option value="BSBA Human Resource Management">BSBA Human Resource Management</option>
+              <option value="BSBA Operations Management">BSBA Operations Management</option>
               <option value="BS Hospitality Management">BS Hospitality Management (BSHM)</option>
               <option value="BS Tourism Management">BS Tourism Management (BSTM)</option>
               <option value="BS Psychology">BS Psychology</option>
+              <option value="BS Social Work">BS Social Work</option>
             </select>
           </div>
 

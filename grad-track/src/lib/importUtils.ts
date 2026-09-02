@@ -35,6 +35,12 @@ export const DEPARTMENT_MAPPING: Record<string, string> = {
   'BSA': 'CBE',
   'BSBA Financial Management': 'CBE',
   'BSBA-FM': 'CBE',
+  'BSBA Marketing Management': 'CBE',
+  'BSBA-MM': 'CBE',
+  'BSBA Human Resource Management': 'CBE',
+  'BSBA-HRM': 'CBE',
+  'BSBA Operations Management': 'CBE',
+  'BSBA-OM': 'CBE',
   'BS Hospitality Management': 'CBE',
   'BSHM': 'CBE',
   'BS Tourism Management': 'CBE',
@@ -50,6 +56,23 @@ export const DEPARTMENT_MAPPING: Record<string, string> = {
   'Bachelor of Secondary Education': 'CTE',
   'BSED': 'CTE',
   'BSEd': 'CTE',
+  // BSED Majors
+  'Bachelor of Secondary Education - English': 'CTE',
+  'Bachelor of Secondary Education - Math': 'CTE',
+  'Bachelor of Secondary Education - Science': 'CTE',
+  'Bachelor of Secondary Education - Social Studies': 'CTE',
+  'Bachelor of Secondary Education - Filipino': 'CTE',
+  'Bachelor of Secondary Education - MAPEH': 'CTE',
+  'Bachelor of Secondary Education - Values Education': 'CTE',
+  'Bachelor of Secondary Education - TLE': 'CTE',
+  'BSED - English': 'CTE',
+  'BSED - Math': 'CTE',
+  'BSED - Science': 'CTE',
+  'BSED - Social Studies': 'CTE',
+  'BSED - Filipino': 'CTE',
+  'BSED - MAPEH': 'CTE',
+  'BSED - Values Education': 'CTE',
+  'BSED - TLE': 'CTE',
   'BS Social Work': 'PSY',
   'BSSW': 'PSY',
   // Master of Arts in Education (MAED) Programs
@@ -93,25 +116,73 @@ export const DEPARTMENT_MAPPING: Record<string, string> = {
 };
 
 // ============================================================
+// FORMAT COURSE WITH MAJOR SPECIFICATION
+// ============================================================
+
+export const formatCourseWithMajor = (baseCourse: string, majorStr: string): string => {
+  if (!majorStr || !majorStr.trim()) return baseCourse;
+  const m = majorStr.trim();
+  const base = baseCourse.trim();
+
+  // If baseCourse already has a major specified (contains "-"), return base
+  if (base.includes(' - ') || base.includes(' Major')) return base;
+
+  const mUpper = m.toUpperCase();
+  const baseUpper = base.toUpperCase();
+
+  if (baseUpper.includes('SECONDARY EDUCATION') || baseUpper === 'BSED' || baseUpper === 'BSED') {
+    if (/ENG|ENGLISH/i.test(mUpper)) return 'Bachelor of Secondary Education - English';
+    if (/MATH/i.test(mUpper)) return 'Bachelor of Secondary Education - Math';
+    if (/SCI|SCIENCE/i.test(mUpper)) return 'Bachelor of Secondary Education - Science';
+    if (/SS|SOCIAL/i.test(mUpper)) return 'Bachelor of Secondary Education - Social Studies';
+    if (/FIL|FILIPINO/i.test(mUpper)) return 'Bachelor of Secondary Education - Filipino';
+    if (/MAPEH/i.test(mUpper)) return 'Bachelor of Secondary Education - MAPEH';
+    if (/VE|VALUES/i.test(mUpper)) return 'Bachelor of Secondary Education - Values Education';
+    if (/TLE|TECH/i.test(mUpper)) return 'Bachelor of Secondary Education - TLE';
+  }
+
+  if (baseUpper.includes('ARTS IN EDUCATION') || baseUpper === 'MAED') {
+    if (/EM|ED.*MAN|EDUCATIONAL/i.test(mUpper)) return 'Master of Arts in Education - Educational Management';
+    if (/LT|LANG/i.test(mUpper)) return 'Master of Arts in Education - Language Teaching';
+    if (/MATH/i.test(mUpper)) return 'Master of Arts in Education - Mathematics';
+    if (/GC|GUIDANCE/i.test(mUpper)) return 'Master of Arts in Education - Guidance and Counseling';
+    if (/PE|PHYSICAL/i.test(mUpper)) return 'Master of Arts in Education - Physical Education';
+    if (/SCI|SCIENCE/i.test(mUpper)) return 'Master of Arts in Education - General Science';
+    if (/SS|SOCIAL/i.test(mUpper)) return 'Master of Arts in Education - Social Studies';
+    if (/ECED|EARLY/i.test(mUpper)) return 'Master of Arts in Education - Early Childhood Education';
+    if (/SPED|SPECIAL/i.test(mUpper)) return 'Master of Arts in Education - Special Education';
+    if (/ADMIN/i.test(mUpper)) return 'Master of Arts in Education - Administration and Supervision';
+    if (/FIL/i.test(mUpper)) return 'Master of Arts in Education - Filipino';
+    if (/ENG/i.test(mUpper)) return 'Master of Arts in Education - English';
+  }
+
+  if (baseUpper.includes('BSBA') || baseUpper.includes('BUSINESS ADMINISTRATION')) {
+    if (/FINANCIAL|FM/i.test(mUpper)) return 'BSBA Financial Management';
+    if (/MARKETING|MM/i.test(mUpper)) return 'BSBA Marketing Management';
+    if (/HUMAN|HR/i.test(mUpper)) return 'BSBA Human Resource Management';
+    if (/OPERATIONS|OM/i.test(mUpper)) return 'BSBA Operations Management';
+  }
+
+  return `${base} - ${m}`;
+};
+
+// ============================================================
 // EXTRACT COURSE AND BATCH YEAR FROM THE TITLE BLOCK (~A10)
 // ============================================================
 
 // Some registrar sheets are named/titled after just a MAJOR (e.g. a BSED
 // sub-list titled only "FILIPINO", "MATH", "SCIENCE", "SOCIAL STUDIES")
 // without ever repeating "BSED" or "Secondary Education" in the title block.
-// These generic subject words are too ambiguous to put in the main
-// coursePatterns list (checking them first would wrongly swallow unrelated
-// sheets), so they're only consulted as a LAST-RESORT fallback, after every
-// specific pattern above has already failed to match.
+// These generic subject words are only consulted as a LAST-RESORT fallback.
 const BSED_MAJOR_FALLBACK: { pattern: RegExp; value: string }[] = [
-  { pattern: /\bFILIPINO\b/i, value: 'Bachelor of Secondary Education' },
-  { pattern: /\bMATH(?:EMATICS)?\b/i, value: 'Bachelor of Secondary Education' },
-  { pattern: /\bSCIENCE\b/i, value: 'Bachelor of Secondary Education' },
-  { pattern: /\bSOCIAL\s*STUDIES\b/i, value: 'Bachelor of Secondary Education' },
-  { pattern: /\bVALUES\s*EDUCATION\b/i, value: 'Bachelor of Secondary Education' },
-  { pattern: /\bMAPEH\b/i, value: 'Bachelor of Secondary Education' },
-  { pattern: /\bT\.?\s*L\.?\s*E\.?\b/i, value: 'Bachelor of Secondary Education' },
-  { pattern: /\bENGLISH\b/i, value: 'Bachelor of Secondary Education' },
+  { pattern: /\bFILIPINO\b/i, value: 'Bachelor of Secondary Education - Filipino' },
+  { pattern: /\bMATH(?:EMATICS)?\b/i, value: 'Bachelor of Secondary Education - Math' },
+  { pattern: /\bSCIENCE\b/i, value: 'Bachelor of Secondary Education - Science' },
+  { pattern: /\bSOCIAL\s*STUDIES\b/i, value: 'Bachelor of Secondary Education - Social Studies' },
+  { pattern: /\bVALUES\s*EDUCATION\b/i, value: 'Bachelor of Secondary Education - Values Education' },
+  { pattern: /\bMAPEH\b/i, value: 'Bachelor of Secondary Education - MAPEH' },
+  { pattern: /\bT\.?\s*L\.?\s*E\.?\b/i, value: 'Bachelor of Secondary Education - TLE' },
+  { pattern: /\bENGLISH\b/i, value: 'Bachelor of Secondary Education - English' },
 ];
 
 export const extractCourseFromSheet = (rawData: any[][], sheetName: string = ''): { course: string; batchYear: string; department: string } => {
@@ -119,12 +190,6 @@ export const extractCourseFromSheet = (rawData: any[][], sheetName: string = '')
   let extractedBatchYear = '';
   let extractedDepartment = '';
 
-  // The title block is usually a merged cell somewhere in the first ~15 rows
-  // (e.g. "Second Semester School Year 2025-26-2\nBS-TOURISM MANAGEMENT\nENROLLMENT LIST").
-  // Scan every cell in the first 15 rows rather than assuming it's always A10,
-  // since merged-cell position can shift slightly between sheets.
-  // The sheet's TAB NAME is included too — it's often the clearest signal
-  // (e.g. sheets literally named "BSCRIM", "BSIT (2)", "FILIPINO").
   const titleCandidates: string[] = [];
   if (sheetName) titleCandidates.push(sheetName);
   for (let i = 0; i < Math.min(rawData.length, 15); i++) {
@@ -138,15 +203,6 @@ export const extractCourseFromSheet = (rawData: any[][], sheetName: string = '')
   const combinedTitle = titleCandidates.join(' | ');
   console.log(`📌 Title block candidates: "${combinedTitle}"`);
 
-  // NOTE: patterns match the SUBJECT phrase itself (e.g. "INFORMATION TECHNOLOGY"),
-  // not "BS + subject". Real registrar titles are often spelled out in full as
-  // "BACHELOR OF SCIENCE IN INFORMATION TECHNOLOGY" rather than "BS INFORMATION
-  // TECHNOLOGY" — requiring a literal "BS" directly before the subject caused
-  // every course EXCEPT the ones whose pattern already started with "Bachelor of..."
-  // (Elementary/Secondary Education, Tourism Management) to silently fail to match.
-  // Each subject phrase below is unique within this school's course list, so
-  // matching on it alone is safe and works regardless of how the degree prefix
-  // ("BS", "BSBA", "Bachelor of Science in", etc.) is written.
   const coursePatterns = [
     // MAED (Master of Arts in Education) Programs & Majors
     { pattern: /\bMAED[\s\-_/()]*(?:EM|ED\s*MAN|EDUCATIONAL\s*MANAGEMENT)\b/i, value: 'Master of Arts in Education - Educational Management' },
@@ -178,15 +234,43 @@ export const extractCourseFromSheet = (rawData: any[][], sheetName: string = '')
     { pattern: /\bMAED\b/i, value: 'Master of Arts in Education' },
     { pattern: /MASTER\s*OF\s*ARTS\s*IN\s*EDUCATION/i, value: 'Master of Arts in Education' },
 
-    // Undergraduate Programs
+    // BSED Programs with Specific Majors
+    { pattern: /\bBSED[\s\-_/()]*(?:ENG|ENGLISH)\b/i, value: 'Bachelor of Secondary Education - English' },
+    { pattern: /\bSECONDARY\s*EDUCATION[\s\-_/()]*(?:ENG|ENGLISH)\b/i, value: 'Bachelor of Secondary Education - English' },
+
+    { pattern: /\bBSED[\s\-_/()]*(?:MATH|MATHEMATICS)\b/i, value: 'Bachelor of Secondary Education - Math' },
+    { pattern: /\bSECONDARY\s*EDUCATION[\s\-_/()]*(?:MATH|MATHEMATICS)\b/i, value: 'Bachelor of Secondary Education - Math' },
+
+    { pattern: /\bBSED[\s\-_/()]*(?:SCI|SCIENCE|GEN(?:ERAL)?\s*SCI(?:ENCE)?)\b/i, value: 'Bachelor of Secondary Education - Science' },
+    { pattern: /\bSECONDARY\s*EDUCATION[\s\-_/()]*(?:SCI|SCIENCE|GEN(?:ERAL)?\s*SCI(?:ENCE)?)\b/i, value: 'Bachelor of Secondary Education - Science' },
+
+    { pattern: /\bBSED[\s\-_/()]*(?:SS|SOCIAL\s*STUDIES)\b/i, value: 'Bachelor of Secondary Education - Social Studies' },
+    { pattern: /\bSECONDARY\s*EDUCATION[\s\-_/()]*(?:SS|SOCIAL\s*STUDIES)\b/i, value: 'Bachelor of Secondary Education - Social Studies' },
+
+    { pattern: /\bBSED[\s\-_/()]*(?:FIL|FILIPINO)\b/i, value: 'Bachelor of Secondary Education - Filipino' },
+    { pattern: /\bSECONDARY\s*EDUCATION[\s\-_/()]*(?:FIL|FILIPINO)\b/i, value: 'Bachelor of Secondary Education - Filipino' },
+
+    { pattern: /\bBSED[\s\-_/()]*(?:MAPEH|PE|PHYSICAL)\b/i, value: 'Bachelor of Secondary Education - MAPEH' },
+    { pattern: /\bBSED[\s\-_/()]*(?:VE|VALUES(?:\s*ED(?:UCATION)?)?)\b/i, value: 'Bachelor of Secondary Education - Values Education' },
+    { pattern: /\bBSED[\s\-_/()]*(?:TLE|TECH(?:NOLOGY)?)\b/i, value: 'Bachelor of Secondary Education - TLE' },
+
+    // BSBA Programs with Specific Majors
+    { pattern: /FINANCIAL\s*MANAGEMENT/i, value: 'BSBA Financial Management' },
+    { pattern: /BSBA[\s-]*FM/i, value: 'BSBA Financial Management' },
+    { pattern: /MARKETING\s*MANAGEMENT/i, value: 'BSBA Marketing Management' },
+    { pattern: /BSBA[\s-]*MM/i, value: 'BSBA Marketing Management' },
+    { pattern: /HUMAN\s*RESOURCE(?:\s*MANAGEMENT)?/i, value: 'BSBA Human Resource Management' },
+    { pattern: /BSBA[\s-]*HRM?/i, value: 'BSBA Human Resource Management' },
+    { pattern: /OPERATIONS\s*MANAGEMENT/i, value: 'BSBA Operations Management' },
+    { pattern: /BSBA[\s-]*OM/i, value: 'BSBA Operations Management' },
+
+    // Generic Undergraduate Programs
     { pattern: /INFORMATION\s*TECHNOLOGY/i, value: 'BS Information Technology' },
     { pattern: /BSIT/i, value: 'BS Information Technology' },
     { pattern: /COMPUTER\s*SCIENCE/i, value: 'BS Computer Science' },
     { pattern: /BSCS/i, value: 'BS Computer Science' },
     { pattern: /ACCOUNTANCY/i, value: 'BS Accountancy' },
     { pattern: /BSA\b/i, value: 'BS Accountancy' },
-    { pattern: /FINANCIAL\s*MANAGEMENT/i, value: 'BSBA Financial Management' },
-    { pattern: /BSBA[\s-]*FM/i, value: 'BSBA Financial Management' },
     { pattern: /HOSPITALITY\s*MANAGEMENT/i, value: 'BS Hospitality Management' },
     { pattern: /BSHM/i, value: 'BS Hospitality Management' },
     { pattern: /TOURISM\s*MANAGEMENT/i, value: 'BS Tourism Management' },
@@ -200,7 +284,7 @@ export const extractCourseFromSheet = (rawData: any[][], sheetName: string = '')
     { pattern: /BEED/i, value: 'Bachelor of Elementary Education' },
     { pattern: /BEEd/i, value: 'Bachelor of Elementary Education' },
     { pattern: /SECONDARY\s*EDUCATION/i, value: 'Bachelor of Secondary Education' },
-    { pattern: /BSED(?:-\w+)?/i, value: 'Bachelor of Secondary Education' },
+    { pattern: /BSED/i, value: 'Bachelor of Secondary Education' },
     { pattern: /BSEd/i, value: 'Bachelor of Secondary Education' },
     { pattern: /SOCIAL\s*WORK/i, value: 'BS Social Work' },
     { pattern: /BSSW/i, value: 'BS Social Work' },
@@ -282,6 +366,7 @@ export interface DetectedColumns {
   first_name: number;
   middle_name: number;
   gender: number;
+  major?: number;
 }
 
 export const detectColumns = (headers: string[]): DetectedColumns => {
@@ -308,7 +393,11 @@ export const detectColumns = (headers: string[]): DetectedColumns => {
   if (gender === -1) gender = findIncludes('gender');
   if (gender === -1) gender = findIncludes('sex');
 
-  return { student_id, surname, first_name, middle_name, gender };
+  let major = findExact(['major', 'specialization', 'major program', 'program major', 'concentration', 'track', 'course major']);
+  if (major === -1) major = findIncludes('major', 'name');
+  if (major === -1) major = findIncludes('specialization');
+
+  return { student_id, surname, first_name, middle_name, gender, major: major !== -1 ? major : undefined };
 };
 
 const REQUIRED_DETECTED = ['student_id', 'surname', 'first_name'] as const;
@@ -451,6 +540,7 @@ export const parseExcelAllSheets = (file: File): Promise<SheetData[]> => {
             const firstName = firstNonEmptyInRange(row, columnRanges.first_name);
             const middleName = firstNonEmptyInRange(row, columnRanges.middle_name);
             const gender = firstNonEmptyInRange(row, columnRanges.gender);
+            const major = columnRanges.major ? firstNonEmptyInRange(row, columnRanges.major) : '';
 
             // 1) Skip plain sequence numbers (1–999) that sometimes leak into a column
             const isSeq = /^\d+$/.test(studentId) && parseInt(studentId, 10) < 1000;
@@ -480,6 +570,7 @@ export const parseExcelAllSheets = (file: File): Promise<SheetData[]> => {
               first_name: firstName,
               middle_name: middleName,
               gender,
+              major,
             });
           }
 
@@ -587,7 +678,9 @@ export const transformData = (row: any, metadata: any = {}): any => {
   }
   result.gender = gender;
 
-  result.course = metadata.course || 'Unknown';
+  let rawCourse = metadata.course || 'Unknown';
+  let rowMajor = row.major?.toString().trim() || '';
+  result.course = rowMajor ? formatCourseWithMajor(rawCourse, rowMajor) : rawCourse;
   result.batch_year = metadata.batchYear ? parseInt(metadata.batchYear) : new Date().getFullYear();
   // IMPORTANT: no silent default here. If the course/department couldn't be
   // detected from the sheet, leave department blank rather than guessing
