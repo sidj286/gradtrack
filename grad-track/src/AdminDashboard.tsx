@@ -18,6 +18,7 @@ import {
 } from './lib/notificationUtils';
 // Add this at the top with other imports (around line 1-20)
 import PredictionDashboard from './PredictionDashboard';
+import { classifyCareerAlignmentSync } from './lib/careerClassifier';
 
 // ==================== TYPES ====================
 interface AlumniProfile {
@@ -678,7 +679,37 @@ export default function AdminDashboard({ session }: { session: Session }) {
               .getPublicUrl(alum.avatar_url);
             avatarUrl = publicUrlData.publicUrl;
           }
-          return { ...alum, avatar_url: avatarUrl };
+
+          let alignmentStatus = alum.career_alignment_status;
+          let confidenceScore = alum.ai_confidence_score;
+
+          // Auto-classify employed alumni with missing or 'Pending' alignment
+          if ((!alignmentStatus || alignmentStatus === 'Pending') && alum.job_title && alum.job_title.trim() !== '') {
+            const syncResult = classifyCareerAlignmentSync(alum.course || '', alum.job_title);
+            if (syncResult && syncResult.alignment_status !== 'Pending') {
+              alignmentStatus = syncResult.alignment_status;
+              confidenceScore = syncResult.confidence_score;
+
+              // Fire background database update to persist in Supabase
+              supabase
+                .from('alumni_profiles')
+                .update({
+                  career_alignment_status: syncResult.alignment_status,
+                  ai_confidence_score: syncResult.confidence_score
+                })
+                .eq('id', alum.id)
+                .then(({ error }) => {
+                  if (error) console.warn('Auto-alignment update failed for alumni:', alum.id, error);
+                });
+            }
+          }
+
+          return {
+            ...alum,
+            avatar_url: avatarUrl,
+            career_alignment_status: alignmentStatus,
+            ai_confidence_score: confidenceScore
+          };
         }));
 
         setAlumni(processedAlumni);

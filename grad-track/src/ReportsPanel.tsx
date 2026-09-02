@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from './lib/supabase';
 import { getSpecializationFromJobTitle } from './lib/jobTitleMapper';
+import { classifyCareerAlignmentSync } from './lib/careerClassifier';
 import {
   BarChart,
   Bar,
@@ -176,7 +177,19 @@ export default function ReportsPanel() {
   // ============================================================
   // DATA PROCESSING - ALWAYS PROCESSES FULL DATASET
   // ============================================================
-  const processAnalyticsData = (alumni: AlumniProfile[]): AnalyticsData => {
+  const processAnalyticsData = (alumniInput: AlumniProfile[]): AnalyticsData => {
+    // Auto-heal alignment status for report calculations
+    const alumni = alumniInput.map(a => {
+      let status = a.career_alignment_status;
+      if ((!status || status === 'Pending') && a.job_title && a.job_title.trim() !== '') {
+        const syncResult = classifyCareerAlignmentSync(a.course || '', a.job_title);
+        if (syncResult && syncResult.alignment_status !== 'Pending') {
+          status = syncResult.alignment_status;
+        }
+      }
+      return { ...a, career_alignment_status: status };
+    });
+
     const total = alumni.length;
     const employed = alumni.filter(a => a.employment_status === 'Employed').length;
     const unemployed = alumni.filter(a => a.employment_status === 'Unemployed').length;

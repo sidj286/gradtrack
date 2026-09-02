@@ -2,6 +2,7 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import type { PredictionInsightRequest } from './lib/gemini';
 import { getPredictionInsights } from './lib/gemini';
+import { classifyCareerAlignmentSync } from './lib/careerClassifier';
 
 interface PredictionDashboardProps {
   alumni: any[];
@@ -94,7 +95,11 @@ function normalizeStatus(value: any): string {
 
 const isEmployed = (a: any): boolean => normalizeStatus(a?.employment_status) === 'employed';
 const isInField = (a: any): boolean => {
-  const s = normalizeStatus(a?.career_alignment_status);
+  let s = normalizeStatus(a?.career_alignment_status);
+  if ((!s || s === 'pending') && a?.job_title && a.job_title.trim() !== '') {
+    const syncResult = classifyCareerAlignmentSync(a?.course || '', a.job_title);
+    s = normalizeStatus(syncResult.alignment_status);
+  }
   return s === 'in-field' || s === 'in field' || s === 'infield';
 };
 

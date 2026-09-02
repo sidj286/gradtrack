@@ -227,13 +227,12 @@ const UNIVERSAL_OUT_OF_FIELD_KEYWORDS = [
 ];
 
 // ============================================================
-// DEPARTMENT DETECTOR FROM COURSE / DEGREE TITLE
+// DEPARTMENT DETECTOR FROM COURSE / DEGREE TITLE OR JOB TITLE
 // ============================================================
-export function detectDepartment(course: string): string | null {
-  if (!course || typeof course !== 'string') return null;
-
-  const cTrimmed = course.trim();
+export function detectDepartment(course: string, jobTitle?: string): string | null {
+  const cTrimmed = (course || '').trim();
   const cLower = cTrimmed.toLowerCase();
+  const jLower = (jobTitle || '').toLowerCase();
 
   // Exact match first
   if (CCS_PROGRAMS.some(p => p.toLowerCase() === cLower)) return 'CCS';
@@ -242,12 +241,21 @@ export function detectDepartment(course: string): string | null {
   if (CBE_PROGRAMS.some(p => p.toLowerCase() === cLower)) return 'CBE';
   if (PSY_PROGRAMS.some(p => p.toLowerCase() === cLower)) return 'PSY';
 
-  // Substring match
-  if (/\b(it|bsit|bs cs|computer|software|tech|information technology)\b/i.test(cLower)) return 'CCS';
-  if (/\b(education|beed|bsed|maed|teacher|teaching|elementary|secondary)\b/i.test(cLower)) return 'CTE';
-  if (/\b(criminology|criminal|crim|bscrim|police)\b/i.test(cLower)) return 'CCJE';
-  if (/\b(business|accountancy|bsba|bshm|bstm|management|hospitality|tourism|accounting|hotel|restaurant|finance|marketing)\b/i.test(cLower)) return 'CBE';
-  if (/\b(psychology|psych|social work)\b/i.test(cLower)) return 'PSY';
+  // Substring & Pattern Match on Course Name
+  if (/\b(it|bsit|bs cs|bscs|cs|computer|software|tech|information technology|info tech|comsci|data science)\b/i.test(cLower)) return 'CCS';
+  if (/\b(education|beed|bsed|maed|teacher|teaching|elementary|secondary|pedagogy|educ|instruction)\b/i.test(cLower)) return 'CTE';
+  if (/\b(criminology|criminal|crim|bscrim|police|law enforcement|justice)\b/i.test(cLower)) return 'CCJE';
+  if (/\b(business|accountancy|bsba|bshm|bstm|management|hospitality|tourism|accounting|hotel|restaurant|finance|marketing|commerce|entrepreneur)\b/i.test(cLower)) return 'CBE';
+  if (/\b(psychology|psych|social work|bssw)\b/i.test(cLower)) return 'PSY';
+
+  // Fallback: Infer department from Job Title if course text is ambiguous
+  if (jLower) {
+    if (/\b(software|developer|programmer|web dev|it support|sysadmin|qa tester|database|cybersecurity)\b/i.test(jLower)) return 'CCS';
+    if (/\b(teacher|instructor|professor|tutor|deped|school head|principal|esl)\b/i.test(jLower)) return 'CTE';
+    if (/\b(police|patrolman|criminologist|investigator|nbi|bjmp|bfp|security officer)\b/i.test(jLower)) return 'CCJE';
+    if (/\b(accountant|auditor|bank teller|finance|marketing|hr manager|recruiter|hotel|front desk|chef)\b/i.test(jLower)) return 'CBE';
+    if (/\b(psychologist|psychometrician|counselor|social worker|therapist)\b/i.test(jLower)) return 'PSY';
+  }
 
   return null;
 }
@@ -256,11 +264,19 @@ export function detectDepartment(course: string): string | null {
 // FAST HIGH-CONFIDENCE KEYWORD CLASSIFIER
 // ============================================================
 function fastKeywordClassify(course: string, jobTitle: string): CareerAlignmentResult | null {
-  const dept = detectDepartment(course);
-  if (!dept) return null;
-
+  const dept = detectDepartment(course, jobTitle);
   const jobLower = jobTitle.toLowerCase().trim();
-  const cLower = course.toLowerCase().trim();
+  const cLower = (course || '').toLowerCase().trim();
+
+  if (!jobLower || jobLower === 'none' || jobLower === 'n/a' || jobLower === 'unemployed') {
+    return {
+      alignment_status: 'Pending',
+      confidence_score: 0,
+      reasoning: 'No active job title available',
+      matched_skills: [],
+      source: 'keyword'
+    };
+  }
 
   // Check universal out-of-field keywords first
   const isUniversalOut = UNIVERSAL_OUT_OF_FIELD_KEYWORDS.some(kw => jobLower.includes(kw));
@@ -268,14 +284,15 @@ function fastKeywordClassify(course: string, jobTitle: string): CareerAlignmentR
     return {
       alignment_status: 'Out-of-Field',
       confidence_score: 0.92,
-      reasoning: `Job title "${jobTitle}" represents non-degree general labor unrelated to ${course}`,
+      reasoning: `Job title "${jobTitle}" represents non-degree general labor unrelated to ${course || 'degree'}`,
       matched_skills: [],
       source: 'keyword'
     };
   }
 
   // Department-specific in-field keyword match
-  const deptKeywords = IN_FIELD_KEYWORDS[dept] || [];
+  const deptKey = dept || 'CBE'; // Fallback to general business/service department if unspecified
+  const deptKeywords = IN_FIELD_KEYWORDS[deptKey] || [];
   const matchedKeywords = deptKeywords.filter(kw => {
     const regex = new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
     return regex.test(jobLower) || jobLower.includes(kw);
@@ -292,19 +309,19 @@ function fastKeywordClassify(course: string, jobTitle: string): CareerAlignmentR
     }
   }
 
-    if (matchedKeywords.length > 0 || majorMatched) {
-      const confidence = Math.min(0.85 + (matchedKeywords.length * 0.04) + (majorMatched ? 0.08 : 0), 0.98);
-      return {
-        alignment_status: 'In-Field',
-        confidence_score: Math.round(confidence * 100) / 100,
-        reasoning: `Job title "${jobTitle}" directly matches ${dept} career field competencies (${matchedKeywords.slice(0, 3).join(', ')})`,
-        matched_skills: matchedKeywords.slice(0, 5),
-        source: 'keyword'
-      };
-    }
+  if (matchedKeywords.length > 0 || majorMatched) {
+    const confidence = Math.min(0.85 + (matchedKeywords.length * 0.04) + (majorMatched ? 0.08 : 0), 0.98);
+    return {
+      alignment_status: 'In-Field',
+      confidence_score: Math.round(confidence * 100) / 100,
+      reasoning: `Job title "${jobTitle}" directly matches ${deptKey} career field competencies (${matchedKeywords.slice(0, 3).join(', ')})`,
+      matched_skills: matchedKeywords.slice(0, 5),
+      source: 'keyword'
+    };
+  }
 
   // Check department-specific out-of-field matches
-  if (dept === 'CCS' && /\b(cashier|security guard|janitor|waiter|cook|sales associate|promoter)\b/i.test(jobLower)) {
+  if (dept === 'CCS' && /\b(cashier|security guard|janitor|waiter|cook|sales associate|promoter|driver)\b/i.test(jobLower)) {
     return {
       alignment_status: 'Out-of-Field',
       confidence_score: 0.90,
@@ -314,7 +331,7 @@ function fastKeywordClassify(course: string, jobTitle: string): CareerAlignmentR
     };
   }
 
-  if (dept === 'CTE' && /\b(call center agent|csr|bpo agent|cashier|security guard|waiter|driver)\b/i.test(jobLower)) {
+  if (dept === 'CTE' && /\b(call center agent|csr|bpo agent|cashier|security guard|waiter|driver|sales clerk)\b/i.test(jobLower)) {
     return {
       alignment_status: 'Out-of-Field',
       confidence_score: 0.88,
@@ -324,7 +341,7 @@ function fastKeywordClassify(course: string, jobTitle: string): CareerAlignmentR
     };
   }
 
-  if (dept === 'CCJE' && /\b(waiter|cook|bpo agent|software developer|accounting clerk)\b/i.test(jobLower)) {
+  if (dept === 'CCJE' && /\b(waiter|cook|bpo agent|software developer|accounting clerk|cashier)\b/i.test(jobLower)) {
     return {
       alignment_status: 'Out-of-Field',
       confidence_score: 0.85,
@@ -334,7 +351,66 @@ function fastKeywordClassify(course: string, jobTitle: string): CareerAlignmentR
     };
   }
 
-  return null;
+  // For General Employed Graduates with a valid job title, classify definitively (In-Field or Out-of-Field)
+  // For Business (CBE): Office, admin, sales, management, retail, service roles are In-Field
+  if (dept === 'CBE' && /\b(staff|clerk|associate|assistant|officer|supervisor|representative|agent|specialist)\b/i.test(jobLower)) {
+    return {
+      alignment_status: 'In-Field',
+      confidence_score: 0.78,
+      reasoning: `Job title "${jobTitle}" aligns with general business administration and corporate services`,
+      matched_skills: ['business administration', 'office operations'],
+      source: 'keyword'
+    };
+  }
+
+  // Default for employed graduates with non-matching specialized job titles
+  return {
+    alignment_status: 'Out-of-Field',
+    confidence_score: 0.75,
+    reasoning: `Job title "${jobTitle}" does not directly align with ${dept || 'degree'} specializations`,
+    matched_skills: [],
+    source: 'keyword'
+  };
+}
+
+// ============================================================
+// SYNCHRONOUS CLASSIFIER (FOR INSTANT UI & BATCH COMPUTATION)
+// ============================================================
+export function classifyCareerAlignmentSync(course: string, jobTitle: string): CareerAlignmentResult {
+  if (!jobTitle || jobTitle.trim() === '' || jobTitle.toLowerCase() === 'unemployed') {
+    return {
+      alignment_status: 'Pending',
+      confidence_score: 0,
+      reasoning: 'No job title provided',
+      matched_skills: [],
+      source: 'fallback'
+    };
+  }
+
+  const cleanCourse = (course || '').trim();
+  const cleanJob = jobTitle.trim();
+  const cacheKey = `${cleanCourse}|${cleanJob}`.toLowerCase();
+
+  if (classificationCache.has(cacheKey)) {
+    return { ...classificationCache.get(cacheKey)!, source: 'cache' };
+  }
+
+  const result = fastKeywordClassify(cleanCourse, cleanJob);
+  if (result) {
+    classificationCache.set(cacheKey, result);
+    return result;
+  }
+
+  const fallback: CareerAlignmentResult = {
+    alignment_status: 'Out-of-Field',
+    confidence_score: 0.70,
+    reasoning: `Job title "${cleanJob}" evaluated as non-aligned for ${cleanCourse || 'degree'}`,
+    matched_skills: [],
+    source: 'fallback'
+  };
+
+  classificationCache.set(cacheKey, fallback);
+  return fallback;
 }
 
 // ============================================================
@@ -401,7 +477,7 @@ export async function classifyCareerAlignment(
   _jobDescription?: string
 ): Promise<CareerAlignmentResult> {
   // 1. Sanitize & Validate Inputs
-  if (!jobTitle || jobTitle.trim() === '') {
+  if (!jobTitle || jobTitle.trim() === '' || jobTitle.toLowerCase() === 'unemployed') {
     return {
       alignment_status: 'Pending',
       confidence_score: 0,
@@ -411,17 +487,7 @@ export async function classifyCareerAlignment(
     };
   }
 
-  if (!course || course.trim() === '') {
-    return {
-      alignment_status: 'Pending',
-      confidence_score: 0,
-      reasoning: 'No degree or course information provided',
-      matched_skills: [],
-      source: 'fallback'
-    };
-  }
-
-  const cleanCourse = course.trim();
+  const cleanCourse = (course || '').trim();
   const cleanJob = jobTitle.trim();
   const cacheKey = `${cleanCourse}|${cleanJob}`.toLowerCase();
 
@@ -432,7 +498,7 @@ export async function classifyCareerAlignment(
 
   // 3. PRIORITY 1: Fast High-Confidence Keyword Matcher (Deterministic & Fast)
   const fastResult = fastKeywordClassify(cleanCourse, cleanJob);
-  if (fastResult && fastResult.confidence_score >= 0.80) {
+  if (fastResult && fastResult.alignment_status !== 'Pending') {
     classificationCache.set(cacheKey, fastResult);
     return fastResult;
   }
@@ -444,26 +510,10 @@ export async function classifyCareerAlignment(
     return geminiResult;
   }
 
-  // 5. PRIORITY 3: Fallback Keyword Match if Gemini fails or is rate limited
-  if (fastResult) {
-    classificationCache.set(cacheKey, fastResult);
-    return fastResult;
-  }
-
-  // 6. PRIORITY 4: Final Safe Fallback
-  const dept = detectDepartment(cleanCourse);
-  const fallbackResult: CareerAlignmentResult = {
-    alignment_status: dept ? 'Out-of-Field' : 'Pending',
-    confidence_score: 0.60,
-    reasoning: dept 
-      ? `Job title "${cleanJob}" does not show direct alignment with ${dept} degree competencies`
-      : `Cannot automatically classify "${cleanJob}" for ${cleanCourse}`,
-    matched_skills: [],
-    source: 'fallback'
-  };
-
-  classificationCache.set(cacheKey, fallbackResult);
-  return fallbackResult;
+  // 5. PRIORITY 3: Synchronous Fallback (Guarantees zero false pending for employed alumni)
+  const syncFallback = classifyCareerAlignmentSync(cleanCourse, cleanJob);
+  classificationCache.set(cacheKey, syncFallback);
+  return syncFallback;
 }
 
 // ============================================================
