@@ -1343,7 +1343,32 @@ export default function AdminDashboard({ session }: { session: Session }) {
     if (filterDepartment) filtered = filtered.filter(a => a.department === filterDepartment);
     if (filterCourse) filtered = filtered.filter(a => a.course === filterCourse);
     if (filterBatch) filtered = filtered.filter(a => a.batch_year === parseInt(filterBatch));
-    if (filterStatus) filtered = filtered.filter(a => a.employment_status === filterStatus);
+    if (filterStatus) {
+      const target = filterStatus.toLowerCase().trim();
+      filtered = filtered.filter(a => {
+        const emp = (a.employment_status || '').toLowerCase().trim();
+        
+        if (target === 'unemployed') {
+          return emp === 'unemployed' || emp === '' || !emp;
+        }
+        if (target === 'employed') {
+          return emp === 'employed' || emp === 'full time' || emp === 'full-time';
+        }
+        if (target === 'employed part time') {
+          return emp === 'employed part time' || emp === 'part time' || emp === 'part-time';
+        }
+        if (target === 'freelancer') {
+          return emp === 'freelancer' || emp === 'independent contractor' || emp === 'contractor';
+        }
+        if (target === 'self-employed') {
+          return emp === 'self-employed';
+        }
+        if (target === 'seasonal worker') {
+          return emp === 'seasonal worker';
+        }
+        return emp === target;
+      });
+    }
     if (alumniSearchTerm) {
       const searchLower = alumniSearchTerm.toLowerCase();
       filtered = filtered.filter(a =>
@@ -2121,10 +2146,10 @@ export default function AdminDashboard({ session }: { session: Session }) {
                   className="px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
                 >
                   <option value="">All Employment Status</option>
-                  <option value="Full Time">Full Time</option>
-                  <option value="Part Time">Part Time</option>
+                  <option value="Employed">Full Time</option>
+                  <option value="Employed Part Time">Part Time</option>
                   <option value="Self-Employed">Self-Employed</option>
-                  <option value="Independent Contractor">Independent Contractor</option>
+                  <option value="Freelancer">Independent Contractor</option>
                   <option value="Seasonal Worker">Seasonal Worker</option>
                   <option value="Unemployed">Unemployed</option>
                 </select>
