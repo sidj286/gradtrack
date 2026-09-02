@@ -1235,7 +1235,15 @@ const addComment = async (announcementId: string, content: string, parentComment
 
   let classificationResult = null;
 
-  if (employmentForm.job_title && employmentForm.job_title.trim() !== '') {
+  const isUnemployedOrNoJob = employmentForm.employment_status === 'Unemployed' || 
+    !employmentForm.job_title || 
+    employmentForm.job_title.trim() === '' || 
+    employmentForm.job_title.trim() === 'Not specified';
+
+  if (isUnemployedOrNoJob) {
+    updateData.career_alignment_status = 'Pending';
+    updateData.ai_confidence_score = 0;
+  } else {
     classificationResult = await classifyCareerAlignment(
       profile?.course || '',
       employmentForm.job_title,

@@ -683,8 +683,31 @@ export default function AdminDashboard({ session }: { session: Session }) {
           let alignmentStatus = alum.career_alignment_status;
           let confidenceScore = alum.ai_confidence_score;
 
-          // Auto-classify employed alumni with missing or 'Pending' alignment
-          if ((!alignmentStatus || alignmentStatus === 'Pending') && alum.job_title && alum.job_title.trim() !== '') {
+          const isUnemployedOrNoJob = alum.employment_status === 'Unemployed' || 
+            !alum.job_title || 
+            alum.job_title.trim() === '' || 
+            alum.job_title.trim() === 'Not specified';
+
+          if (isUnemployedOrNoJob) {
+            // Unemployed alumni can NEVER be In-Field or Out-of-Field
+            if (alignmentStatus !== 'Pending') {
+              alignmentStatus = 'Pending';
+              confidenceScore = 0;
+
+              // Fix invalid database rows (e.g. Unemployed marked as In-Field)
+              supabase
+                .from('alumni_profiles')
+                .update({
+                  career_alignment_status: 'Pending',
+                  ai_confidence_score: 0
+                })
+                .eq('id', alum.id)
+                .then(({ error }) => {
+                  if (error) console.warn('Fixed unemployed alignment error:', alum.id, error);
+                });
+            }
+          } else if ((!alignmentStatus || alignmentStatus === 'Pending') && alum.job_title && alum.job_title.trim() !== '') {
+            // Auto-classify employed alumni with missing or 'Pending' alignment
             const syncResult = classifyCareerAlignmentSync(alum.course || '', alum.job_title);
             if (syncResult && syncResult.alignment_status !== 'Pending') {
               alignmentStatus = syncResult.alignment_status;
@@ -3634,7 +3657,11 @@ export default function AdminDashboard({ session }: { session: Session }) {
     <p className="text-sm text-gray-500 dark:text-gray-400">
       User ID: {selectedAlumni.user_id?.slice(0, 8)}...
     </p>
-    {selectedAlumni.career_alignment_status === 'In-Field' ? (
+    {selectedAlumni.employment_status === 'Unemployed' || !selectedAlumni.job_title || selectedAlumni.job_title === 'Not specified' ? (
+      <span className="inline-block mt-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+        ⏳ Pending (Unemployed / No Job Title)
+      </span>
+    ) : selectedAlumni.career_alignment_status === 'In-Field' ? (
       <span className="inline-block mt-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-700">
         ✓ Career Aligned (In-Field)
       </span>
