@@ -1,5 +1,5 @@
 // src/components/PredictionDashboard.tsx
-import { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import type { PredictionInsightRequest } from './lib/gemini';
 import { getPredictionInsights } from './lib/gemini';
 
@@ -73,17 +73,19 @@ const MIN_PLAUSIBLE_BATCH_YEAR = CURRENT_CALENDAR_YEAR - 60;
 const MAX_PLAUSIBLE_BATCH_YEAR = CURRENT_CALENDAR_YEAR + 3;
 
 function toBatchYear(value: any): number | null {
-  let parsed: number | null = null;
   if (typeof value === 'number' && Number.isFinite(value)) {
-    parsed = value;
-  } else if (typeof value === 'string' && value.trim() !== '') {
-    const n = Number(value.trim());
-    if (Number.isFinite(n)) parsed = n;
+    if (Number.isInteger(value) && value >= MIN_PLAUSIBLE_BATCH_YEAR && value <= MAX_PLAUSIBLE_BATCH_YEAR) {
+      return value;
+    }
+    return null;
   }
-  if (parsed === null) return null;
-  if (!Number.isInteger(parsed)) return null;
-  if (parsed < MIN_PLAUSIBLE_BATCH_YEAR || parsed > MAX_PLAUSIBLE_BATCH_YEAR) return null;
-  return parsed;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value.trim());
+    if (Number.isFinite(n) && Number.isInteger(n) && n >= MIN_PLAUSIBLE_BATCH_YEAR && n <= MAX_PLAUSIBLE_BATCH_YEAR) {
+      return n;
+    }
+  }
+  return null;
 }
 
 function normalizeStatus(value: any): string {
@@ -118,7 +120,6 @@ const healthColor = (score: number): string => {
 };
 
 type DemandLabel = 'High Demand' | 'Moderate Demand' | 'Low Demand';
-
 const classifyDemand = (score: number): DemandLabel => {
   if (score >= 70) return 'High Demand';
   if (score >= 40) return 'Moderate Demand';
@@ -126,7 +127,6 @@ const classifyDemand = (score: number): DemandLabel => {
 };
 
 type Confidence = 'High' | 'Moderate' | 'Low';
-
 function classifyConfidence(usableBatchCount: number, r2: number): Confidence {
   if (usableBatchCount >= 4 && r2 >= 0.5) return 'High';
   if (usableBatchCount >= 3 && r2 >= 0.3) return 'Moderate';
@@ -138,16 +138,17 @@ function linearRegression(x: number[], y: number[]): { slope: number; intercept:
   if (n < 2) return null;
   let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
   for (let i = 0; i < n; i++) {
-    sumX += x[i];
-    sumY += y[i];
-    sumXY += x[i] * y[i];
-    sumX2 += x[i] * x[i];
+    const xi = x[i];
+    const yi = y[i];
+    sumX += xi;
+    sumY += yi;
+    sumXY += xi * yi;
+    sumX2 += xi * xi;
   }
   const denominator = n * sumX2 - sumX * sumX;
   if (denominator === 0) return null;
   const slope = (n * sumXY - sumX * sumY) / denominator;
   const intercept = (sumY - slope * sumX) / n;
-
   const meanY = sumY / n;
   let ssTot = 0;
   let ssRes = 0;
@@ -158,18 +159,6 @@ function linearRegression(x: number[], y: number[]): { slope: number; intercept:
   }
   const r2 = ssTot > 0 ? Math.max(0, 1 - ssRes / ssTot) : 1;
   return { slope, intercept, r2 };
-}
-
-function getTargetBatch(alumni: any[]): number | null {
-  const batchYears = [...new Set(alumni.map((a) => toBatchYear(a?.batch_year)).filter((y): y is number => y !== null))];
-  if (batchYears.length === 0) return null;
-  return Math.max(...batchYears) + 1;
-}
-
-function getLatestBatch(alumni: any[]): number | null {
-  const batchYears = [...new Set(alumni.map((a) => toBatchYear(a?.batch_year)).filter((y): y is number => y !== null))];
-  if (batchYears.length === 0) return null;
-  return Math.max(...batchYears);
 }
 
 interface IndustryRow {
@@ -186,9 +175,6 @@ interface DeptMetrics {
   name: string;
   fullName: string;
   color: string;
-  bgColor: string;
-  textColor: string;
-  logo?: string;
   total: number;
   employed: number;
   inField: number;
@@ -197,7 +183,6 @@ interface DeptMetrics {
   demandScore: number;
   healthScore: number;
   batchCount: number;
-  usableBatchCount: number;
   projection: number | null;
   growth: number | null;
   confidence: Confidence | null;
@@ -215,9 +200,12 @@ function computeIndustries(deptAlumni: any[]): IndustryRow[] {
   const groups = new Map<string, any[]>();
   deptAlumni.forEach((a) => {
     const key = (typeof a?.industry === 'string' && a.industry.trim()) || 'Unspecified';
-    const bucket = groups.get(key) ?? [];
+    let bucket = groups.get(key);
+    if (!bucket) {
+      bucket = [];
+      groups.set(key, bucket);
+    }
     bucket.push(a);
-    groups.set(key, bucket);
   });
 
   const total = deptAlumni.length;
@@ -238,8 +226,7 @@ function computeIndustries(deptAlumni: any[]): IndustryRow[] {
     .sort((a, b) => b.count - a.count);
 }
 
-function computeDeptMetrics(alumni: any[], dept: typeof DEPARTMENTS[0], targetBatch: number | null, latestBatch: number | null): DeptMetrics {
-  const deptAlumni = alumni.filter((a) => normalizedDept(a) === dept.code);
+function computeDeptMetrics(deptAlumni: any[], dept: typeof DEPARTMENTS[0], targetBatch: number | null, latestBatch: number | null): DeptMetrics {
   const total = deptAlumni.length;
   const employed = deptAlumni.filter(isEmployed).length;
   const inField = deptAlumni.filter(isInField).length;
@@ -252,9 +239,12 @@ function computeDeptMetrics(alumni: any[], dept: typeof DEPARTMENTS[0], targetBa
   deptAlumni.forEach((a) => {
     const year = toBatchYear(a?.batch_year);
     if (year === null) return;
-    const bucket = batchGroups.get(year) ?? [];
+    let bucket = batchGroups.get(year);
+    if (!bucket) {
+      bucket = [];
+      batchGroups.set(year, bucket);
+    }
     bucket.push(a);
-    batchGroups.set(year, bucket);
   });
 
   const allBatchYears = Array.from(batchGroups.keys()).sort((a, b) => a - b);
@@ -295,9 +285,6 @@ function computeDeptMetrics(alumni: any[], dept: typeof DEPARTMENTS[0], targetBa
     name: dept.name,
     fullName: dept.fullName,
     color: dept.color,
-    bgColor: dept.bgColor,
-    textColor: dept.textColor,
-    logo: dept.logo,
     total,
     employed,
     inField,
@@ -306,7 +293,6 @@ function computeDeptMetrics(alumni: any[], dept: typeof DEPARTMENTS[0], targetBa
     demandScore,
     healthScore,
     batchCount: allBatchYears.length,
-    usableBatchCount: usableBatchYears.length,
     projection,
     growth,
     confidence,
@@ -323,7 +309,6 @@ function computeDeptMetrics(alumni: any[], dept: typeof DEPARTMENTS[0], targetBa
 
 function generateProjectionInsight(metrics: DeptMetrics): string {
   const { name, total, alignmentRate, projection, growth, gap, targetBatch, latestBatch, batchCount, usableBatchCount } = metrics;
-
   if (total === 0) return `No alumni records available for ${name}.`;
   if (targetBatch === null || latestBatch === null) return 'Batch data unavailable. Add batch_year to records.';
   if (batchCount === 0) return `No batch-year data for ${name}. Add batch_year to enable projection.`;
@@ -331,211 +316,109 @@ function generateProjectionInsight(metrics: DeptMetrics): string {
   if (batchCount === 1) {
     const projectedRate = alignmentRate;
     const estimatedGap = Math.round(total * (alignmentRate / 100) * 1.1 - total);
-    
     let base = `Based on Batch ${latestBatch} (${total} alumni, ${alignmentRate}% aligned), Batch ${targetBatch} requires ${projectedRate}% alignment.`;
-    
-    if (estimatedGap > 0) {
-      base += ` ${estimatedGap} additional graduates are needed for Batch ${targetBatch}.`;
-    } else if (estimatedGap < 0) {
-      base += ` Current graduate supply is sufficient for estimated demand.`;
-    } else {
-      base += ` Graduate supply and workforce demand are balanced.`;
-    }
-    
-    if (alignmentRate < 50) {
-      base += ` Low current alignment suggests program review is needed for Batch ${targetBatch}.`;
-    } else if (alignmentRate < 70) {
-      base += ` Moderate alignment indicates opportunity for improvement for Batch ${targetBatch}.`;
-    } else {
-      base += ` Strong alignment suggests maintaining current strategies for Batch ${targetBatch}.`;
-    }
-    
-    if (total < SMALL_SAMPLE_THRESHOLD) {
-      base += ` Small sample size (${total} alumni) limits statistical significance.`;
-    }
-    
+    if (estimatedGap > 0) base += ` ${estimatedGap} additional graduates are needed for Batch ${targetBatch}.`;
+    else if (estimatedGap < 0) base += ` Current graduate supply is sufficient for estimated demand.`;
+    else base += ` Graduate supply and workforce demand are balanced.`;
+    if (alignmentRate < 50) base += ` Low current alignment suggests program review is needed for Batch ${targetBatch}.`;
+    else if (alignmentRate < 70) base += ` Moderate alignment indicates opportunity for improvement for Batch ${targetBatch}.`;
+    else base += ` Strong alignment suggests maintaining current strategies for Batch ${targetBatch}.`;
+    if (total < SMALL_SAMPLE_THRESHOLD) base += ` Small sample size (${total} alumni) limits statistical significance.`;
     return base;
   }
-
-  if (usableBatchCount < 2) {
-    return `Insufficient batch data for ${name}. Current alignment: ${alignmentRate}%. Encourage more alumni to complete profiles.`;
-  }
-  
-  if (projection === null || growth === null || metrics.confidence === null) {
-    return `Insufficient historical data for Batch ${targetBatch} projection.`;
-  }
+  if (usableBatchCount < 2) return `Insufficient batch data for ${name}. Current alignment: ${alignmentRate}%. Encourage more alumni to complete profiles.`;
+  if (projection === null || growth === null || metrics.confidence === null) return `Insufficient historical data for Batch ${targetBatch} projection.`;
 
   const trend = growth > 0 ? 'improving' : growth < 0 ? 'declining' : 'stable';
   const absGrowth = Math.abs(growth);
-
   let base = `Based on Batch ${latestBatch} graduates, Batch ${targetBatch} alignment is ${trend}.`;
   base += ` Projected alignment: ${projection}% (${growth > 0 ? '+' : ''}${absGrowth}% from current ${alignmentRate}%).`;
-
-  if (gap > 0) {
-    base += ` ${gap} additional graduates are needed for Batch ${targetBatch}.`;
-  } else if (gap < 0) {
-    base += ` Graduate supply meets estimated demand.`;
-  } else {
-    base += ` Graduate supply and demand are balanced.`;
-  }
-
-  if (growth < -10) {
-    base += ' Urgent intervention is recommended to address declining alignment.';
-  } else if (growth < -5) {
-    base += ' Declining trend detected. Monitor curriculum and employer engagement.';
-  } else if (growth > 5) {
-    base += ' Positive trend observed. Continue current strategies.';
-  }
-
+  if (gap > 0) base += ` ${gap} additional graduates are needed for Batch ${targetBatch}.`;
+  else if (gap < 0) base += ` Graduate supply meets estimated demand.`;
+  else base += ` Graduate supply and demand are balanced.`;
+  if (growth < -10) base += ' Urgent intervention is recommended to address declining alignment.';
+  else if (growth < -5) base += ' Declining trend detected. Monitor curriculum and employer engagement.';
+  else if (growth > 5) base += ' Positive trend observed. Continue current strategies.';
   return base;
 }
 
 function generateWorkforceInsight(metrics: DeptMetrics): string {
   const { industries, gap, targetBatch, latestBatch, code } = metrics;
   const lead = industries[0];
-
   if (!lead) return `No industry data available for ${code}.`;
-
   const batchLabel = targetBatch !== null ? `Batch ${targetBatch}` : 'Next batch';
   const fromLabel = latestBatch !== null ? `Batch ${latestBatch}` : 'previous';
-
   let base = `Based on ${fromLabel} data, ${lead.industry} shows ${lead.demandLabel.toLowerCase()} (${lead.demandScore}%). ${lead.shareOfDept}% of ${code} graduates are employed in this sector.`;
-
-  if (lead.demandLabel === 'High Demand' && gap > 0) {
-    base += ` Additional ${code} graduates are needed for ${batchLabel}.`;
-  } else if (lead.demandLabel === 'High Demand' && gap <= 0) {
-    base += ` Current ${code} graduate supply meets demand for ${batchLabel}.`;
-  } else if (lead.demandLabel === 'Moderate Demand') {
-    base += ` Steady demand is expected for ${batchLabel}. Monitor trends.`;
-  } else {
-    base += ` Program diversification for ${batchLabel} may be beneficial.`;
-  }
-
-  if (lead.demandLabel === 'High Demand' && gap > 5) {
-    base += ` Consider increasing ${code} enrollment by ${Math.min(gap + 5, 20)} students.`;
-  } else if (lead.demandLabel === 'Low Demand') {
-    base += ` Review ${code} curriculum for ${batchLabel}.`;
-  }
-
+  if (lead.demandLabel === 'High Demand' && gap > 0) base += ` Additional ${code} graduates are needed for ${batchLabel}.`;
+  else if (lead.demandLabel === 'High Demand' && gap <= 0) base += ` Current ${code} graduate supply meets demand for ${batchLabel}.`;
+  else if (lead.demandLabel === 'Moderate Demand') base += ` Steady demand is expected for ${batchLabel}. Monitor trends.`;
+  else base += ` Program diversification for ${batchLabel} may be beneficial.`;
+  if (lead.demandLabel === 'High Demand' && gap > 5) base += ` Consider increasing ${code} enrollment by ${Math.min(gap + 5, 20)} students.`;
+  else if (lead.demandLabel === 'Low Demand') base += ` Review ${code} curriculum for ${batchLabel}.`;
   return base;
 }
 
 function generateIndustryInsight(metrics: DeptMetrics): string {
   const { code, industries } = metrics;
   if (industries.length === 0) return `No industry data available for ${code}.`;
-
   const top = industries[0];
-
   let base = `${code} graduates show ${top.demandLabel.toLowerCase()} demand.`;
-
-  if (top.shareOfDept >= 40) {
-    base += ` ${top.industry} employs ${top.shareOfDept}% of ${code} graduates.`;
-  } else if (industries.length >= 3) {
-    base += ` Employment is distributed across ${industries.length} industries.`;
-  } else {
-    base += ` ${top.industry} is the primary employer (${top.shareOfDept}%).`;
-  }
-
+  if (top.shareOfDept >= 40) base += ` ${top.industry} employs ${top.shareOfDept}% of ${code} graduates.`;
+  else if (industries.length >= 3) base += ` Employment is distributed across ${industries.length} industries.`;
+  else base += ` ${top.industry} is the primary employer (${top.shareOfDept}%).`;
   const highDemand = industries.filter(i => i.demandLabel === 'High Demand');
   const lowDemand = industries.filter(i => i.demandLabel === 'Low Demand');
-
-  if (highDemand.length > 0) {
-    base += ` High demand sectors: ${highDemand.map(i => i.industry).join(', ')}.`;
-  }
-  if (lowDemand.length > 0) {
-    base += ` Low demand sectors: ${lowDemand.map(i => i.industry).join(', ')}.`;
-  }
-
-  if (highDemand.length >= 2) {
-    base += ` Graduates are in strong demand across ${highDemand.length} sectors.`;
-  } else if (highDemand.length === 1) {
-    base += ` Graduates are in demand in ${highDemand[0].industry}.`;
-  }
-
+  if (highDemand.length > 0) base += ` High demand sectors: ${highDemand.map(i => i.industry).join(', ')}.`;
+  if (lowDemand.length > 0) base += ` Low demand sectors: ${lowDemand.map(i => i.industry).join(', ')}.`;
+  if (highDemand.length >= 2) base += ` Graduates are in strong demand across ${highDemand.length} sectors.`;
+  else if (highDemand.length === 1) base += ` Graduates are in demand in ${highDemand[0].industry}.`;
   return base;
 }
 
 function generateHealthInsight(metrics: DeptMetrics): string {
   const { code, healthScore, employmentRate, alignmentRate, total, targetBatch, latestBatch } = metrics;
   if (total === 0) return `No alumni data available for ${code}.`;
-
   const batchLabel = targetBatch !== null ? ` Batch ${targetBatch}` : ' next batch';
   const fromLabel = latestBatch !== null ? `Batch ${latestBatch}` : 'current';
-
   const status = classifyHealth(healthScore);
-
   let base = `Based on ${fromLabel} data, ${code} health score is ${healthScore}% (${status}).`;
-
-  if (employmentRate >= 80) {
-    base += ` Employment (${employmentRate}%) is excellent.`;
-  } else if (employmentRate >= 70) {
-    base += ` Employment (${employmentRate}%) is good.`;
-  } else if (employmentRate >= 60) {
-    base += ` Employment (${employmentRate}%) is fair.`;
-  } else {
-    base += ` Employment (${employmentRate}%) requires improvement.`;
-  }
-
-  if (alignmentRate >= 80) {
-    base += ` Alignment (${alignmentRate}%) is excellent.`;
-  } else if (alignmentRate >= 70) {
-    base += ` Alignment (${alignmentRate}%) is good.`;
-  } else if (alignmentRate >= 60) {
-    base += ` Alignment (${alignmentRate}%) is fair.`;
-  } else {
-    base += ` Alignment (${alignmentRate}%) requires improvement.`;
-  }
-
-  if (employmentRate < 70 && alignmentRate < 70) {
-    base += ` Both employment and alignment need attention for${batchLabel}.`;
-  } else if (employmentRate < 70) {
-    base += ` Focus on improving job placement for${batchLabel}.`;
-  } else if (alignmentRate < 70) {
-    base += ` Focus on curriculum alignment for${batchLabel}.`;
-  } else {
-    base += ` Department is healthy. Maintain current strategies for${batchLabel}.`;
-  }
-
+  if (employmentRate >= 80) base += ` Employment (${employmentRate}%) is excellent.`;
+  else if (employmentRate >= 70) base += ` Employment (${employmentRate}%) is good.`;
+  else if (employmentRate >= 60) base += ` Employment (${employmentRate}%) is fair.`;
+  else base += ` Employment (${employmentRate}%) requires improvement.`;
+  if (alignmentRate >= 80) base += ` Alignment (${alignmentRate}%) is excellent.`;
+  else if (alignmentRate >= 70) base += ` Alignment (${alignmentRate}%) is good.`;
+  else if (alignmentRate >= 60) base += ` Alignment (${alignmentRate}%) is fair.`;
+  else base += ` Alignment (${alignmentRate}%) requires improvement.`;
+  if (employmentRate < 70 && alignmentRate < 70) base += ` Both employment and alignment need attention for${batchLabel}.`;
+  else if (employmentRate < 70) base += ` Focus on improving job placement for${batchLabel}.`;
+  else if (alignmentRate < 70) base += ` Focus on curriculum alignment for${batchLabel}.`;
+  else base += ` Department is healthy. Maintain current strategies for${batchLabel}.`;
   return base;
 }
 
 function generateProductivityInsight(metrics: DeptMetrics): string {
   const { code, total, inField, alignmentRate, targetBatch, latestBatch } = metrics;
   if (total === 0) return `No alumni data available for ${code}.`;
-
   const batchLabel = targetBatch !== null ? `Batch ${targetBatch}` : 'Next batch';
   const fromLabel = latestBatch !== null ? `Batch ${latestBatch}` : 'current';
-
   let base = `Based on ${fromLabel} data, ${inField} of ${total} ${code} graduates (${alignmentRate}%) are industry-ready for ${batchLabel}.`;
-
-  if (alignmentRate >= 80) {
-    base += ` Excellent. Graduates are in strong demand.`;
-  } else if (alignmentRate >= 70) {
-    base += ` Good. Graduates are in demand.`;
-  } else if (alignmentRate >= 60) {
-    base += ` Moderate. Can improve to reach 80% target.`;
-  } else {
-    base += ` Needs improvement. Review curriculum and career services.`;
-  }
-
+  if (alignmentRate >= 80) base += ` Excellent. Graduates are in strong demand.`;
+  else if (alignmentRate >= 70) base += ` Good. Graduates are in demand.`;
+  else if (alignmentRate >= 60) base += ` Moderate. Can improve to reach 80% target.`;
+  else base += ` Needs improvement. Review curriculum and career services.`;
   if (alignmentRate < INDUSTRY_READINESS_TARGET) {
     const neededInField = Math.ceil((INDUSTRY_READINESS_TARGET / 100) * total);
     const shortfall = Math.max(0, neededInField - inField);
     base += ` ${shortfall} additional graduates needed for ${batchLabel} to reach ${INDUSTRY_READINESS_TARGET}% target.`;
   }
-
-  if (alignmentRate >= 70) {
-    base += ` ${code} productivity is good.`;
-  } else if (alignmentRate >= 50) {
-    base += ` ${code} productivity is moderate.`;
-  } else {
-    base += ` ${code} productivity needs attention.`;
-  }
-
+  if (alignmentRate >= 70) base += ` ${code} productivity is good.`;
+  else if (alignmentRate >= 50) base += ` ${code} productivity is moderate.`;
+  else base += ` ${code} productivity needs attention.`;
   return base;
 }
 
-function SummaryCard({ label, value, sublabel }: { label: string; value: string | number; sublabel?: string }) {
+const SummaryCard = React.memo(function SummaryCard({ label, value, sublabel }: { label: string; value: string | number; sublabel?: string }) {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-6">
       <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</p>
@@ -543,9 +426,9 @@ function SummaryCard({ label, value, sublabel }: { label: string; value: string 
       {sublabel && <p className="text-xs text-gray-400 mt-0.5">{sublabel}</p>}
     </div>
   );
-}
+});
 
-function MetricCard({ label, value, sublabel }: { label: string; value: string; sublabel?: string }) {
+const MetricCard = React.memo(function MetricCard({ label, value, sublabel }: { label: string; value: string; sublabel?: string }) {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5">
       <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</p>
@@ -553,18 +436,18 @@ function MetricCard({ label, value, sublabel }: { label: string; value: string; 
       {sublabel && <p className="text-xs text-gray-400 mt-0.5">{sublabel}</p>}
     </div>
   );
-}
+});
 
-function ProgressBar({ value, color }: { value: number; color: string }) {
+const ProgressBar = React.memo(function ProgressBar({ value, color }: { value: number; color: string }) {
   const clamped = Math.max(0, Math.min(100, value));
   return (
     <div className="h-1.5 w-full rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
       <div className="h-full rounded-full transition-all duration-500" style={{ width: `${clamped}%`, backgroundColor: color }} />
     </div>
   );
-}
+});
 
-function StatusBadge({ label, type }: { label: string; type?: 'success' | 'warning' | 'error' | 'info' }) {
+const StatusBadge = React.memo(function StatusBadge({ label, type }: { label: string; type?: 'success' | 'warning' | 'error' | 'info' }) {
   const styles = {
     success: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
     warning: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
@@ -576,9 +459,9 @@ function StatusBadge({ label, type }: { label: string; type?: 'success' | 'warni
       {label}
     </span>
   );
-}
+});
 
-function DepartmentCard({
+const DepartmentCard = React.memo(function DepartmentCard({
   metrics,
   isSelected,
   onSelect,
@@ -612,7 +495,6 @@ function DepartmentCard({
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
       }}
     >
-      {/* Department Logo & Name */}
       <div className="flex flex-col items-center text-center">
         {deptConfig?.logo && !imgError ? (
           <img 
@@ -646,7 +528,6 @@ function DepartmentCard({
         </p>
       </div>
 
-      {/* Health Score - White for all except CBE (black) */}
       <div className="mt-4 pt-3 border-t" style={{ borderColor: isCBE ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)' }}>
         <div className="flex items-center justify-between text-sm">
           <span style={{ color: isCBE ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)' }}>Health Score</span>
@@ -671,11 +552,11 @@ function DepartmentCard({
       )}
     </button>
   );
-}
+});
 
-function WorkforceTab({ metrics, aiInsights, aiLoading }: { metrics: DeptMetrics; aiInsights: any; aiLoading: boolean }) {
-  const insight = generateWorkforceInsight(metrics);
-  const projectionInsight = generateProjectionInsight(metrics);
+const WorkforceTab = React.memo(function WorkforceTab({ metrics, aiInsights, aiLoading }: { metrics: DeptMetrics; aiInsights: any; aiLoading: boolean }) {
+  const insight = useMemo(() => generateWorkforceInsight(metrics), [metrics]);
+  const projectionInsight = useMemo(() => generateProjectionInsight(metrics), [metrics]);
   const ai = aiInsights?.[metrics.code];
 
   return (
@@ -690,20 +571,14 @@ function WorkforceTab({ metrics, aiInsights, aiLoading }: { metrics: DeptMetrics
           sublabel={metrics.gap > 0 ? 'Additional graduates needed' : metrics.gap < 0 ? 'Supply exceeds demand' : 'Balanced'}
         />
       </div>
-
-      {/* Projection - System Generated */}
       <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6">
         <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Projection</p>
         <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">{projectionInsight}</p>
       </div>
-
-      {/* Workforce Analysis - System Generated */}
       <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6">
         <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Workforce Analysis</p>
         <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">{insight}</p>
       </div>
-
-      {/* AI Workforce Insight - Gemini Generated */}
       {ai?.workforce && (
         <div className="rounded-2xl border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20 p-6">
           <div className="flex items-center gap-2 mb-2">
@@ -716,8 +591,6 @@ function WorkforceTab({ metrics, aiInsights, aiLoading }: { metrics: DeptMetrics
           )}
         </div>
       )}
-
-      {/* Top Industries */}
       <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6">
         <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-4">Top Industries</p>
         <ul className="space-y-3">
@@ -737,21 +610,18 @@ function WorkforceTab({ metrics, aiInsights, aiLoading }: { metrics: DeptMetrics
       </div>
     </div>
   );
-}
+});
 
-function IndustryTab({ metrics, aiInsights, aiLoading }: { metrics: DeptMetrics; aiInsights: any; aiLoading: boolean }) {
-  const insight = generateIndustryInsight(metrics);
+const IndustryTab = React.memo(function IndustryTab({ metrics, aiInsights, aiLoading }: { metrics: DeptMetrics; aiInsights: any; aiLoading: boolean }) {
+  const insight = useMemo(() => generateIndustryInsight(metrics), [metrics]);
   const ai = aiInsights?.[metrics.code];
 
   return (
     <div className="space-y-6">
-      {/* System Generated Industry Summary */}
       <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6">
         <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Industry Demand Summary</p>
         <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">{insight}</p>
       </div>
-
-      {/* AI Industry Insight - Gemini Generated */}
       {ai?.industry && (
         <div className="rounded-2xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-6">
           <div className="flex items-center gap-2 mb-2">
@@ -764,8 +634,6 @@ function IndustryTab({ metrics, aiInsights, aiLoading }: { metrics: DeptMetrics;
           )}
         </div>
       )}
-
-      {/* Industry Table */}
       <div className="rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-gray-800">
@@ -802,9 +670,9 @@ function IndustryTab({ metrics, aiInsights, aiLoading }: { metrics: DeptMetrics;
       </div>
     </div>
   );
-}
+});
 
-function HealthTab({ metrics, allMetrics, departmentStats, aiInsights, aiLoading }: { 
+const HealthTab = React.memo(function HealthTab({ metrics, allMetrics, departmentStats, aiInsights, aiLoading }: { 
   metrics: DeptMetrics; 
   allMetrics: DeptMetrics[]; 
   departmentStats: any[];
@@ -812,8 +680,8 @@ function HealthTab({ metrics, allMetrics, departmentStats, aiInsights, aiLoading
   aiLoading: boolean;
 }) {
   const hasExternalStats = Array.isArray(departmentStats) && departmentStats.length > 0;
-  const healthInsight = generateHealthInsight(metrics);
-  const productivityInsight = generateProductivityInsight(metrics);
+  const healthInsight = useMemo(() => generateHealthInsight(metrics), [metrics]);
+  const productivityInsight = useMemo(() => generateProductivityInsight(metrics), [metrics]);
   const ai = aiInsights?.[metrics.code];
 
   return (
@@ -824,14 +692,10 @@ function HealthTab({ metrics, allMetrics, departmentStats, aiInsights, aiLoading
         <MetricCard label="Demand" value={`${metrics.demandScore}%`} />
         <MetricCard label="Health" value={`${metrics.healthScore}%`} sublabel={classifyHealth(metrics.healthScore)} />
       </div>
-
-      {/* System Generated Health Assessment */}
       <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6">
         <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Health Assessment</p>
         <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">{healthInsight}</p>
       </div>
-
-      {/* AI Health Insight - Gemini Generated */}
       {ai?.health && (
         <div className="rounded-2xl border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-6">
           <div className="flex items-center gap-2 mb-2">
@@ -844,14 +708,10 @@ function HealthTab({ metrics, allMetrics, departmentStats, aiInsights, aiLoading
           )}
         </div>
       )}
-
-      {/* System Generated Productivity */}
       <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6">
         <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Productivity</p>
         <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">{productivityInsight}</p>
       </div>
-
-      {/* Department Comparison Table */}
       <div className="rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-gray-800">
@@ -891,7 +751,7 @@ function HealthTab({ metrics, allMetrics, departmentStats, aiInsights, aiLoading
       </div>
     </div>
   );
-}
+});
 
 export default function PredictionDashboard({ alumni, departmentStats, selectedDepartment = 'CCS' }: PredictionDashboardProps) {
   const [activeCode, setActiveCode] = useState(selectedDepartment);
@@ -899,18 +759,37 @@ export default function PredictionDashboard({ alumni, departmentStats, selectedD
   const [aiInsights, setAiInsights] = useState<Record<string, any>>({});
   const [aiLoading, setAiLoading] = useState<Record<string, boolean>>({});
 
-  const safeAlumni = Array.isArray(alumni) ? alumni : [];
+  const safeAlumni = useMemo(() => (Array.isArray(alumni) ? alumni : []), [alumni]);
 
-  const targetBatch = useMemo(() => getTargetBatch(safeAlumni), [safeAlumni]);
-  const latestBatch = useMemo(() => getLatestBatch(safeAlumni), [safeAlumni]);
+  const { targetBatch, latestBatch, deptBuckets } = useMemo(() => {
+    let maxBatch = -1;
+    const buckets = new Map<string, any[]>();
+    DEPARTMENTS.forEach(d => buckets.set(d.code, []));
+
+    for (let i = 0; i < safeAlumni.length; i++) {
+      const a = safeAlumni[i];
+      const dept = normalizedDept(a);
+      if (buckets.has(dept)) {
+        buckets.get(dept)!.push(a);
+      }
+      const y = toBatchYear(a?.batch_year);
+      if (y !== null && y > maxBatch) {
+        maxBatch = y;
+      }
+    }
+
+    const latest = maxBatch > 0 ? maxBatch : null;
+    const target = maxBatch > 0 ? maxBatch + 1 : null;
+    return { targetBatch: target, latestBatch: latest, deptBuckets: buckets };
+  }, [safeAlumni]);
 
   const allMetrics = useMemo(
-    () => DEPARTMENTS.map((dept) => computeDeptMetrics(safeAlumni, dept, targetBatch, latestBatch)),
-    [safeAlumni, targetBatch, latestBatch]
+    () => DEPARTMENTS.map((dept) => computeDeptMetrics(deptBuckets.get(dept.code) || [], dept, targetBatch, latestBatch)),
+    [deptBuckets, targetBatch, latestBatch]
   );
 
   const departmentsAnalyzed = useMemo(() => allMetrics.filter((m) => m.total > 0).length, [allMetrics]);
-  const metrics = allMetrics.find((m) => m.code === activeCode) ?? allMetrics[0];
+  const metrics = useMemo(() => allMetrics.find((m) => m.code === activeCode) ?? allMetrics[0], [allMetrics, activeCode]);
 
   const unclassifiedCount = useMemo(() => {
     const classifiedTotal = allMetrics.reduce((sum, m) => sum + m.total, 0);
@@ -927,13 +806,10 @@ export default function PredictionDashboard({ alumni, departmentStats, selectedD
     return Math.round(withData.reduce((sum, m) => sum + m.employmentRate, 0) / withData.length);
   }, [allMetrics]);
 
-  // Fetch AI insights for the selected department
-  const fetchAIInsights = async (deptMetrics: DeptMetrics) => {
+  const fetchAIInsights = useCallback(async (deptMetrics: DeptMetrics) => {
     const deptCode = deptMetrics.code;
     if (aiInsights[deptCode] || aiLoading[deptCode]) return;
-
     setAiLoading(prev => ({ ...prev, [deptCode]: true }));
-
     try {
       const request: PredictionInsightRequest = {
         department: deptMetrics.code,
@@ -956,27 +832,25 @@ export default function PredictionDashboard({ alumni, departmentStats, selectedD
         hasTrendData: deptMetrics.batchCount >= 2,
         trendDescription: deptMetrics.trendDescription || 'stable'
       };
-
       const result = await getPredictionInsights(request);
-      
-      // Store the AI results
-      setAiInsights(prev => ({
-        ...prev,
-        [deptCode]: result.insights
-      }));
+      setAiInsights(prev => ({ ...prev, [deptCode]: result.insights }));
     } catch (error) {
       console.error('Error fetching AI insights:', error);
     } finally {
       setAiLoading(prev => ({ ...prev, [deptCode]: false }));
     }
-  };
+  }, [aiInsights, aiLoading]);
 
-  // Fetch AI insights when department changes
   useEffect(() => {
     if (metrics && metrics.total > 0) {
       fetchAIInsights(metrics);
     }
-  }, [metrics]);
+  }, [metrics, fetchAIInsights]);
+
+  const handleSelectDepartment = useCallback((code: string) => {
+    setActiveCode(code);
+    setActiveTab('workforce');
+  }, []);
 
   return (
     <div className="space-y-8">
@@ -1031,10 +905,7 @@ export default function PredictionDashboard({ alumni, departmentStats, selectedD
             key={m.code}
             metrics={m}
             isSelected={m.code === metrics.code}
-            onSelect={() => {
-              setActiveCode(m.code);
-              setActiveTab('workforce');
-            }}
+            onSelect={() => handleSelectDepartment(m.code)}
           />
         ))}
       </div>
