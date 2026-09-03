@@ -706,24 +706,26 @@ export default function AdminDashboard({ session }: { session: Session }) {
                   if (error) console.warn('Fixed unemployed alignment error:', alum.id, error);
                 });
             }
-          } else if ((!alignmentStatus || alignmentStatus === 'Pending') && alum.job_title && alum.job_title.trim() !== '') {
-            // Auto-classify employed alumni with missing or 'Pending' alignment
+          } else if (alum.job_title && alum.job_title.trim() !== '') {
+            // Auto-evaluate employed alumni and sync updated classification to Supabase
             const syncResult = classifyCareerAlignmentSync(alum.course || '', alum.job_title);
             if (syncResult && syncResult.alignment_status !== 'Pending') {
-              alignmentStatus = syncResult.alignment_status;
-              confidenceScore = syncResult.confidence_score;
+              if (syncResult.alignment_status !== alignmentStatus) {
+                alignmentStatus = syncResult.alignment_status;
+                confidenceScore = syncResult.confidence_score;
 
-              // Fire background database update to persist in Supabase
-              supabase
-                .from('alumni_profiles')
-                .update({
-                  career_alignment_status: syncResult.alignment_status,
-                  ai_confidence_score: syncResult.confidence_score
-                })
-                .eq('id', alum.id)
-                .then(({ error }) => {
-                  if (error) console.warn('Auto-alignment update failed for alumni:', alum.id, error);
-                });
+                // Fire background database update to fix outdated alignment in Supabase
+                supabase
+                  .from('alumni_profiles')
+                  .update({
+                    career_alignment_status: syncResult.alignment_status,
+                    ai_confidence_score: syncResult.confidence_score
+                  })
+                  .eq('id', alum.id)
+                  .then(({ error }) => {
+                    if (error) console.warn('Auto-alignment update failed for alumni:', alum.id, error);
+                  });
+              }
             }
           }
 

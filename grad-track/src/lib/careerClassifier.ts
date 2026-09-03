@@ -148,7 +148,13 @@ const IN_FIELD_KEYWORDS: Record<string, string[]> = {
     'it consultant', 'data analyst', 'data scientist', 'data engineer', 'bi analyst',
     'cybersecurity', 'cloud engineer', 'aws', 'azure', 'infrastructure',
     'it staff', 'it officer', 'it specialist', 'computer technician', 'it technician',
-    'tsr', 'technical support representative', 'ui/ux', 'web designer', 'systems analyst'
+    'tsr', 'technical support representative', 'ui/ux', 'web designer', 'systems analyst',
+    'multimedia', 'multimedia artist', 'multimedia designer', 'multimedia specialist',
+    'multimedia developer', 'graphic designer', 'graphics designer', 'graphic artist',
+    'graphics artist', 'digital artist', 'media artist', 'visual designer', 'animator',
+    '3d artist', '3d animator', '2d animator', 'motion graphics', 'motion designer',
+    'video editor', 'video producer', 'digital media', 'game developer', 'game designer',
+    'game programmer', 'ui designer', 'ux designer', 'ui/ux designer', 'web design'
   ],
   CTE: [
     'teacher', 'instructor', 'professor', 'educator', 'trainer', 'faculty',
@@ -191,7 +197,15 @@ const IN_FIELD_KEYWORDS: Record<string, string[]> = {
     'hotel manager', 'restaurant manager', 'chef', 'cook', 'food & beverage',
     'f&b supervisor', 'housekeeping', 'travel agent', 'tour guide', 'event planner',
     'event coordinator', 'flight attendant', 'bank', 'banking', 'bank teller',
-    'loan officer', 'credit analyst', 'cashier', 'store supervisor'
+    'loan officer', 'credit analyst', 'cashier', 'store supervisor',
+    'room attendant', 'guest room attendant', 'room steward', 'floor attendant',
+    'linen attendant', 'housekeeper', 'housekeeping attendant', 'housekeeping supervisor',
+    'housekeeping staff', 'guest service agent', 'guest service associate', 'guest service officer',
+    'front office staff', 'front office associate', 'bellman', 'bellhop', 'concierge',
+    'doorman', 'porter', 'bartender', 'barista', 'sommelier', 'food server', 'waiter',
+    'waitress', 'banquet server', 'banquet attendant', 'catering staff', 'kitchen crew',
+    'service crew', 'dining room attendant', 'cabin crew', 'cruise staff', 'ship steward',
+    'resort staff', 'resort attendant'
   ],
   PSY: [
     'psychologist', 'counselor', 'therapist', 'mental health', 'psychotherapist',
@@ -213,7 +227,10 @@ const MAJOR_SPECIFIC_KEYWORDS: Record<string, string[]> = {
   'financial management': ['finance', 'financial', 'bank', 'teller', 'loan', 'credit', 'investment', 'treasury'],
   'marketing management': ['marketing', 'brand', 'digital marketing', 'seo', 'social media', 'advertising', 'sales'],
   'human resource management': ['hr', 'human resources', 'recruiter', 'talent acquisition', 'payroll', 'training'],
-  'educational management': ['principal', 'supervisor', 'administrator', 'school head', 'coordinator', 'academic director']
+  'educational management': ['principal', 'supervisor', 'administrator', 'school head', 'coordinator', 'academic director'],
+  'hospitality': ['hotel', 'resort', 'room attendant', 'housekeeping', 'front desk', 'guest service', 'concierge', 'front office', 'food & beverage', 'f&b', 'banquet', 'bartender', 'barista', 'chef', 'cook', 'catering', 'restaurant'],
+  'tourism': ['tourism', 'travel', 'tour guide', 'tour operator', 'flight attendant', 'cabin crew', 'cruise', 'event planner', 'event coordinator', 'travel agent', 'resort'],
+  'hotel': ['hotel', 'resort', 'room attendant', 'housekeeping', 'front desk', 'front office', 'guest service', 'concierge', 'bellman']
 };
 
 // DEFINITIVE OUT-OF-FIELD KEYWORDS (FOR NON-MATCHED DEGREES)
@@ -250,10 +267,10 @@ export function detectDepartment(course: string, jobTitle?: string): string | nu
 
   // Fallback: Infer department from Job Title if course text is ambiguous
   if (jLower) {
-    if (/\b(software|developer|programmer|web dev|it support|sysadmin|qa tester|database|cybersecurity)\b/i.test(jLower)) return 'CCS';
+    if (/\b(software|developer|programmer|web dev|it support|sysadmin|qa tester|database|cybersecurity|multimedia|graphic|animator|video editor|ui\/ux|game dev)\b/i.test(jLower)) return 'CCS';
     if (/\b(teacher|instructor|professor|tutor|deped|school head|principal|esl)\b/i.test(jLower)) return 'CTE';
     if (/\b(police|patrolman|criminologist|investigator|nbi|bjmp|bfp|security officer)\b/i.test(jLower)) return 'CCJE';
-    if (/\b(accountant|auditor|bank teller|finance|marketing|hr manager|recruiter|hotel|front desk|chef)\b/i.test(jLower)) return 'CBE';
+    if (/\b(accountant|auditor|bank teller|finance|marketing|hr manager|recruiter|hotel|front desk|chef|room attendant|housekeeping|guest service|barista|bartender)\b/i.test(jLower)) return 'CBE';
     if (/\b(psychologist|psychometrician|counselor|social worker|therapist)\b/i.test(jLower)) return 'PSY';
   }
 
@@ -280,7 +297,7 @@ function fastKeywordClassify(course: string, jobTitle: string): CareerAlignmentR
 
   // Check universal out-of-field keywords first
   const isUniversalOut = UNIVERSAL_OUT_OF_FIELD_KEYWORDS.some(kw => jobLower.includes(kw));
-  if (isUniversalOut && dept !== 'CCJE') {
+  if (isUniversalOut && dept !== 'CCJE' && dept !== 'CBE') {
     return {
       alignment_status: 'Out-of-Field',
       confidence_score: 0.92,
@@ -425,7 +442,7 @@ Graduate Job Title: "${jobTitle}"
 Determine if this job title is "In-Field" (professionally related to their degree) or "Out-of-Field" (unrelated or non-degree work).
 
 Guidelines:
-- BSIT/BSCS/Computer Studies: In-Field includes software development, web development, IT support, QA, systems admin, cybersecurity, data analytics, technical support.
+- BSIT/BSCS/Computer Studies: In-Field includes software development, web development, IT support, multimedia design, multimedia artist, graphic design, animation, video editing, UI/UX design, QA, systems admin, cybersecurity, data analytics, technical support.
 - Education (BEED/BSED/MAED): In-Field includes DepEd teaching, private school teaching, tutoring, ESL instruction, academic administration, training officers.
 - Criminology (CCJE): In-Field includes PNP police officers, security officers, investigators, jail/correctional officers, forensic specialists, legal researchers.
 - Business/BSBA/Hospitality/Tourism (CBE): In-Field includes accounting, finance, banking, management, HR, marketing, sales management, hotel/resort operations, event planning.
