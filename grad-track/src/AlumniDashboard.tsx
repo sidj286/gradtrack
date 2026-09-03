@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
 import type { Session } from '@supabase/supabase-js';
-import { classifyCareerAlignment } from './lib/careerClassifier';
+import { classifyCareerAlignment, classifyCareerAlignmentSync } from './lib/careerClassifier';
 import phAddress from 'latest-ph-address-thanks-to-anehan';
 import AnnouncementComments from './AnnouncementComments';
 import {
@@ -823,6 +823,42 @@ export default function AlumniDashboard({ session }: { session: Session }) {
           }
         } catch (err) {
           console.warn('Could not sync gender from master:', err);
+        }
+      }
+
+      // Auto-evaluate career alignment on profile load so alumnus sees exact updated status
+      const isUnemployedOrNoJob = finalData.employment_status === 'Unemployed' || 
+        !finalData.job_title || 
+        finalData.job_title.trim() === '' || 
+        finalData.job_title.trim() === 'Not specified';
+
+      if (isUnemployedOrNoJob) {
+        if (finalData.career_alignment_status !== 'Pending') {
+          finalData.career_alignment_status = 'Pending';
+          finalData.ai_confidence_score = 0;
+          supabase
+            .from('alumni_profiles')
+            .update({ career_alignment_status: 'Pending', ai_confidence_score: 0 })
+            .eq('id', finalData.id)
+            .then(({ error }) => {
+              if (error) console.warn('Unemployed reset failed:', error);
+            });
+        }
+      } else if (finalData.job_title && finalData.job_title.trim() !== '') {
+        const syncResult = classifyCareerAlignmentSync(finalData.course || '', finalData.job_title);
+        if (syncResult && syncResult.alignment_status !== 'Pending' && syncResult.alignment_status !== finalData.career_alignment_status) {
+          finalData.career_alignment_status = syncResult.alignment_status;
+          finalData.ai_confidence_score = syncResult.confidence_score;
+          supabase
+            .from('alumni_profiles')
+            .update({
+              career_alignment_status: syncResult.alignment_status,
+              ai_confidence_score: syncResult.confidence_score
+            })
+            .eq('id', finalData.id)
+            .then(({ error }) => {
+              if (error) console.warn('Alumnus alignment sync failed:', error);
+            });
         }
       }
 
