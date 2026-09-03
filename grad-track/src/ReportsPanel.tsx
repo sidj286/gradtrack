@@ -191,11 +191,17 @@ export default function ReportsPanel() {
     });
 
     const total = alumni.length;
-    const employed = alumni.filter(a => a.employment_status === 'Employed').length;
-    const unemployed = alumni.filter(a => a.employment_status === 'Unemployed').length;
 
     const inField = alumni.filter(a => a.career_alignment_status === 'In-Field').length;
     const outOfField = alumni.filter(a => a.career_alignment_status === 'Out-of-Field').length;
+
+    const employed = alumni.filter(a => 
+      a.career_alignment_status === 'In-Field' || 
+      a.career_alignment_status === 'Out-of-Field' || 
+      (a.employment_status && a.employment_status !== 'Unemployed' && a.job_title && a.job_title.trim() !== '')
+    ).length;
+
+    const unemployed = Math.max(0, total - employed);
     const pending = alumni.filter(a => 
       !a.career_alignment_status || 
       a.career_alignment_status === 'Pending' ||

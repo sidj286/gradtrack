@@ -802,11 +802,18 @@ export default function AdminDashboard({ session }: { session: Session }) {
 
   const processAlumniData = (alumniData: AlumniProfile[]) => {
     const total = alumniData.length;
-    const employed = alumniData.filter(a => a.employment_status === 'Employed').length;
-    const unemployed = alumniData.filter(a => a.employment_status === 'Unemployed').length;
 
     const inField = alumniData.filter(a => a.career_alignment_status === 'In-Field').length;
     const outOfField = alumniData.filter(a => a.career_alignment_status === 'Out-of-Field').length;
+
+    // Currently working includes all In-Field, Out-of-Field, or non-unemployed alumni holding active job titles
+    const employed = alumniData.filter(a =>
+      a.career_alignment_status === 'In-Field' ||
+      a.career_alignment_status === 'Out-of-Field' ||
+      (a.employment_status && a.employment_status !== 'Unemployed' && a.job_title && a.job_title.trim() !== '')
+    ).length;
+
+    const unemployed = Math.max(0, total - employed);
 
     setStats({ total, employed, unemployed, inField, outOfField });
     setEmploymentChartData([
@@ -816,7 +823,7 @@ export default function AdminDashboard({ session }: { session: Session }) {
     setAlignmentChartData([
       { name: 'In-Field', value: inField, color: '#800000' },
       { name: 'Out-of-Field', value: outOfField, color: '#f59e0b' },
-      { name: 'Pending', value: total - inField - outOfField, color: '#6b7280' },
+      { name: 'Pending', value: Math.max(0, total - inField - outOfField), color: '#6b7280' },
     ]);
 
     const uniqueCourses = [...new Set(alumniData.map(a => a.course).filter(Boolean))] as string[];
@@ -838,12 +845,18 @@ export default function AdminDashboard({ session }: { session: Session }) {
     const deptStats = DEPARTMENTS.map(dept => {
       const deptAlumni = alumniData.filter(a => a.department === dept.code);
       const total = deptAlumni.length;
-      const employed = deptAlumni.filter(a => a.employment_status === 'Employed').length;
-      const unemployed = deptAlumni.filter(a => a.employment_status === 'Unemployed').length;
 
       const inField = deptAlumni.filter(a => a.career_alignment_status === 'In-Field').length;
       const outOfField = deptAlumni.filter(a => a.career_alignment_status === 'Out-of-Field').length;
-      const pending = deptAlumni.filter(a => a.career_alignment_status === null || a.career_alignment_status === undefined).length;
+
+      const employed = deptAlumni.filter(a =>
+        a.career_alignment_status === 'In-Field' ||
+        a.career_alignment_status === 'Out-of-Field' ||
+        (a.employment_status && a.employment_status !== 'Unemployed' && a.job_title && a.job_title.trim() !== '')
+      ).length;
+
+      const unemployed = Math.max(0, total - employed);
+      const pending = deptAlumni.filter(a => !a.career_alignment_status || a.career_alignment_status === 'Pending').length;
 
       return {
         department: dept.code,
