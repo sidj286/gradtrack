@@ -15,6 +15,7 @@ import {
 import NotificationBell from './NotificationBell';
 import SocialFeed from './SocialFeed';
 import JobHistory from './JobHistory';
+import DigitalIDModal from './DigitalIDModal';
 
 // ==================== TYPES ====================
 interface Profile {
@@ -520,6 +521,7 @@ export default function AlumniDashboard({ session }: { session: Session }) {
   });
 
   const [saveLoading, setSaveLoading] = useState(false);
+  const [showDigitalIDModal, setShowDigitalIDModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [commentsByAnnouncement, setCommentsByAnnouncement] = useState<Record<string, AnnouncementComment[]>>({});
   const [commentLoading, setCommentLoading] = useState<Record<string, boolean>>({});
@@ -1592,9 +1594,19 @@ const addComment = async (announcementId: string, content: string, parentComment
                     </div>
                   </div>
                 </div>
-                <Button size="sm" onClick={() => setShowEmploymentModal(true)}>
-                  Update Career
-                </Button>
+                <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                  <button
+                    onClick={() => setShowDigitalIDModal(true)}
+                    className="px-3 py-1.5 sm:px-4 sm:py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md transition-all duration-200 flex items-center gap-1.5 border border-amber-300/40 active:scale-95"
+                  >
+                    <span>🪪</span>
+                    <span>Digital ID</span>
+                  </button>
+
+                  <Button size="sm" onClick={() => setShowEmploymentModal(true)}>
+                    Update Career
+                  </Button>
+                </div>
               </div>
             </Card>
 
@@ -2135,6 +2147,14 @@ const addComment = async (announcementId: string, content: string, parentComment
           <span className="text-[10px] font-medium">Feed</span>
         </button>
       </div>
+
+      {/* Digital ID Modal */}
+      {showDigitalIDModal && profile && (
+        <DigitalIDModal
+          profile={profile}
+          onClose={() => setShowDigitalIDModal(false)}
+        />
+      )}
     </div>
   );
 }

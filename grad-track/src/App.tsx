@@ -5,6 +5,7 @@ import AlumniDashboard from './AlumniDashboard';
 import AdminDashboard from './AdminDashboard';
 import Register from './Register';
 import ResetPassword from './ResetPassword';
+import DigitalIDViewer from './DigitalIDViewer';
 import type { Session } from '@supabase/supabase-js';
 
 // Eye Icons
@@ -36,6 +37,7 @@ function App() {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetMessage, setResetMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [verifyId, setVerifyId] = useState<string | null>(null);
   
   // Email link states
   const [useEmailLink, setUseEmailLink] = useState(false);
@@ -43,6 +45,15 @@ function App() {
   const [emailLinkAddress, setEmailLinkAddress] = useState('');
 
   useEffect(() => {
+    // Check for QR code verification URL parameter (?verify_id=...)
+    const urlParams = new URLSearchParams(window.location.search);
+    const verifyParam = urlParams.get('verify_id');
+    if (verifyParam) {
+      setVerifyId(verifyParam);
+      setLoading(false);
+      return;
+    }
+
     // Check for password recovery hash
     const hash = window.location.hash;
     if (hash && hash.includes('type=recovery')) {
@@ -483,6 +494,18 @@ function App() {
           </div>
         )}
       </>
+    );
+  }
+
+  if (verifyId) {
+    return (
+      <DigitalIDViewer
+        verifyId={verifyId}
+        onBackToApp={() => {
+          setVerifyId(null);
+          window.history.replaceState({}, '', window.location.pathname);
+        }}
+      />
     );
   }
 
