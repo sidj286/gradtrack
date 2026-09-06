@@ -1,7 +1,7 @@
 // src/components/PredictionDashboard.tsx
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import type { PredictionInsightRequest } from './lib/gemini';
-import { getPredictionInsights } from './lib/gemini';
+import { getPredictionInsights, isRealIndustry, generateImprovedFallback } from './lib/gemini';
 import { classifyCareerAlignmentSync } from './lib/careerClassifier';
 
 interface PredictionDashboardProps {
@@ -188,6 +188,7 @@ interface DeptMetrics {
   demandScore: number;
   healthScore: number;
   batchCount: number;
+  usableBatchCount: number;
   projection: number | null;
   growth: number | null;
   confidence: Confidence | null;
@@ -204,7 +205,8 @@ interface DeptMetrics {
 function computeIndustries(deptAlumni: any[]): IndustryRow[] {
   const groups = new Map<string, any[]>();
   deptAlumni.forEach((a) => {
-    const key = (typeof a?.industry === 'string' && a.industry.trim()) || 'Unspecified';
+    const rawKey = typeof a?.industry === 'string' ? a.industry.trim() : '';
+    const key = isRealIndustry(rawKey) ? rawKey : 'Unspecified';
     let bucket = groups.get(key);
     if (!bucket) {
       bucket = [];
@@ -298,6 +300,7 @@ function computeDeptMetrics(deptAlumni: any[], dept: typeof DEPARTMENTS[0], targ
     demandScore,
     healthScore,
     batchCount: allBatchYears.length,
+    usableBatchCount: usableBatchYears.length,
     projection,
     growth,
     confidence,
@@ -349,8 +352,9 @@ function generateProjectionInsight(metrics: DeptMetrics): string {
 
 function generateWorkforceInsight(metrics: DeptMetrics): string {
   const { industries, gap, targetBatch, latestBatch, code } = metrics;
-  const lead = industries[0];
-  if (!lead) return `No industry data available for ${code}.`;
+  const realIndustries = industries.filter(i => isRealIndustry(i.industry));
+  const lead = realIndustries[0];
+  if (!lead) return `No specified employment industry sector data available for ${code}. Status/industry information is pending or unspecified.`;
   const batchLabel = targetBatch !== null ? `Batch ${targetBatch}` : 'Next batch';
   const fromLabel = latestBatch !== null ? `Batch ${latestBatch}` : 'previous';
   let base = `Based on ${fromLabel} data, ${lead.industry} shows ${lead.demandLabel.toLowerCase()} (${lead.demandScore}%). ${lead.shareOfDept}% of ${code} graduates are employed in this sector.`;
@@ -365,14 +369,15 @@ function generateWorkforceInsight(metrics: DeptMetrics): string {
 
 function generateIndustryInsight(metrics: DeptMetrics): string {
   const { code, industries } = metrics;
-  if (industries.length === 0) return `No industry data available for ${code}.`;
-  const top = industries[0];
+  const realIndustries = industries.filter(i => isRealIndustry(i.industry));
+  if (realIndustries.length === 0) return `No specified industry sector data available for ${code}.`;
+  const top = realIndustries[0];
   let base = `${code} graduates show ${top.demandLabel.toLowerCase()} demand.`;
   if (top.shareOfDept >= 40) base += ` ${top.industry} employs ${top.shareOfDept}% of ${code} graduates.`;
-  else if (industries.length >= 3) base += ` Employment is distributed across ${industries.length} industries.`;
+  else if (realIndustries.length >= 3) base += ` Employment is distributed across ${realIndustries.length} industry sectors.`;
   else base += ` ${top.industry} is the primary employer (${top.shareOfDept}%).`;
-  const highDemand = industries.filter(i => i.demandLabel === 'High Demand');
-  const lowDemand = industries.filter(i => i.demandLabel === 'Low Demand');
+  const highDemand = realIndustries.filter(i => i.demandLabel === 'High Demand');
+  const lowDemand = realIndustries.filter(i => i.demandLabel === 'Low Demand');
   if (highDemand.length > 0) base += ` High demand sectors: ${highDemand.map(i => i.industry).join(', ')}.`;
   if (lowDemand.length > 0) base += ` Low demand sectors: ${lowDemand.map(i => i.industry).join(', ')}.`;
   if (highDemand.length >= 2) base += ` Graduates are in strong demand across ${highDemand.length} sectors.`;
@@ -433,11 +438,33 @@ const SummaryCard = React.memo(function SummaryCard({ label, value, sublabel }: 
   );
 });
 
-const MetricCard = React.memo(function MetricCard({ label, value, sublabel }: { label: string; value: string; sublabel?: string }) {
+const MetricCard = React.memo(function MetricCard({ 
+  label, 
+  value, 
+  sublabel,
+  onAudit
+}: { 
+  label: string; 
+  value: string; 
+  sublabel?: string;
+  onAudit?: () => void;
+}) {
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5">
-      <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 relative group hover:shadow-md transition-all">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</p>
+        {onAudit && (
+          <button
+            type="button"
+            onClick={onAudit}
+            className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/60 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-800 transition-all flex items-center gap-1 cursor-pointer"
+            title="Click to view calculation breakdown and formula"
+          >
+            <span>🧮 Formula</span>
+          </button>
+        )}
+      </div>
+      <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">{value}</p>
       {sublabel && <p className="text-xs text-gray-400 mt-0.5">{sublabel}</p>}
     </div>
   );
@@ -466,14 +493,284 @@ const StatusBadge = React.memo(function StatusBadge({ label, type }: { label: st
   );
 });
 
+export interface CalculationAuditPayload {
+  title: string;
+  metricName: string;
+  value: string;
+  formula: string;
+  steps: { label: string; value: string }[];
+  explanation: string;
+  badgeText?: string;
+}
+
+function getHealthScoreAudit(metrics: DeptMetrics): CalculationAuditPayload {
+  return {
+    title: 'Department Health Score Audit',
+    metricName: `${metrics.code} (${metrics.fullName || metrics.name}) Health Score`,
+    value: `${metrics.healthScore}%`,
+    badgeText: 'Program Health Score',
+    formula: 'Health Score = (Employment Rate + In-Field Career Alignment Rate) ÷ 2',
+    steps: [
+      { label: 'Total Department Alumni Sample', value: `${metrics.total} graduates` },
+      { label: 'Employed Alumni Count', value: `${metrics.employed} (${metrics.employmentRate}%)` },
+      { label: 'In-Field Aligned Graduates', value: `${metrics.inField} (${metrics.alignmentRate}%)` },
+      { label: 'Step 1: Calculate Employment Rate', value: `(${metrics.employed} / ${metrics.total}) × 100 = ${metrics.employmentRate}%` },
+      { label: 'Step 2: Calculate Alignment Rate', value: `(${metrics.inField} / ${metrics.total}) × 100 = ${metrics.alignmentRate}%` },
+      { label: 'Step 3: Average Both Indicators', value: `(${metrics.employmentRate}% + ${metrics.alignmentRate}%) ÷ 2 = ${metrics.healthScore}%` }
+    ],
+    explanation: 'The Department Health Score evaluates overall program vitality by giving equal weight (50% each) to job market absorption (employment rate) and educational relevance (in-field career alignment rate).'
+  };
+}
+
+function getEmploymentRateAudit(metrics: DeptMetrics): CalculationAuditPayload {
+  const unemployed = Math.max(0, metrics.total - metrics.employed);
+  const ratio = metrics.total > 0 ? metrics.employed / metrics.total : 0;
+  return {
+    title: 'Employment Rate Calculation Audit',
+    metricName: `${metrics.code} Employment Absorption`,
+    value: `${metrics.employmentRate}%`,
+    badgeText: 'Graduate Employment Rate',
+    formula: 'Employment Rate = (Employed Graduates ÷ Total Alumni Sample) × 100',
+    steps: [
+      { label: 'Total Alumni Graduates Sample', value: `${metrics.total} graduates` },
+      { label: 'Employed Alumni Headcount', value: `${metrics.employed} graduates` },
+      { label: 'Unemployed / Unspecified / Seeking', value: `${unemployed} graduates` },
+      { label: 'Calculation Ratio', value: `${metrics.employed} ÷ ${metrics.total} = ${ratio.toFixed(4)}` },
+      { label: 'Percentage Conversion', value: `${ratio.toFixed(4)} × 100 = ${metrics.employmentRate}%` }
+    ],
+    explanation: 'Measures the proportion of department graduates who are currently employed across all registered industry sectors.'
+  };
+}
+
+function getAlignmentRateAudit(metrics: DeptMetrics): CalculationAuditPayload {
+  const outOfField = Math.max(0, metrics.employed - metrics.inField);
+  const ratio = metrics.total > 0 ? metrics.inField / metrics.total : 0;
+  return {
+    title: 'In-Field Alignment Calculation Audit',
+    metricName: `${metrics.code} Career Alignment Rate`,
+    value: `${metrics.alignmentRate}%`,
+    badgeText: 'Degree Alignment Rate',
+    formula: 'Alignment Rate = (In-Field Employed Graduates ÷ Total Alumni Sample) × 100',
+    steps: [
+      { label: 'Total Department Alumni Sample', value: `${metrics.total} graduates` },
+      { label: 'In-Field Employed Graduates', value: `${metrics.inField} graduates` },
+      { label: 'Out-of-Field / Unaligned Employed', value: `${outOfField} graduates` },
+      { label: 'Calculation Ratio', value: `${metrics.inField} ÷ ${metrics.total} = ${ratio.toFixed(4)}` },
+      { label: 'Percentage Conversion', value: `${ratio.toFixed(4)} × 100 = ${metrics.alignmentRate}%` }
+    ],
+    explanation: 'Measures degree relevance by identifying graduates working in positions directly related to their academic field of study.'
+  };
+}
+
+function getDemandScoreAudit(metrics: DeptMetrics): CalculationAuditPayload {
+  const empComp = (metrics.employmentRate * 0.60).toFixed(1);
+  const alignComp = (metrics.alignmentRate * 0.40).toFixed(1);
+  return {
+    title: 'Regional Market Demand Score Audit',
+    metricName: `${metrics.code} Labor Demand Index`,
+    value: `${metrics.demandScore}%`,
+    badgeText: 'Industry Demand Score',
+    formula: 'Demand Score = (Employment Rate × 0.60) + (Career Alignment Rate × 0.40)',
+    steps: [
+      { label: 'Employment Rate Component (60% Weight)', value: `${metrics.employmentRate}% × 0.60 = ${empComp}%` },
+      { label: 'Alignment Rate Component (40% Weight)', value: `${metrics.alignmentRate}% × 0.40 = ${alignComp}%` },
+      { label: 'Combined Demand Index', value: `${empComp}% + ${alignComp}% = ${metrics.demandScore}%` }
+    ],
+    explanation: 'Quantifies regional employer demand by placing 60% weight on general employment absorption and 40% weight on degree-matched field alignment.'
+  };
+}
+
+function getWorkforceVolumeAudit(metrics: DeptMetrics): CalculationAuditPayload {
+  const baseDemand = (metrics.total * (metrics.demandScore / 100)).toFixed(1);
+  return {
+    title: 'Workforce Headcount Demand Audit',
+    metricName: `${metrics.code} Headcount Demand Index`,
+    value: `Demand: ${metrics.demand} (Total Alumni: ${metrics.total})`,
+    badgeText: `Net Gap: ${metrics.gap > 0 ? '+' : ''}${metrics.gap} Graduates`,
+    formula: 'Demand Headcount = Math.round(Total Alumni × (Demand Score / 100) × 1.10 Market Buffer)',
+    steps: [
+      { label: 'Total Department Alumni', value: `${metrics.total} graduates` },
+      { label: 'Market Demand Score Index', value: `${metrics.demandScore}%` },
+      { label: 'Base Absorbed Demand', value: `${metrics.total} × (${metrics.demandScore} / 100) = ${baseDemand}` },
+      { label: 'Market Vacancy & Growth Buffer', value: `× 1.10 (+10% market buffer for open positions)` },
+      { label: 'Final Computed Industry Demand Volume', value: `Math.round(${baseDemand} × 1.10) = ${metrics.demand} graduates` },
+      { label: 'Net Workforce Gap', value: `${metrics.demand} (Demand) - ${metrics.total} (Total Alumni) = ${metrics.gap > 0 ? '+' : ''}${metrics.gap}` }
+    ],
+    explanation: 'Computes total graduate headcount required by local industry sectors, incorporating a 10% market expansion buffer for job vacancies.'
+  };
+}
+
+function getSectorShareAudit(metrics: DeptMetrics, sector: IndustryRow): CalculationAuditPayload {
+  const ratio = metrics.total > 0 ? sector.count / metrics.total : 0;
+  return {
+    title: 'Industry Sector Concentration Audit',
+    metricName: `${sector.industry} Department Share`,
+    value: `${sector.shareOfDept}%`,
+    badgeText: 'Sector Concentration Rate',
+    formula: 'Concentration Rate = (Sector Employed Alumni ÷ Department Total Alumni) × 100',
+    steps: [
+      { label: 'Alumni Employed in Sector', value: `${sector.count} graduates` },
+      { label: 'Total Department Graduates', value: `${metrics.total} graduates` },
+      { label: 'Calculation Ratio', value: `${sector.count} ÷ ${metrics.total} = ${ratio.toFixed(4)}` },
+      { label: 'Percentage Share', value: `${ratio.toFixed(4)} × 100 = ${sector.shareOfDept}%` }
+    ],
+    explanation: 'Indicates what percentage of the department\'s total alumni workforce is concentrated within this specific industry sector.'
+  };
+}
+
+function getSectorDemandAudit(_metrics: DeptMetrics, sector: IndustryRow): CalculationAuditPayload {
+  const empComp = (sector.employmentRate * 0.60).toFixed(1);
+  return {
+    title: 'Sector Demand Score Audit',
+    metricName: `${sector.industry} Sector Demand Score`,
+    value: `${sector.demandScore}% (${sector.demandLabel})`,
+    badgeText: 'Sector Demand Index',
+    formula: 'Sector Demand Score = (Sector Employment Rate × 0.60) + 0.40 Base Weight',
+    steps: [
+      { label: 'Sector Graduates Headcount', value: `${sector.count} graduates` },
+      { label: 'Sector Employment Rate', value: `${sector.employmentRate}%` },
+      { label: 'Weighted Component (60%)', value: `${sector.employmentRate}% × 0.60 = ${empComp}%` },
+      { label: 'Baseline Weight Factor', value: `0.40` },
+      { label: 'Combined Sector Demand Index', value: `${empComp} + 0.40 = ${sector.demandScore}%` }
+    ],
+    explanation: 'Evaluates employer hiring density and employment stability within this specific industry segment.'
+  };
+}
+
+function getProjectionAudit(metrics: DeptMetrics): CalculationAuditPayload {
+  return {
+    title: 'Batch Forecast Linear Regression Audit',
+    metricName: `Batch ${metrics.targetBatch || 'Next'} Projection Forecast`,
+    value: `${metrics.projection !== null ? metrics.projection + '%' : 'N/A'}`,
+    badgeText: 'Projected Alignment Rate',
+    formula: 'Linear Regression: y = slope · TargetBatch + intercept (fitted on historical batch rates)',
+    steps: [
+      { label: 'Historical Batches Analyzed', value: `${metrics.batchCount} batch years` },
+      { label: 'Current Batch Alignment Rate', value: `${metrics.alignmentRate}%` },
+      { label: 'Target Batch Forecasted Rate', value: `${metrics.projection !== null ? metrics.projection + '%' : 'N/A'}` },
+      { label: 'Forecasted Alignment Delta', value: `${metrics.growth !== null ? (metrics.growth > 0 ? '+' : '') + metrics.growth + '%' : 'N/A'}` },
+      { label: 'Statistical Confidence Rating', value: `${metrics.confidence || 'Low'}` }
+    ],
+    explanation: 'Uses linear regression trends on historical batch alignment data to project career alignment rates for upcoming graduating batches.'
+  };
+}
+
+const CalculationAuditModal = React.memo(function CalculationAuditModal({
+  auditData,
+  onClose,
+}: {
+  auditData: CalculationAuditPayload | null;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  if (!auditData) return null;
+
+  return (
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-all"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden transition-all transform scale-100"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-800 bg-gradient-to-r from-purple-900/10 via-indigo-900/5 to-transparent flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="h-9 w-9 rounded-xl bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center text-purple-700 dark:text-purple-300 text-lg">
+              🧮
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-gray-900 dark:text-white leading-snug">
+                {auditData.title}
+              </h3>
+              <p className="text-xs text-purple-600 dark:text-purple-400 font-medium">
+                {auditData.metricName}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-8 w-8 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 flex items-center justify-center text-sm font-bold transition-colors cursor-pointer"
+            title="Close modal"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="p-6 space-y-5">
+          <div className="rounded-2xl bg-purple-50 dark:bg-purple-950/40 p-4 border border-purple-100 dark:border-purple-900/40 flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-purple-700 dark:text-purple-300">
+              {auditData.badgeText || 'Final Computed Result'}
+            </span>
+            <span className="text-2xl font-extrabold text-purple-900 dark:text-purple-100">
+              {auditData.value}
+            </span>
+          </div>
+
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+              📐 Mathematical Formula
+            </p>
+            <div className="p-3.5 rounded-xl bg-gray-900 text-purple-200 font-mono text-xs font-semibold leading-relaxed border border-gray-800 shadow-inner">
+              {auditData.formula}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2.5">
+              🔍 Calculation Steps & Data Inputs
+            </p>
+            <div className="space-y-2">
+              {auditData.steps.map((step, idx) => (
+                <div key={idx} className="flex items-start justify-between text-xs p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-800">
+                  <span className="font-medium text-gray-600 dark:text-gray-300 pr-2">
+                    {step.label}
+                  </span>
+                  <span className="font-mono font-bold text-purple-700 dark:text-purple-300 text-right whitespace-nowrap">
+                    {step.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 text-xs text-amber-900 dark:text-amber-200 leading-relaxed">
+            💡 <strong>Institutional Note:</strong> {auditData.explanation}
+          </div>
+        </div>
+
+        <div className="px-6 py-4 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-800 flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-xs font-bold text-white bg-purple-700 hover:bg-purple-800 rounded-xl transition-colors shadow-sm cursor-pointer"
+          >
+            Close Audit
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 const DepartmentCard = React.memo(function DepartmentCard({
   metrics,
   isSelected,
   onSelect,
+  onAuditHealth,
 }: {
   metrics: DeptMetrics;
   isSelected: boolean;
   onSelect: () => void;
+  onAuditHealth?: () => void;
 }) {
   const healthClass = classifyHealth(metrics.healthScore);
   const healthColorValue = healthColor(metrics.healthScore);
@@ -535,7 +832,22 @@ const DepartmentCard = React.memo(function DepartmentCard({
 
       <div className="mt-4 pt-3 border-t" style={{ borderColor: isCBE ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)' }}>
         <div className="flex items-center justify-between text-sm">
-          <span style={{ color: isCBE ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)' }}>Health Score</span>
+          <div className="flex items-center gap-1.5">
+            <span style={{ color: isCBE ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)' }}>Health Score</span>
+            {onAuditHealth && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAuditHealth();
+                }}
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/20 hover:bg-white/40 text-current transition-all cursor-pointer"
+                title="View Health Score calculation formula"
+              >
+                🧮
+              </button>
+            )}
+          </div>
           <span className="font-bold text-xl" style={{ color: isCBE ? '#000000' : '#ffffff' }}>
             {metrics.healthScore}%
           </span>
@@ -559,40 +871,153 @@ const DepartmentCard = React.memo(function DepartmentCard({
   );
 });
 
-const WorkforceTab = React.memo(function WorkforceTab({ metrics, aiInsights, aiLoading }: { metrics: DeptMetrics; aiInsights: any; aiLoading: boolean }) {
+const WorkforceTab = React.memo(function WorkforceTab({ 
+  metrics, 
+  aiInsights, 
+  aiLoading,
+  onOpenAudit 
+}: { 
+  metrics: DeptMetrics; 
+  aiInsights: any; 
+  aiLoading: boolean;
+  onOpenAudit?: (payload: CalculationAuditPayload) => void;
+}) {
   const insight = useMemo(() => generateWorkforceInsight(metrics), [metrics]);
   const projectionInsight = useMemo(() => generateProjectionInsight(metrics), [metrics]);
-  const ai = aiInsights?.[metrics.code];
+
+  const realIndustries = useMemo(() => metrics.industries.filter(i => isRealIndustry(i.industry)), [metrics.industries]);
+  const topValid = realIndustries[0];
+  const topIndustriesList = useMemo(() => realIndustries.slice(0, 3).map(i => ({
+    name: i.industry,
+    count: i.count,
+    share: i.shareOfDept
+  })), [realIndustries]);
+
+  const fallbackAI = useMemo(() => generateImprovedFallback({
+    department: metrics.code,
+    departmentName: metrics.fullName,
+    totalAlumni: metrics.total,
+    employedCount: metrics.employed,
+    inFieldCount: metrics.inField,
+    outOfFieldCount: Math.max(0, metrics.employed - metrics.inField),
+    employmentRate: metrics.employmentRate,
+    alignmentRate: metrics.alignmentRate,
+    healthScore: metrics.healthScore,
+    demandScore: metrics.demandScore,
+    projection: metrics.projection,
+    growth: metrics.growth,
+    gap: metrics.gap,
+    targetBatch: metrics.targetBatch,
+    latestBatch: metrics.latestBatch,
+    topIndustry: topValid?.industry || null,
+    topIndustryDemand: topValid?.demandScore || null,
+    industriesCount: realIndustries.length,
+    topIndustriesList,
+    batchCount: metrics.batchCount,
+    isSmallSample: metrics.isSmallSample,
+    hasTrendData: metrics.batchCount >= 2,
+    trendDescription: metrics.trendDescription || 'stable'
+  }), [metrics, topValid, realIndustries, topIndustriesList]);
+
+  const ai = aiInsights?.[metrics.code] || fallbackAI;
+  const isLoading = typeof aiLoading === 'boolean' ? aiLoading : Boolean((aiLoading as any)?.[metrics.code]);
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-4 gap-4">
-        <MetricCard label="Total Alumni" value={String(metrics.total)} />
-        <MetricCard label="Supply" value={String(metrics.supply)} />
-        <MetricCard label="Demand" value={String(metrics.demand)} />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <MetricCard 
+          label="Total Alumni" 
+          value={String(metrics.total)} 
+          onAudit={onOpenAudit ? () => onOpenAudit(getEmploymentRateAudit(metrics)) : undefined}
+        />
+        <MetricCard 
+          label="Demand" 
+          value={String(metrics.demand)} 
+          onAudit={onOpenAudit ? () => onOpenAudit(getWorkforceVolumeAudit(metrics)) : undefined}
+        />
         <MetricCard 
           label="Gap" 
           value={`${metrics.gap > 0 ? '+' : ''}${metrics.gap}`} 
           sublabel={metrics.gap > 0 ? 'Additional graduates needed' : metrics.gap < 0 ? 'Supply exceeds demand' : 'Balanced'}
+          onAudit={onOpenAudit ? () => onOpenAudit(getWorkforceVolumeAudit(metrics)) : undefined}
         />
       </div>
       <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6">
-        <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Projection</p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Projection</p>
+          {onOpenAudit && metrics.projection !== null && (
+            <button
+              type="button"
+              onClick={() => onOpenAudit(getProjectionAudit(metrics))}
+              className="text-xs font-semibold px-2.5 py-1 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/60 dark:text-purple-300 hover:bg-purple-200 transition-all flex items-center gap-1 cursor-pointer"
+              title="Click to view linear regression projection calculation"
+            >
+              <span>🧮 Formula Breakdown</span>
+            </button>
+          )}
+        </div>
         <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">{projectionInsight}</p>
       </div>
       <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6">
         <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Workforce Analysis</p>
         <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">{insight}</p>
       </div>
-      {ai?.workforce && (
-        <div className="rounded-2xl border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20 p-6">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-sm font-semibold text-purple-700 dark:text-purple-300">🤖 AI Workforce Insight</span>
-            <span className="text-xs text-purple-400">Powered by Gemini</span>
+      {ai && (
+        <div className="rounded-2xl border border-purple-200 dark:border-purple-800 bg-gradient-to-br from-purple-50 to-indigo-50 dark:from-purple-950/30 dark:to-indigo-950/30 p-6 space-y-4 shadow-sm">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-base font-bold text-purple-900 dark:text-purple-200">🎯 AI Strategic Intervention & Action Plan</span>
+              {ai.isLiveAI ? (
+                <span className="px-2.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300 rounded-full uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Live Gemini AI
+                </span>
+              ) : (
+                <span className="px-2.5 py-0.5 text-[10px] font-semibold bg-purple-200 text-purple-800 dark:bg-purple-900/60 dark:text-purple-300 rounded-full uppercase tracking-wider">
+                  CRMC Strategic AI
+                </span>
+              )}
+            </div>
+            <span className="text-xs text-purple-600 dark:text-purple-400 font-medium flex items-center gap-1">
+              {isLoading && <span className="animate-spin">⚙</span>}
+              {isLoading ? 'Analyzing with Gemini 2.0 Flash...' : 'Powered by Gemini 2.0 Flash'}
+            </span>
           </div>
-          <p className="text-sm text-gray-700 dark:text-gray-300">{ai.workforce}</p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+            {ai.actionableStep && (
+              <div className="rounded-xl bg-white/80 dark:bg-gray-900/80 p-4 border border-purple-100 dark:border-purple-900/40">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-purple-700 dark:text-purple-300 uppercase tracking-wider mb-1.5">
+                  <span>📌 Actionable Step</span>
+                </div>
+                <p className="text-xs text-gray-700 dark:text-gray-300 font-medium leading-relaxed">{ai.actionableStep}</p>
+              </div>
+            )}
+            {ai.riskFactor && (
+              <div className="rounded-xl bg-white/80 dark:bg-gray-900/80 p-4 border border-amber-100 dark:border-amber-900/40">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider mb-1.5">
+                  <span>⚡ Key Risk Factor</span>
+                </div>
+                <p className="text-xs text-gray-700 dark:text-gray-300 font-medium leading-relaxed">{ai.riskFactor}</p>
+              </div>
+            )}
+            {ai.growthOpportunity && (
+              <div className="rounded-xl bg-white/80 dark:bg-gray-900/80 p-4 border border-emerald-100 dark:border-emerald-900/40">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider mb-1.5">
+                  <span>💡 Growth Opportunity</span>
+                </div>
+                <p className="text-xs text-gray-700 dark:text-gray-300 font-medium leading-relaxed">{ai.growthOpportunity}</p>
+              </div>
+            )}
+          </div>
+
+          {ai.workforce && (
+            <div className="pt-2 border-t border-purple-100 dark:border-purple-900/40">
+              <p className="text-xs text-purple-900 dark:text-purple-200 font-medium leading-relaxed">{ai.workforce}</p>
+            </div>
+          )}
           {aiLoading && (
-            <p className="text-xs text-purple-400 mt-2">Generating AI insights...</p>
+            <p className="text-xs text-purple-500 animate-pulse">Generating sharp predictive insights...</p>
           )}
         </div>
       )}
@@ -602,7 +1027,21 @@ const WorkforceTab = React.memo(function WorkforceTab({ metrics, aiInsights, aiL
           {metrics.industries.slice(0, 5).map((industry) => (
             <li key={industry.industry}>
               <div className="flex items-center justify-between text-sm mb-1">
-                <span className="font-medium text-gray-700 dark:text-gray-200">{industry.industry}</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-gray-700 dark:text-gray-200">
+                    {isRealIndustry(industry.industry) ? industry.industry : 'Unspecified (Pending / Unemployed)'}
+                  </span>
+                  {onOpenAudit && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenAudit(getSectorShareAudit(metrics, industry))}
+                      className="text-[11px] text-purple-600 dark:text-purple-400 hover:underline cursor-pointer font-semibold"
+                      title="View sector share calculation"
+                    >
+                      🧮 {industry.shareOfDept}%
+                    </button>
+                  )}
+                </div>
                 <span className="text-gray-500 dark:text-gray-400">{industry.count} alumni</span>
               </div>
               <ProgressBar value={industry.shareOfDept} color="#7C2D12" />
@@ -617,7 +1056,17 @@ const WorkforceTab = React.memo(function WorkforceTab({ metrics, aiInsights, aiL
   );
 });
 
-const IndustryTab = React.memo(function IndustryTab({ metrics, aiInsights, aiLoading }: { metrics: DeptMetrics; aiInsights: any; aiLoading: boolean }) {
+const IndustryTab = React.memo(function IndustryTab({ 
+  metrics, 
+  aiInsights, 
+  aiLoading,
+  onOpenAudit 
+}: { 
+  metrics: DeptMetrics; 
+  aiInsights: any; 
+  aiLoading: boolean;
+  onOpenAudit?: (payload: CalculationAuditPayload) => void;
+}) {
   const insight = useMemo(() => generateIndustryInsight(metrics), [metrics]);
   const ai = aiInsights?.[metrics.code];
 
@@ -652,15 +1101,55 @@ const IndustryTab = React.memo(function IndustryTab({ metrics, aiInsights, aiLoa
           <tbody className="divide-y divide-gray-100 dark:divide-gray-700 bg-white dark:bg-gray-800">
             {metrics.industries.map((industry) => (
               <tr key={industry.industry}>
-                <td className="px-6 py-3 font-medium text-gray-800 dark:text-gray-100">{industry.industry}</td>
+                <td className="px-6 py-3 font-medium text-gray-800 dark:text-gray-100">
+                  <div className="flex items-center gap-2">
+                    <span>{isRealIndustry(industry.industry) ? industry.industry : 'Unspecified (Pending / Unemployed)'}</span>
+                    {onOpenAudit && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenAudit(getSectorShareAudit(metrics, industry))}
+                        className="text-[11px] text-purple-600 dark:text-purple-400 hover:underline cursor-pointer font-semibold"
+                        title="View sector share calculation"
+                      >
+                        🧮 {industry.shareOfDept}%
+                      </button>
+                    )}
+                  </div>
+                </td>
                 <td className="px-6 py-3 text-right text-gray-600 dark:text-gray-300">{industry.count}</td>
                 <td className="px-6 py-3 text-right">
-                  <StatusBadge label={industry.demandLabel} type={
-                    industry.demandLabel === 'High Demand' ? 'success' :
-                    industry.demandLabel === 'Moderate Demand' ? 'warning' : 'error'
-                  } />
+                  <div className="inline-flex items-center justify-end gap-2">
+                    <StatusBadge label={industry.demandLabel} type={
+                      industry.demandLabel === 'High Demand' ? 'success' :
+                      industry.demandLabel === 'Moderate Demand' ? 'warning' : 'error'
+                    } />
+                    {onOpenAudit && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenAudit(getSectorDemandAudit(metrics, industry))}
+                        className="text-xs text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
+                        title="View sector demand formula"
+                      >
+                        🧮
+                      </button>
+                    )}
+                  </div>
                 </td>
-                <td className="px-6 py-3 text-right text-gray-600 dark:text-gray-300">{industry.employmentRate}%</td>
+                <td className="px-6 py-3 text-right text-gray-600 dark:text-gray-300">
+                  <div className="inline-flex items-center justify-end gap-1.5">
+                    <span>{industry.employmentRate}%</span>
+                    {onOpenAudit && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenAudit(getSectorDemandAudit(metrics, industry))}
+                        className="text-xs text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
+                        title="View employment calculation"
+                      >
+                        🧮
+                      </button>
+                    )}
+                  </div>
+                </td>
               </tr>
             ))}
             {metrics.industries.length === 0 && (
@@ -677,12 +1166,20 @@ const IndustryTab = React.memo(function IndustryTab({ metrics, aiInsights, aiLoa
   );
 });
 
-const HealthTab = React.memo(function HealthTab({ metrics, allMetrics, departmentStats, aiInsights, aiLoading }: { 
+const HealthTab = React.memo(function HealthTab({ 
+  metrics, 
+  allMetrics, 
+  departmentStats, 
+  aiInsights, 
+  aiLoading,
+  onOpenAudit
+}: { 
   metrics: DeptMetrics; 
   allMetrics: DeptMetrics[]; 
   departmentStats: any[];
   aiInsights: any;
   aiLoading: boolean;
+  onOpenAudit?: (payload: CalculationAuditPayload) => void;
 }) {
   const hasExternalStats = Array.isArray(departmentStats) && departmentStats.length > 0;
   const healthInsight = useMemo(() => generateHealthInsight(metrics), [metrics]);
@@ -692,10 +1189,27 @@ const HealthTab = React.memo(function HealthTab({ metrics, allMetrics, departmen
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-4 gap-4">
-        <MetricCard label="Employment" value={`${metrics.employmentRate}%`} />
-        <MetricCard label="Alignment" value={`${metrics.alignmentRate}%`} />
-        <MetricCard label="Demand" value={`${metrics.demandScore}%`} />
-        <MetricCard label="Health" value={`${metrics.healthScore}%`} sublabel={classifyHealth(metrics.healthScore)} />
+        <MetricCard 
+          label="Employment" 
+          value={`${metrics.employmentRate}%`} 
+          onAudit={onOpenAudit ? () => onOpenAudit(getEmploymentRateAudit(metrics)) : undefined}
+        />
+        <MetricCard 
+          label="Alignment" 
+          value={`${metrics.alignmentRate}%`} 
+          onAudit={onOpenAudit ? () => onOpenAudit(getAlignmentRateAudit(metrics)) : undefined}
+        />
+        <MetricCard 
+          label="Demand" 
+          value={`${metrics.demandScore}%`} 
+          onAudit={onOpenAudit ? () => onOpenAudit(getDemandScoreAudit(metrics)) : undefined}
+        />
+        <MetricCard 
+          label="Health" 
+          value={`${metrics.healthScore}%`} 
+          sublabel={classifyHealth(metrics.healthScore)}
+          onAudit={onOpenAudit ? () => onOpenAudit(getHealthScoreAudit(metrics)) : undefined}
+        />
       </div>
       <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6">
         <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Health Assessment</p>
@@ -744,10 +1258,50 @@ const HealthTab = React.memo(function HealthTab({ metrics, allMetrics, departmen
                     {row.name}
                   </td>
                   <td className="px-6 py-3 text-right font-medium" style={{ color: healthColor(health) }}>
-                    {Math.round(health)}%
+                    <div className="inline-flex items-center justify-end gap-1.5">
+                      <span>{Math.round(health)}%</span>
+                      {onOpenAudit && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenAudit(getHealthScoreAudit(row))}
+                          className="text-xs text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
+                          title="View health score formula"
+                        >
+                          🧮
+                        </button>
+                      )}
+                    </div>
                   </td>
-                  <td className="px-6 py-3 text-right text-gray-600 dark:text-gray-300">{Math.round(Number(employment) || 0)}%</td>
-                  <td className="px-6 py-3 text-right text-gray-600 dark:text-gray-300">{Math.round(Number(alignment) || 0)}%</td>
+                  <td className="px-6 py-3 text-right text-gray-600 dark:text-gray-300">
+                    <div className="inline-flex items-center justify-end gap-1.5">
+                      <span>{Math.round(Number(employment) || 0)}%</span>
+                      {onOpenAudit && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenAudit(getEmploymentRateAudit(row))}
+                          className="text-xs text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
+                          title="View employment rate formula"
+                        >
+                          🧮
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-6 py-3 text-right text-gray-600 dark:text-gray-300">
+                    <div className="inline-flex items-center justify-end gap-1.5">
+                      <span>{Math.round(Number(alignment) || 0)}%</span>
+                      {onOpenAudit && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenAudit(getAlignmentRateAudit(row))}
+                          className="text-xs text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
+                          title="View alignment rate formula"
+                        >
+                          🧮
+                        </button>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               );
             })}
@@ -763,6 +1317,7 @@ export default function PredictionDashboard({ alumni, departmentStats, selectedD
   const [activeTab, setActiveTab] = useState<TabKey>('workforce');
   const [aiInsights, setAiInsights] = useState<Record<string, any>>({});
   const [aiLoading, setAiLoading] = useState<Record<string, boolean>>({});
+  const [auditModal, setAuditModal] = useState<CalculationAuditPayload | null>(null);
 
   const safeAlumni = useMemo(() => (Array.isArray(alumni) ? alumni : []), [alumni]);
 
@@ -816,10 +1371,21 @@ export default function PredictionDashboard({ alumni, departmentStats, selectedD
     if (aiInsights[deptCode] || aiLoading[deptCode]) return;
     setAiLoading(prev => ({ ...prev, [deptCode]: true }));
     try {
+      const realIndustries = deptMetrics.industries.filter(i => isRealIndustry(i.industry));
+      const topValid = realIndustries[0];
+      const topIndustriesList = realIndustries.slice(0, 3).map(i => ({
+        name: i.industry,
+        count: i.count,
+        share: i.shareOfDept
+      }));
+
       const request: PredictionInsightRequest = {
         department: deptMetrics.code,
         departmentName: deptMetrics.fullName,
         totalAlumni: deptMetrics.total,
+        employedCount: deptMetrics.employed,
+        inFieldCount: deptMetrics.inField,
+        outOfFieldCount: Math.max(0, deptMetrics.employed - deptMetrics.inField),
         employmentRate: deptMetrics.employmentRate,
         alignmentRate: deptMetrics.alignmentRate,
         healthScore: deptMetrics.healthScore,
@@ -829,9 +1395,10 @@ export default function PredictionDashboard({ alumni, departmentStats, selectedD
         gap: deptMetrics.gap,
         targetBatch: deptMetrics.targetBatch,
         latestBatch: deptMetrics.latestBatch,
-        topIndustry: deptMetrics.industries[0]?.industry || null,
-        topIndustryDemand: deptMetrics.industries[0]?.demandScore || null,
-        industriesCount: deptMetrics.industries.length,
+        topIndustry: topValid?.industry || null,
+        topIndustryDemand: topValid?.demandScore || null,
+        industriesCount: realIndustries.length,
+        topIndustriesList,
         batchCount: deptMetrics.batchCount,
         isSmallSample: deptMetrics.isSmallSample,
         hasTrendData: deptMetrics.batchCount >= 2,
@@ -847,7 +1414,7 @@ export default function PredictionDashboard({ alumni, departmentStats, selectedD
   }, [aiInsights, aiLoading]);
 
   useEffect(() => {
-    if (metrics && metrics.total > 0) {
+    if (metrics) {
       fetchAIInsights(metrics);
     }
   }, [metrics, fetchAIInsights]);
@@ -911,6 +1478,7 @@ export default function PredictionDashboard({ alumni, departmentStats, selectedD
             metrics={m}
             isSelected={m.code === metrics.code}
             onSelect={() => handleSelectDepartment(m.code)}
+            onAuditHealth={() => setAuditModal(getHealthScoreAudit(m))}
           />
         ))}
       </div>
@@ -962,14 +1530,16 @@ export default function PredictionDashboard({ alumni, departmentStats, selectedD
             <WorkforceTab 
               metrics={metrics} 
               aiInsights={aiInsights} 
-              aiLoading={aiLoading[metrics.code]} 
+              aiLoading={aiLoading[metrics.code]}
+              onOpenAudit={setAuditModal}
             />
           )}
           {activeTab === 'industry' && (
             <IndustryTab 
               metrics={metrics} 
               aiInsights={aiInsights} 
-              aiLoading={aiLoading[metrics.code]} 
+              aiLoading={aiLoading[metrics.code]}
+              onOpenAudit={setAuditModal}
             />
           )}
           {activeTab === 'health' && (
@@ -979,10 +1549,17 @@ export default function PredictionDashboard({ alumni, departmentStats, selectedD
               departmentStats={Array.isArray(departmentStats) ? departmentStats : []} 
               aiInsights={aiInsights}
               aiLoading={aiLoading[metrics.code]}
+              onOpenAudit={setAuditModal}
             />
           )}
         </div>
       </div>
+
+      {/* Interactive Calculation Audit Modal */}
+      <CalculationAuditModal 
+        auditData={auditModal} 
+        onClose={() => setAuditModal(null)} 
+      />
     </div>
   );
 }
