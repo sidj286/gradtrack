@@ -114,7 +114,11 @@ function App() {
     });
 
     if (signInError) {
-      setError(signInError.message);
+      if (signInError.message.toLowerCase().includes('email not confirmed')) {
+        setError('Please check your Gmail and click ‘Confirm My Account’ to activate your account.');
+      } else {
+        setError(signInError.message);
+      }
     } else {
       await checkUser();
     }

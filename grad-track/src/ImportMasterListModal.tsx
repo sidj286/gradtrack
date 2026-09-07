@@ -171,7 +171,7 @@ export default function ImportMasterListModal({
     const formatType = detectFormatTypeWrapper(sheet.headers);
     setDetectedFormat(formatType);
 
-    const metadata = getEffectiveMetadata(index, sheetList);
+    getEffectiveMetadata(index, sheetList);
     // (getEffectiveMetadata reads from sheetOverrides state directly; when
     // called synchronously right after setSheetOverrides, pass the fresh
     // object explicitly via overridesOverride to avoid stale state.)

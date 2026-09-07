@@ -28,7 +28,10 @@ const Login: React.FC<LoginProps> = ({ onShowRegister }) => {
 
     if (error) {
       setLoading(false);
-      setStatus({ type: 'error', msg: error.message });
+      const msg = error.message.toLowerCase().includes('email not confirmed')
+        ? 'Please check your Gmail and click ‘Confirm My Account’ to activate your account.'
+        : error.message;
+      setStatus({ type: 'error', msg });
     }
     setLoading(false);
   };
